@@ -1,0 +1,44 @@
+# Miscellaneous
+*.class
+*.log
+*.pyc
+*.swp
+.DS_Store
+.atom/
+.build/
+.buildlog/
+.history
+.svn/
+.swiftpm/
+migrate_working_dir/
+
+# IntelliJ related
+*.iml
+*.ipr
+*.iws
+.idea/
+
+# The .vscode folder contains launch configuration and tasks you configure in
+# VS Code which you may wish to be included in version control, so this line
+# is commented out by default.
+#.vscode/
+
+# Flutter/Dart/Pub related
+# Libraries should not include pubspec.lock, per https://dart.dev/guides/libraries/private-files#pubspeclock.
+/pubspec.lock
+**/doc/api/
+.dart_tool/
+.flutter-plugins-dependencies
+/build/
+/coverage/
+# 额外针对 example 文件夹的清理
+example/build/
+example/.dart_tool/
+example/pubspec.lock
+example/.flutter-plugins-dependencies
+example/android/key.properties
+example/android/keystore/
+
+# 排除所有平台产生的日志和缓存
+.flutter-plugins
+.packages

@@ -1,0 +1,30 @@
+name: animemaster_example
+description: "AnimeMaster Android application."
+publish_to: 'none'
+version: 2.0.0+1
+
+environment:
+  sdk: ^3.11.4
+
+dependencies:
+  flutter:
+    sdk: flutter
+  animemaster:
+    path: ../
+  media_kit: ^1.2.6
+  synchronized: ^3.4.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.13.1
+
+flutter:
+  uses-material-design: true
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "../assets/icon.png"
+  remove_alpha_ios: true

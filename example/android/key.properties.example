@@ -1,0 +1,4 @@
+storePassword=CHANGE_ME
+keyPassword=CHANGE_ME
+keyAlias=animemaster-release
+storeFile=keystore/animemaster-release.jks
