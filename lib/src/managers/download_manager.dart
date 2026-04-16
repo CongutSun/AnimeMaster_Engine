@@ -18,6 +18,7 @@ class DownloadManager extends ChangeNotifier {
   final Map<String, bool> _pausedStates = {};
   final Map<String, int> _lastDownloadedBytes = {};
   final Map<String, double> _currentSpeeds = {};
+  final Map<String, Timer> _peerWarmupTimers = {};
   Timer? _speedTimer;
 
   DownloadManager._internal() {
@@ -84,11 +85,12 @@ class DownloadManager extends ChangeNotifier {
 
       // 1. 状态拦截：如果任务刚达到 100% 且标记未完成
       if (config != null && !config.isCompleted && task.progress >= 1.0) {
-        config.isCompleted = true; // 标记持久化状态为已完成
+        config.isCompleted = true;
         _pausedStates[hash] = true;
-        task.stop(); // 停止引擎任务，节省资源
+        _peerWarmupTimers.remove(hash)?.cancel();
+        task.stop();
         _currentSpeeds[hash] = 0.0;
-        _saveTasksToPrefs(); // 写入本地磁盘
+        _saveTasksToPrefs();
         shouldNotify = true;
         continue;
       }
@@ -102,7 +104,9 @@ class DownloadManager extends ChangeNotifier {
       // 3. 常规速度计算
       int currentBytes = task.downloaded ?? 0;
       int lastBytes = _lastDownloadedBytes[hash] ?? 0;
-      double speed = (currentBytes - lastBytes) / 1024.0;
+      final double deltaSpeed = (currentBytes - lastBytes) / 1024.0;
+      final double peerSpeed = (task.currentDownloadSpeed * 1000) / 1024.0;
+      final double speed = peerSpeed > deltaSpeed ? peerSpeed : deltaSpeed;
       _currentSpeeds[hash] = speed > 0 ? speed : 0.0;
       _lastDownloadedBytes[hash] = currentBytes;
       shouldNotify = true;
@@ -128,6 +132,7 @@ class DownloadManager extends ChangeNotifier {
             info.episodeLabel,
           ),
         );
+        await _startOrResumeTask(info.hash);
         await _saveTasksToPrefs();
         notifyListeners();
       }
@@ -156,9 +161,97 @@ class DownloadManager extends ChangeNotifier {
     _lastDownloadedBytes[info.hash] = 0;
     _currentSpeeds[info.hash] = 0.0;
 
-    await task.start();
+    await _startOrResumeTask(info.hash);
     await _saveTasksToPrefs();
     notifyListeners();
+  }
+
+  Future<void> _startOrResumeTask(String hash) async {
+    final DownloadTaskInfo? config = _taskConfigs[hash];
+    TorrentTask? task = _activeTasks[hash];
+    if (task == null || config == null || config.isCompleted) {
+      return;
+    }
+
+    if (task.state == TaskState.paused) {
+      task.resume();
+    } else if (task.state == TaskState.running) {
+      // Already running.
+    } else {
+      _injectTrackersToTorrent(task.metaInfo, config.url);
+      task = TorrentTask.newTask(task.metaInfo, config.savePath);
+      _activeTasks[hash] = task;
+      await task.start();
+    }
+
+    _addDhtBootstrapNodes(task);
+    _pausedStates[hash] = false;
+    _lastDownloadedBytes[hash] = task.downloaded ?? 0;
+    _boostPeerDiscovery(hash);
+  }
+
+  void _addDhtBootstrapNodes(TorrentTask task) {
+    for (final Uri node in TrackerPool.dhtBootstrapNodes) {
+      try {
+        task.addDHTNode(node);
+      } catch (_) {}
+    }
+  }
+
+  void _boostPeerDiscovery(String hash) {
+    _peerWarmupTimers[hash]?.cancel();
+    final TorrentTask? task = _activeTasks[hash];
+    final DownloadTaskInfo? config = _taskConfigs[hash];
+    if (task == null || config == null || config.isCompleted) {
+      return;
+    }
+
+    _requestPeerSources(task, trackerLimit: 8);
+
+    int ticks = 0;
+    _peerWarmupTimers[hash] = Timer.periodic(const Duration(seconds: 15), (
+      Timer timer,
+    ) {
+      final TorrentTask? activeTask = _activeTasks[hash];
+      final DownloadTaskInfo? activeConfig = _taskConfigs[hash];
+      if (activeTask == null ||
+          activeConfig == null ||
+          activeConfig.isCompleted ||
+          _pausedStates[hash] == true) {
+        timer.cancel();
+        _peerWarmupTimers.remove(hash);
+        return;
+      }
+
+      ticks++;
+      final bool needsMorePeers =
+          activeTask.connectedPeersNumber < 8 || getSpeed(hash) < 64;
+      if (needsMorePeers) {
+        _requestPeerSources(activeTask, trackerLimit: ticks <= 2 ? 8 : 4);
+      } else {
+        activeTask.requestPeersFromDHT();
+      }
+
+      if (ticks >= 8 || activeTask.connectedPeersNumber >= 24) {
+        timer.cancel();
+        _peerWarmupTimers.remove(hash);
+      }
+    });
+  }
+
+  void _requestPeerSources(TorrentTask task, {required int trackerLimit}) {
+    task.requestPeersFromDHT();
+
+    int announced = 0;
+    for (final String tracker in TrackerPool.robustTrackers) {
+      if (announced >= trackerLimit) {
+        break;
+      }
+      try {
+        task.startAnnounceUrl(Uri.parse(tracker), task.metaInfo.infoHashBuffer);
+        announced++;
+      } catch (_) {}
+    }
   }
 
   void _injectTrackersToTorrent(Torrent torrent, String magnetUrl) {
@@ -259,7 +352,7 @@ class DownloadManager extends ChangeNotifier {
   double getSpeed(String hash) => _currentSpeeds[hash] ?? 0.0;
   bool isPaused(String hash) => _pausedStates[hash] ?? false;
 
-  void toggleTask(String hash) {
+  Future<void> toggleTask(String hash) async {
     final task = _activeTasks[hash];
     final config = _taskConfigs[hash];
     if (task == null || config == null) return;
@@ -268,13 +361,14 @@ class DownloadManager extends ChangeNotifier {
     if (config.isCompleted) return;
 
     if (isPaused(hash)) {
-      task.start();
-      _pausedStates[hash] = false;
+      await _startOrResumeTask(hash);
     } else {
-      task.stop();
+      task.pause();
       _pausedStates[hash] = true;
+      _peerWarmupTimers.remove(hash)?.cancel();
       _currentSpeeds[hash] = 0.0;
     }
+    await _saveTasksToPrefs();
     notifyListeners();
   }
 
@@ -283,6 +377,7 @@ class DownloadManager extends ChangeNotifier {
     final config = _taskConfigs[hash];
 
     task?.stop();
+    _peerWarmupTimers.remove(hash)?.cancel();
     _activeTasks.remove(hash);
     _taskConfigs.remove(hash);
     _pausedStates.remove(hash);
@@ -305,6 +400,10 @@ class DownloadManager extends ChangeNotifier {
   @override
   void dispose() {
     _speedTimer?.cancel();
+    for (final Timer timer in _peerWarmupTimers.values) {
+      timer.cancel();
+    }
+    _peerWarmupTimers.clear();
     for (var task in _activeTasks.values) {
       task.stop();
     }

@@ -5,6 +5,11 @@ import 'dart:math';
 import '../managers/download_manager.dart';
 
 class TorrentStreamServer {
+  static const int _chunkSize = 64 * 1024;
+  static const int _startupProbeBytes = 512 * 1024;
+  static const int _maxHoleRetries = 120;
+  static const Duration _probeDelay = Duration(milliseconds: 250);
+
   HttpServer? _server;
   final String videoFilePath;
   final int videoSize;
@@ -64,6 +69,16 @@ class TorrentStreamServer {
       return;
     }
 
+    if (request.method != 'HEAD' &&
+        !await _waitForReadableRange(
+          file,
+          start,
+          min(_startupProbeBytes, end - start + 1),
+        )) {
+      _sendErrorResponse(request, HttpStatus.serviceUnavailable);
+      return;
+    }
+
     request.response.statusCode = hasRange
         ? HttpStatus.partialContent
         : HttpStatus.ok;
@@ -97,24 +112,15 @@ class TorrentStreamServer {
           break;
         }
 
-        final int bytesToRead = min(65536, end - currentPos + 1);
-        final List<int> buffer = await raf.read(bytesToRead);
+        final int bytesToRead = min(_chunkSize, end - currentPos + 1);
+        final List<int> buffer = await _readReadyChunk(
+          raf,
+          currentPos,
+          bytesToRead,
+        );
 
         if (buffer.isEmpty) {
-          await Future.delayed(const Duration(milliseconds: 500));
-          await raf.setPosition(currentPos);
-          continue;
-        }
-
-        bool isHole = false;
-        if (buffer.first == 0 && buffer.last == 0) {
-          isHole = !buffer.any((byte) => byte != 0);
-        }
-
-        if (isHole) {
-          await Future.delayed(const Duration(milliseconds: 1000));
-          await raf.setPosition(currentPos);
-          continue;
+          break;
         }
 
         request.response.add(buffer);
@@ -141,6 +147,84 @@ class TorrentStreamServer {
     }
 
     return false;
+  }
+
+  Future<bool> _waitForReadableRange(
+    File file,
+    int start,
+    int requiredBytes,
+  ) async {
+    if (requiredBytes <= 0) {
+      return true;
+    }
+
+    for (int i = 0; i < _maxHoleRetries; i++) {
+      if (!DownloadManager().hasTask(infoHash)) {
+        return false;
+      }
+
+      if (!await file.exists()) {
+        await Future.delayed(_probeDelay);
+        continue;
+      }
+
+      RandomAccessFile? raf;
+      try {
+        final int fileLength = await file.length();
+        if (fileLength <= start) {
+          await Future.delayed(_probeDelay);
+          continue;
+        }
+
+        raf = await file.open(mode: FileMode.read);
+        await raf.setPosition(start);
+        final int probeLength = min(
+          requiredBytes,
+          min(fileLength - start, _chunkSize),
+        );
+        final List<int> probe = await raf.read(probeLength);
+        if (probe.isNotEmpty && !_isZeroFilled(probe)) {
+          return true;
+        }
+      } catch (_) {
+        // The downloader may be replacing file handles while writing.
+      } finally {
+        await raf?.close();
+      }
+
+      await Future.delayed(_probeDelay);
+    }
+
+    return false;
+  }
+
+  Future<List<int>> _readReadyChunk(
+    RandomAccessFile raf,
+    int position,
+    int length,
+  ) async {
+    for (int i = 0; i < _maxHoleRetries; i++) {
+      if (!DownloadManager().hasTask(infoHash)) {
+        return const <int>[];
+      }
+
+      await raf.setPosition(position);
+      final List<int> buffer = await raf.read(length);
+      if (buffer.isNotEmpty && !_isZeroFilled(buffer)) {
+        return buffer;
+      }
+
+      await Future.delayed(_probeDelay);
+    }
+
+    return const <int>[];
+  }
+
+  bool _isZeroFilled(List<int> buffer) {
+    if (buffer.isEmpty || buffer.first != 0 || buffer.last != 0) {
+      return false;
+    }
+    return !buffer.any((byte) => byte != 0);
   }
 
   String _contentTypeForPath(String path) {

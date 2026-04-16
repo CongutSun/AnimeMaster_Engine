@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:ffi';
 
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -78,11 +79,33 @@ class AppUpdateService {
   }
 
   Future<bool> openDownloadUrl(AppUpdateInfo updateInfo) async {
-    final Uri? uri = Uri.tryParse(updateInfo.apkUrl);
+    final Uri? uri = Uri.tryParse(_resolveDownloadUrl(updateInfo));
     if (uri == null) {
       return false;
     }
     return launchUrl(uri, mode: LaunchMode.externalApplication);
+  }
+
+  String _resolveDownloadUrl(AppUpdateInfo updateInfo) {
+    final Map<String, String> urls = updateInfo.apkUrls;
+    final String? abiUrl = urls[_currentAndroidAbiKey()];
+    if (abiUrl != null && abiUrl.trim().isNotEmpty) {
+      return abiUrl.trim();
+    }
+    final String? universalUrl = urls['universal'];
+    if (universalUrl != null && universalUrl.trim().isNotEmpty) {
+      return universalUrl.trim();
+    }
+    return updateInfo.apkUrl;
+  }
+
+  String _currentAndroidAbiKey() {
+    return switch (Abi.current()) {
+      Abi.androidArm => 'android-arm',
+      Abi.androidArm64 => 'android-arm64',
+      Abi.androidX64 => 'android-x64',
+      _ => 'universal',
+    };
   }
 
   Future<void> showUpdateDialog(
@@ -123,11 +146,9 @@ class AppUpdateService {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
-            Text(
-              '当前版本：${result.packageInfo.version} (${result.packageInfo.buildNumber})',
-            ),
+            Text('当前版本：${result.packageInfo.version}'),
             const SizedBox(height: 6),
-            Text('最新版本：${latest.version} (${latest.buildNumber})'),
+            Text('最新版本：${latest.version}'),
             if (latest.publishedAt.isNotEmpty) ...<Widget>[
               const SizedBox(height: 6),
               Text('发布时间：${latest.publishedAt}'),

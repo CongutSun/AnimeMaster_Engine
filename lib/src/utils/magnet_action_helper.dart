@@ -10,6 +10,8 @@ import '../models/playable_media.dart';
 import '../screens/video_player_page.dart';
 
 class MagnetActionHelper {
+  static const double _playbackBufferThreshold = 0.03;
+
   static Future<void> process(
     BuildContext context,
     String rawSource, {
@@ -95,7 +97,7 @@ class MagnetActionHelper {
       }
 
       if (autoPlay) {
-        await _showWaitAndPlayDialog(context, preparedTask.taskInfo);
+        await _openPreparedPlayback(context, preparedTask.taskInfo);
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -125,25 +127,32 @@ class MagnetActionHelper {
     return message.isEmpty ? '未知错误' : message;
   }
 
-  static Future<void> _showWaitAndPlayDialog(
+  static Future<void> _openPreparedPlayback(
     BuildContext context,
     DownloadTaskInfo config,
   ) async {
-    final bool shouldPlay =
-        await showDialog<bool>(
-          context: context,
-          barrierDismissible: false,
-          builder: (BuildContext dialogContext) =>
-              _WaitProgressDialog(config: config),
-        ) ??
-        false;
-
-    if (!shouldPlay || !context.mounted) {
-      return;
+    final double progress = DownloadManager().getProgress(config.hash);
+    if (progress < _playbackBufferThreshold && progress < 1.0) {
+      final bool shouldPlay =
+          await showDialog<bool>(
+            context: context,
+            barrierDismissible: false,
+            builder: (_) => _WaitProgressDialog(
+              config: config,
+              threshold: _playbackBufferThreshold,
+            ),
+          ) ??
+          false;
+      if (!shouldPlay || !context.mounted) {
+        return;
+      }
     }
 
+    final double latestProgress = DownloadManager().getProgress(config.hash);
     final File localFile = File(config.targetPath);
-    final PlayableMedia media = await localFile.exists()
+    final bool canUseLocalFile =
+        latestProgress >= 1.0 && await localFile.exists();
+    final PlayableMedia media = canUseLocalFile
         ? PlayableMedia(
             title: config.displayTitle,
             url: config.targetPath,
@@ -175,88 +184,83 @@ class MagnetActionHelper {
 
 class _WaitProgressDialog extends StatefulWidget {
   final DownloadTaskInfo config;
+  final double threshold;
 
-  const _WaitProgressDialog({required this.config});
+  const _WaitProgressDialog({required this.config, required this.threshold});
 
   @override
   State<_WaitProgressDialog> createState() => _WaitProgressDialogState();
 }
 
 class _WaitProgressDialogState extends State<_WaitProgressDialog> {
-  late final Timer _timer;
-  double _progress = 0.0;
-  bool _isFinished = false;
+  Timer? _timer;
+  double _progress = 0;
 
   @override
   void initState() {
     super.initState();
-    _timer = Timer.periodic(const Duration(seconds: 1), (Timer timer) {
-      if (_isFinished) {
-        return;
-      }
-
-      final double progress = DownloadManager().getProgress(widget.config.hash);
-      if (mounted) {
-        setState(() {
-          _progress = progress;
-        });
-      }
-
-      if (progress >= 0.03 || progress == 1.0) {
-        _isFinished = true;
-        _timer.cancel();
-        if (mounted) {
-          Navigator.of(context).pop(true);
-        }
-      }
-    });
+    _updateProgress();
+    _timer = Timer.periodic(
+      const Duration(milliseconds: 500),
+      (_) => _updateProgress(),
+    );
   }
 
   @override
   void dispose() {
-    _timer.cancel();
+    _timer?.cancel();
     super.dispose();
+  }
+
+  void _updateProgress() {
+    final double progress = DownloadManager().getProgress(widget.config.hash);
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _progress = progress;
+    });
+
+    if (progress >= widget.threshold || progress >= 1.0) {
+      Navigator.of(context).pop(true);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      title: const Text(
-        '正在缓冲数据',
-        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-      ),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: <Widget>[
-          const Text(
-            '将等待下载达到 3% 后自动播放，保证边下边播更稳定。',
-            style: TextStyle(fontSize: 14),
-          ),
-          const SizedBox(height: 24),
-          LinearProgressIndicator(
-            value: _progress,
-            backgroundColor: Colors.grey.withValues(alpha: 0.2),
-            color: Colors.blueAccent,
-            minHeight: 8,
-            borderRadius: BorderRadius.circular(4),
-          ),
-          const SizedBox(height: 12),
-          Text(
-            '${(_progress * 100).toStringAsFixed(1)}%',
-            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+    final double percent = (_progress * 100).clamp(0, 100).toDouble();
+    final double targetPercent = widget.threshold * 100;
+
+    return PopScope(
+      canPop: false,
+      child: AlertDialog(
+        title: const Text('正在缓冲播放数据'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Text(
+              '已缓存 ${percent.toStringAsFixed(1)}%，达到 ${targetPercent.toStringAsFixed(0)}% 后自动播放。',
+            ),
+            const SizedBox(height: 16),
+            LinearProgressIndicator(
+              value: (_progress / widget.threshold).clamp(0, 1).toDouble(),
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              '保留少量起播缓冲可降低未写入片段导致的花屏、噪点和卡顿。',
+              style: TextStyle(fontSize: 12, color: Colors.grey),
+            ),
+          ],
+        ),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('转入后台下载'),
           ),
         ],
       ),
-      actions: <Widget>[
-        TextButton(
-          onPressed: () {
-            _timer.cancel();
-            Navigator.of(context).pop(false);
-          },
-          child: const Text('转入后台下载', style: TextStyle(color: Colors.grey)),
-        ),
-      ],
     );
   }
 }

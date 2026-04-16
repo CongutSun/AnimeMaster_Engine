@@ -18,12 +18,9 @@ dependencies:
   # 整合自 AnimeMaster_Pro_mobile 的业务模块依赖
   # ---------------------------------------------------------------------------
   
-  cupertino_icons: ^1.0.8
   
   # 网络、通信与下载 (Networking & Downloading)
-  http: ^1.6.0
   dio: ^5.9.2
-  webdav_client: ^1.2.2
   dtorrent_parser: any  
   dtorrent_task: ^0.4.1
   
@@ -53,7 +50,6 @@ dependencies:
   flutter_web_auth_2: ^5.0.2
   
   # 热更新 (Hot Update)
-  shorebird_code_push: ^2.0.5
 
 dev_dependencies:
   ffigen: ^20.1.1

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -79,6 +80,7 @@ class _DetailPageState extends State<DetailPage>
 
   bool isSummaryExpanded = false;
   bool isLoading = true;
+  bool isCommentsLoading = false;
   bool isSyncing = false;
   bool hasFetchedPersonalData = false;
 
@@ -139,60 +141,84 @@ class _DetailPageState extends State<DetailPage>
     final bgmUsername = provider.bgmAcc;
     final bgmToken = provider.bgmToken;
 
-    final results = await Future.wait([
+    final Future<Map<String, dynamic>?> collectionFuture =
+        bgmUsername.isNotEmpty && bgmToken.isNotEmpty
+        ? BangumiApi.getUserCollection(widget.animeId, bgmUsername, bgmToken)
+        : Future<Map<String, dynamic>?>.value(null);
+
+    final results = await Future.wait<Object?>([
       BangumiApi.getAnimeDetail(widget.animeId),
-      BangumiApi.getSubjectComments(widget.animeId),
-      BangumiApi.getSubjectCharacters(widget.animeId),
-      BangumiApi.getSubjectPersons(widget.animeId),
-      BangumiApi.getSubjectRelations(widget.animeId),
+      collectionFuture,
     ]);
 
     if (!mounted) return;
 
-    if (bgmUsername.isNotEmpty && bgmToken.isNotEmpty) {
-      final collectionData = await BangumiApi.getUserCollection(
-        widget.animeId,
-        bgmUsername,
-        bgmToken,
-      );
-      if (collectionData != null) {
-        hasFetchedPersonalData = true;
-        int typeInt = collectionData['type'] is int
-            ? collectionData['type']
-            : int.tryParse(collectionData['type']?.toString() ?? '') ?? 0;
-        int rateInt = collectionData['rate'] is int
-            ? collectionData['rate']
-            : int.tryParse(collectionData['rate']?.toString() ?? '') ?? 0;
+    final collectionData = results[1] as Map<String, dynamic>?;
+    if (collectionData != null) {
+      hasFetchedPersonalData = true;
+      final int typeInt = collectionData['type'] is int
+          ? collectionData['type']
+          : int.tryParse(collectionData['type']?.toString() ?? '') ?? 0;
+      final int rateInt = collectionData['rate'] is int
+          ? collectionData['rate']
+          : int.tryParse(collectionData['rate']?.toString() ?? '') ?? 0;
 
-        if (intToStatus.containsKey(typeInt)) {
-          currentStatus = intToStatus[typeInt]!;
-        }
-        if (rateInt > 0) {
-          currentRate = '$rateInt分';
-        }
-        commentController.text = collectionData['comment']?.toString() ?? '';
-        currentEp = collectionData['ep_status'] is int
-            ? collectionData['ep_status']
-            : 0;
-        currentVol = collectionData['vol_status'] is int
-            ? collectionData['vol_status']
-            : 0;
+      if (intToStatus.containsKey(typeInt)) {
+        currentStatus = intToStatus[typeInt]!;
       }
+      if (rateInt > 0) {
+        currentRate = '$rateInt分';
+      }
+      commentController.text = collectionData['comment']?.toString() ?? '';
+      currentEp = collectionData['ep_status'] is int
+          ? collectionData['ep_status']
+          : 0;
+      currentVol = collectionData['vol_status'] is int
+          ? collectionData['vol_status']
+          : 0;
     }
 
     if (mounted) {
       setState(() {
         detailData = results[0] as Map<String, dynamic>?;
-        realComments = (results[1] as List)
-            .whereType<Map>()
-            .map((e) => Map<String, String>.from(e))
-            .toList();
-        charactersData = results[2] as List;
-        staffData = results[3] as List;
-        relatedData = results[4] as List;
         isLoading = false;
+        isCommentsLoading = true;
       });
     }
+    unawaited(_loadSupplementaryData());
+    unawaited(_loadComments());
+  }
+
+  Future<void> _loadSupplementaryData() async {
+    final results = await Future.wait<List<dynamic>>([
+      BangumiApi.getSubjectCharacters(widget.animeId),
+      BangumiApi.getSubjectPersons(widget.animeId),
+      BangumiApi.getSubjectRelations(widget.animeId),
+    ]);
+
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      charactersData = results[0];
+      staffData = results[1];
+      relatedData = results[2];
+    });
+  }
+
+  Future<void> _loadComments() async {
+    final List<Map<String, String>> comments =
+        await BangumiApi.getSubjectComments(widget.animeId);
+
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      realComments = comments;
+      isCommentsLoading = false;
+    });
   }
 
   void _handlePersonTap(dynamic item, bool isCharacter) {
@@ -933,6 +959,15 @@ class _DetailPageState extends State<DetailPage>
   }
 
   Widget _buildCommentsSliver(Color highlightOrange) {
+    if (isCommentsLoading) {
+      return const SliverToBoxAdapter(
+        child: Padding(
+          padding: EdgeInsets.all(32.0),
+          child: Center(child: CircularProgressIndicator()),
+        ),
+      );
+    }
+
     if (realComments.isEmpty) {
       return const SliverToBoxAdapter(
         child: Padding(

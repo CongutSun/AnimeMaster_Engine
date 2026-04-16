@@ -1,12 +1,19 @@
 {
-  "version": "2.1.1",
-  "build": 3,
-  "apkUrl": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.1.1/app-release.apk",
+  "version": "2.1.4",
+  "build": 6,
+  "apkUrl": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.1.4/app-release.apk",
+  "apkUrls": {
+    "android-arm64": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.1.4/app-arm64-v8a-release.apk",
+    "android-arm": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.1.4/app-armeabi-v7a-release.apk",
+    "android-x64": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.1.4/app-x86_64-release.apk",
+    "universal": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.1.4/app-release.apk"
+  },
   "notes": [
-    "Switch Bangumi OAuth gateway to auth.congutsun.com.",
-    "Fix Bangumi account layout overflow on narrow screens.",
-    "Embed the app update manifest URL by default."
+    "Restore the 3% add-and-play startup buffer to reduce incomplete-fragment playback artifacts.",
+    "Improve local torrent streaming reads by waiting for writable chunks instead of serving sparse holes.",
+    "Speed up Bangumi detail first paint and cache tag, role, staff related-result pages.",
+    "Keep internal Android build code monotonic while showing only the semantic version in app UI."
   ],
-  "publishedAt": "2026-04-16T16:20:00+08:00",
+  "publishedAt": "2026-04-16T19:20:00+08:00",
   "forceUpdate": false
 }

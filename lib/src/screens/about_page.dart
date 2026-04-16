@@ -82,9 +82,7 @@ class _AboutPageState extends State<AboutPage> {
                   ),
                   _InfoRow(
                     label: '版本号',
-                    value: packageInfo == null
-                        ? '读取中...'
-                        : '${packageInfo.version} (${packageInfo.buildNumber})',
+                    value: packageInfo?.version ?? '读取中...',
                   ),
                   _InfoRow(
                     label: '包名',
@@ -149,6 +147,25 @@ class _AboutPageState extends State<AboutPage> {
                     style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                   ),
                   SizedBox(height: 12),
+                  _LogEntry(
+                    version: '2.1.4',
+                    items: <String>[
+                      '恢复“添加与播放”的 3% 起播缓冲，降低未缓存片段导致的花屏和噪点。',
+                      '优化边下边播流式读取，遇到未写入片段时等待可读数据。',
+                      '优化下载任务恢复、DHT 节点引导和 Tracker Peer 发现预热。',
+                      '优化番剧详情页首屏加载，同类作品结果增加本地缓存。',
+                    ],
+                  ),
+                  SizedBox(height: 14),
+                  _LogEntry(
+                    version: '2.1.3',
+                    items: <String>[
+                      '新增 GitHub 更新清单和应用内检查更新入口。',
+                      '支持 ABI 分包构建，减少 Android 下载体积。',
+                      '优化缓存中心任务标题和下载恢复逻辑。',
+                    ],
+                  ),
+                  SizedBox(height: 14),
                   _LogEntry(
                     version: '2.1.0',
                     items: <String>[

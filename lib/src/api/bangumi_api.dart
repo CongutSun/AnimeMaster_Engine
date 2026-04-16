@@ -20,6 +20,10 @@ class BangumiApi {
   static final Map<int, List<dynamic>> _personsCache = {};
   static final Map<int, List<dynamic>> _relationsCache = {};
   static final Map<int, List<Map<String, String>>> _commentsCache = {};
+  static final Map<String, List<dynamic>> _searchCache = {};
+  static final Map<String, List<Map<String, dynamic>>> _tagSubjectsCache = {};
+  static final Map<int, List<dynamic>> _characterSubjectsCache = {};
+  static final Map<int, List<dynamic>> _personSubjectsCache = {};
 
   static void _trimCache(Map cache, {int maxSize = 50}) {
     if (cache.length > maxSize) {
@@ -110,6 +114,11 @@ class BangumiApi {
     int start = 0,
     int maxResults = 25,
   }) async {
+    final String cacheKey = '${keyword.trim()}|$type|$start|$maxResults';
+    if (_searchCache.containsKey(cacheKey)) {
+      return _searchCache[cacheKey]!;
+    }
+
     try {
       final response = await _dio.get(
         '${_ApiConfig.apiBase}/search/subject/${Uri.encodeComponent(keyword)}',
@@ -119,7 +128,14 @@ class BangumiApi {
           'max_results': maxResults,
         },
       );
-      if (response.statusCode == 200) return response.data['list'] ?? [];
+      if (response.statusCode == 200) {
+        final List<dynamic> results = response.data['list'] is List
+            ? response.data['list']
+            : <dynamic>[];
+        _searchCache[cacheKey] = results;
+        _trimCache(_searchCache, maxSize: 80);
+        return results;
+      }
     } catch (e) {
       debugPrint('[BangumiApi.search] Exception: $e');
     }
@@ -131,6 +147,11 @@ class BangumiApi {
     int type = 2,
     int page = 1,
   }) async {
+    final String cacheKey = '${tag.trim()}|$type|$page';
+    if (_tagSubjectsCache.containsKey(cacheKey)) {
+      return _tagSubjectsCache[cacheKey]!;
+    }
+
     try {
       final typeStr = type == 1 ? 'book' : 'anime';
       final response = await _dio.get(
@@ -140,7 +161,13 @@ class BangumiApi {
       );
 
       if (response.statusCode == 200) {
-        return _parseBrowserItemList(utf8.decode(response.data), 24);
+        final List<Map<String, dynamic>> results = _parseBrowserItemList(
+          utf8.decode(response.data),
+          24,
+        );
+        _tagSubjectsCache[cacheKey] = results;
+        _trimCache(_tagSubjectsCache, maxSize: 80);
+        return results;
       }
     } catch (e) {
       debugPrint('[BangumiApi.getSubjectsByTag] Exception: $e');
@@ -149,11 +176,22 @@ class BangumiApi {
   }
 
   static Future<List<dynamic>> getCharacterSubjects(int characterId) async {
+    if (_characterSubjectsCache.containsKey(characterId)) {
+      return _characterSubjectsCache[characterId]!;
+    }
+
     try {
       final response = await _dio.get(
         '${_ApiConfig.apiBase}/v0/characters/$characterId/subjects',
       );
-      if (response.statusCode == 200) return response.data ?? [];
+      if (response.statusCode == 200) {
+        final List<dynamic> results = response.data is List
+            ? response.data
+            : <dynamic>[];
+        _characterSubjectsCache[characterId] = results;
+        _trimCache(_characterSubjectsCache, maxSize: 80);
+        return results;
+      }
     } catch (e) {
       debugPrint('[BangumiApi.getCharacterSubjects] Exception: $e');
     }
@@ -161,11 +199,22 @@ class BangumiApi {
   }
 
   static Future<List<dynamic>> getPersonSubjects(int personId) async {
+    if (_personSubjectsCache.containsKey(personId)) {
+      return _personSubjectsCache[personId]!;
+    }
+
     try {
       final response = await _dio.get(
         '${_ApiConfig.apiBase}/v0/persons/$personId/subjects',
       );
-      if (response.statusCode == 200) return response.data ?? [];
+      if (response.statusCode == 200) {
+        final List<dynamic> results = response.data is List
+            ? response.data
+            : <dynamic>[];
+        _personSubjectsCache[personId] = results;
+        _trimCache(_personSubjectsCache, maxSize: 80);
+        return results;
+      }
     } catch (e) {
       debugPrint('[BangumiApi.getPersonSubjects] Exception: $e');
     }

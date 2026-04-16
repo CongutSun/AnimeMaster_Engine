@@ -2,6 +2,10 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$ApkUrl,
 
+    [string]$Arm64ApkUrl = "",
+    [string]$ArmV7ApkUrl = "",
+    [string]$X64ApkUrl = "",
+
     [string]$OutputPath = "build/app/outputs/flutter-apk/app_update.json",
 
     [string[]]$Notes = @("Routine update")
@@ -32,6 +36,13 @@ $manifest = [ordered]@{
     publishedAt = (Get-Date).ToString("yyyy-MM-ddTHH:mm:ssK")
     forceUpdate = $false
 }
+
+$apkUrls = [ordered]@{}
+if ($Arm64ApkUrl.Trim()) { $apkUrls["android-arm64"] = $Arm64ApkUrl.Trim() }
+if ($ArmV7ApkUrl.Trim()) { $apkUrls["android-arm"] = $ArmV7ApkUrl.Trim() }
+if ($X64ApkUrl.Trim()) { $apkUrls["android-x64"] = $X64ApkUrl.Trim() }
+if ($ApkUrl.Trim()) { $apkUrls["universal"] = $ApkUrl.Trim() }
+if ($apkUrls.Count -gt 0) { $manifest.apkUrls = $apkUrls }
 
 $outputFile = Join-Path $projectRoot $OutputPath
 $outputDir = Split-Path -Parent $outputFile
