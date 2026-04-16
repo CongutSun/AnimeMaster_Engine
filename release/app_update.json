@@ -1,0 +1,12 @@
+{
+  "version": "2.1.1",
+  "build": 3,
+  "apkUrl": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.1.1/app-release.apk",
+  "notes": [
+    "Switch Bangumi OAuth gateway to auth.congutsun.com.",
+    "Fix Bangumi account layout overflow on narrow screens.",
+    "Embed the app update manifest URL by default."
+  ],
+  "publishedAt": "2026-04-16T16:20:00+08:00",
+  "forceUpdate": false
+}
