@@ -64,9 +64,9 @@ class _MagnetConfigPageState extends State<MagnetConfigPage> {
       return;
     }
     if (selectedSources.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('请至少选择一个检索源。')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('请至少选择一个检索源。')));
       return;
     }
 
@@ -121,12 +121,11 @@ class _MagnetConfigPageState extends State<MagnetConfigPage> {
   }
 
   void _copyResource(Map<String, String> result) {
-    final String content =
-        result['magnet']?.trim().isNotEmpty == true
-            ? result['magnet']!
-            : (result['torrent']?.trim().isNotEmpty == true
-                  ? result['torrent']!
-                  : result['url'] ?? '');
+    final String content = result['magnet']?.trim().isNotEmpty == true
+        ? result['magnet']!
+        : (result['torrent']?.trim().isNotEmpty == true
+              ? result['torrent']!
+              : result['url'] ?? '');
     if (content.isEmpty) {
       return;
     }
@@ -151,8 +150,9 @@ class _MagnetConfigPageState extends State<MagnetConfigPage> {
 
   @override
   Widget build(BuildContext context) {
-    final List<Map<String, String>> allSources =
-        context.watch<SettingsProvider>().rssSources;
+    final List<Map<String, String>> allSources = context
+        .watch<SettingsProvider>()
+        .rssSources;
 
     return Scaffold(
       appBar: AppBar(
@@ -300,9 +300,7 @@ class _MagnetConfigPageState extends State<MagnetConfigPage> {
           if (hasSearched) ...<Widget>[
             const SizedBox(height: 12),
             Text(
-              isSearching
-                  ? '正在获取结果...'
-                  : '检索结果：${searchResults.length} 条',
+              isSearching ? '正在获取结果...' : '检索结果：${searchResults.length} 条',
               style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 8),
@@ -322,8 +320,8 @@ class _MagnetConfigPageState extends State<MagnetConfigPage> {
                 title,
               );
               final String targetDownloadUrl = _preferredDownloadUrl(result);
-              final bool hasTorrent = result['torrent']?.trim().isNotEmpty ==
-                  true;
+              final bool hasTorrent =
+                  result['torrent']?.trim().isNotEmpty == true;
 
               return Card(
                 margin: const EdgeInsets.only(bottom: 10),

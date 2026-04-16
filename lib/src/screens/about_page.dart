@@ -3,6 +3,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
 
 import '../providers/settings_provider.dart';
+import '../services/app_update_service.dart';
 
 class AboutPage extends StatefulWidget {
   const AboutPage({super.key});
@@ -13,6 +14,7 @@ class AboutPage extends StatefulWidget {
 
 class _AboutPageState extends State<AboutPage> {
   PackageInfo? _packageInfo;
+  bool _isCheckingUpdate = false;
 
   @override
   void initState() {
@@ -28,6 +30,29 @@ class _AboutPageState extends State<AboutPage> {
     setState(() {
       _packageInfo = info;
     });
+  }
+
+  Future<void> _checkForUpdates(SettingsProvider settings) async {
+    if (_isCheckingUpdate) {
+      return;
+    }
+
+    setState(() {
+      _isCheckingUpdate = true;
+    });
+
+    final AppUpdateCheckResult result = await const AppUpdateService()
+        .checkForUpdates(settings.appUpdateFeedUrl);
+
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _isCheckingUpdate = false;
+    });
+
+    await const AppUpdateService().showUpdateDialog(context, result);
   }
 
   @override
@@ -65,9 +90,48 @@ class _AboutPageState extends State<AboutPage> {
                     label: '包名',
                     value: packageInfo?.packageName ?? '读取中...',
                   ),
+                  _InfoRow(label: '引擎版本', value: settings.coreEngineVersion),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  const Text(
+                    '应用更新',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 12),
                   _InfoRow(
-                    label: '引擎版本',
-                    value: settings.coreEngineVersion,
+                    label: '启动检查',
+                    value: settings.autoCheckUpdates ? '已开启' : '已关闭',
+                  ),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.icon(
+                      onPressed: _isCheckingUpdate
+                          ? null
+                          : () => _checkForUpdates(settings),
+                      icon: _isCheckingUpdate
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.system_update_alt_rounded),
+                      label: Text(_isCheckingUpdate ? '检查中...' : '检查更新'),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    '说明：侧载 APK 用户只能通过应用内检测后跳转下载覆盖安装，系统不会允许静默升级。',
+                    style: TextStyle(fontSize: 12, color: Colors.grey),
                   ),
                 ],
               ),
@@ -86,12 +150,12 @@ class _AboutPageState extends State<AboutPage> {
                   ),
                   SizedBox(height: 12),
                   _LogEntry(
-                    version: '1.0.0',
+                    version: '2.1.0',
                     items: <String>[
-                      '完成 Android 正式签名、APK/AAB 打包链路与版本化配置。',
-                      '统一磁力解析、下载和播放链路，提升缓存中心可追踪性。',
-                      '缓存中心显示完整任务名、作品名与剧集标签。',
-                      '聚合搜刮优先使用 .torrent 直链，减少元数据超时报错。',
+                      '新增播放器选集、倍速以及 10 秒快进快退。',
+                      '新增应用更新清单地址、启动检查和关于页手动检查更新入口。',
+                      '磁力播放链路支持多文件枚举，可在一个种子内切换具体视频文件。',
+                      '继续保持缓存中心、检索结果与播放入口的标题和集数联动。',
                     ],
                   ),
                 ],

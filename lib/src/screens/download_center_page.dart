@@ -79,7 +79,9 @@ class DownloadCenterPage extends StatelessWidget {
                                           height: 1.35,
                                         ),
                                       ),
-                                      if (config.displaySubtitle.isNotEmpty) ...<Widget>[
+                                      if (config
+                                          .displaySubtitle
+                                          .isNotEmpty) ...<Widget>[
                                         const SizedBox(height: 6),
                                         Text(
                                           config.displaySubtitle,
@@ -109,7 +111,9 @@ class DownloadCenterPage extends StatelessWidget {
                               borderRadius: BorderRadius.circular(4),
                               color: isCompleted
                                   ? Colors.green
-                                  : (isPaused ? Colors.grey : Colors.blueAccent),
+                                  : (isPaused
+                                        ? Colors.grey
+                                        : Colors.blueAccent),
                               backgroundColor: Colors.grey.withValues(
                                 alpha: 0.2,
                               ),
@@ -285,8 +289,17 @@ class DownloadCenterPage extends StatelessWidget {
             title: config.displayTitle,
             url: config.targetPath,
             isLocal: true,
+            localFilePath: config.targetPath,
+            subjectTitle: config.subjectTitle,
+            episodeLabel: config.episodeLabel,
           )
-        : PlayableMedia(title: config.displayTitle, url: config.url);
+        : PlayableMedia(
+            title: config.displayTitle,
+            url: config.url,
+            localFilePath: config.targetPath,
+            subjectTitle: config.subjectTitle,
+            episodeLabel: config.episodeLabel,
+          );
 
     Navigator.push(
       context,

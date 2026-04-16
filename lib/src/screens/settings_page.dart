@@ -1,11 +1,16 @@
 import 'dart:io';
 
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_web_auth_2/flutter_web_auth_2.dart';
 import 'package:image_cropper/image_cropper.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
 import '../providers/settings_provider.dart';
+import '../services/app_update_service.dart';
+import '../services/bangumi_auth_gateway_service.dart';
+import '../services/bangumi_oauth_service.dart';
 import 'about_page.dart';
 
 class SettingsPage extends StatefulWidget {
@@ -17,36 +22,48 @@ class SettingsPage extends StatefulWidget {
 
 class _SettingsPageState extends State<SettingsPage> {
   final TextEditingController bgController = TextEditingController();
-  final TextEditingController bgmAccController = TextEditingController();
-  final TextEditingController bgmTokenController = TextEditingController();
+  final TextEditingController dandanAppIdController = TextEditingController();
+  final TextEditingController dandanAppSecretController =
+      TextEditingController();
   final TextEditingController rssNameController = TextEditingController();
   final TextEditingController rssUrlController = TextEditingController();
 
-  String themeMode = '浅色 (Light)';
+  String themeMode = 'Light';
   int selectedRssIndex = -1;
+  bool autoCheckUpdates = true;
+  bool isSaving = false;
+  bool isAuthorizingBangumi = false;
+  bool isCheckingUpdate = false;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final SettingsProvider provider = context.read<SettingsProvider>();
-      bgmAccController.text = provider.bgmAcc;
-      bgmTokenController.text = provider.bgmToken;
-      setState(() {
-        themeMode = provider.themeMode;
-        bgController.text = provider.customBgPath;
-      });
+      _syncControllers(context.read<SettingsProvider>());
     });
   }
 
   @override
   void dispose() {
     bgController.dispose();
-    bgmAccController.dispose();
-    bgmTokenController.dispose();
+    dandanAppIdController.dispose();
+    dandanAppSecretController.dispose();
     rssNameController.dispose();
     rssUrlController.dispose();
     super.dispose();
+  }
+
+  void _syncControllers(SettingsProvider provider) {
+    bgController.text = provider.customBgPath;
+    dandanAppIdController.text = provider.dandanplayAppId;
+    dandanAppSecretController.text = provider.dandanplayAppSecret;
+
+    if (mounted) {
+      setState(() {
+        themeMode = provider.themeMode;
+        autoCheckUpdates = provider.autoCheckUpdates;
+      });
+    }
   }
 
   Future<void> _pickAndCropImage() async {
@@ -64,19 +81,16 @@ class _SettingsPageState extends State<SettingsPage> {
       aspectRatio: const CropAspectRatio(ratioX: 9, ratioY: 16),
       uiSettings: <PlatformUiSettings>[
         AndroidUiSettings(
-          toolbarTitle: '裁剪背景图片',
+          toolbarTitle: '裁剪首页背景',
           toolbarColor: Colors.blueGrey.shade700,
           toolbarWidgetColor: Colors.white,
           lockAspectRatio: true,
         ),
-        IOSUiSettings(
-          title: '裁剪背景图片',
-          aspectRatioLockEnabled: true,
-        ),
+        IOSUiSettings(title: '裁剪首页背景', aspectRatioLockEnabled: true),
       ],
     );
 
-    if (croppedFile == null) {
+    if (croppedFile == null || !mounted) {
       return;
     }
 
@@ -85,14 +99,157 @@ class _SettingsPageState extends State<SettingsPage> {
     });
   }
 
-  void _saveSettings() {
-    final SettingsProvider provider = context.read<SettingsProvider>();
-    provider.updateAccount(bgmAccController.text, bgmTokenController.text);
-    provider.updateAppearance(provider.closeAction, themeMode, bgController.text);
+  Future<void> _saveSettings() async {
+    if (isSaving) {
+      return;
+    }
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('设置已保存。')),
+    setState(() {
+      isSaving = true;
+    });
+
+    final SettingsProvider provider = context.read<SettingsProvider>();
+    await provider.updateDandanplayCredentials(
+      dandanAppIdController.text,
+      dandanAppSecretController.text,
     );
+    await provider.updateAppearance(
+      provider.closeAction,
+      themeMode,
+      bgController.text,
+    );
+    await provider.updateDistribution(autoCheckUpdates);
+
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      isSaving = false;
+    });
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('设置已保存。')));
+  }
+
+  Future<void> _checkForUpdates() async {
+    if (isCheckingUpdate) {
+      return;
+    }
+
+    setState(() {
+      isCheckingUpdate = true;
+    });
+
+    final SettingsProvider provider = context.read<SettingsProvider>();
+    final AppUpdateCheckResult result = await const AppUpdateService()
+        .checkForUpdates(provider.appUpdateFeedUrl);
+
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      isCheckingUpdate = false;
+    });
+    await const AppUpdateService().showUpdateDialog(context, result);
+  }
+
+  Future<void> _startBangumiOAuthLogin() async {
+    final SettingsProvider provider = context.read<SettingsProvider>();
+    final String gatewayUrl = provider.bgmAuthGatewayUrl.trim();
+    if (gatewayUrl.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('登录服务暂不可用，请稍后再试。')));
+      return;
+    }
+
+    setState(() {
+      isAuthorizingBangumi = true;
+    });
+
+    try {
+      final BangumiAuthGatewayService gateway = BangumiAuthGatewayService(
+        baseUrl: gatewayUrl,
+      );
+      final start = await gateway.startAuthorization(
+        callbackScheme: BangumiOAuthService.callbackScheme,
+      );
+      final String callback = await FlutterWebAuth2.authenticate(
+        url: start.authorizationUrl,
+        callbackUrlScheme: BangumiOAuthService.callbackScheme,
+      );
+      final Uri callbackUri = Uri.parse(callback);
+      final String sessionId =
+          callbackUri.queryParameters['session_id']?.trim() ?? '';
+
+      if (sessionId.isEmpty) {
+        throw Exception('授权回调缺少会话信息。');
+      }
+
+      final session = await gateway.fetchSession(sessionId);
+      await provider.bindBangumiGatewaySession(session, gatewayUrl: gatewayUrl);
+      _syncControllers(provider);
+
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Bangumi 登录成功：${provider.bangumiDisplayName.isNotEmpty ? provider.bangumiDisplayName : provider.bgmAcc}',
+          ),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Bangumi 登录失败：${_formatBangumiLoginError(error, gatewayUrl)}',
+          ),
+          backgroundColor: Colors.redAccent,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          isAuthorizingBangumi = false;
+        });
+      }
+    }
+  }
+
+  String _formatBangumiLoginError(Object error, String gatewayUrl) {
+    if (error is DioException) {
+      if (error.type == DioExceptionType.connectionTimeout ||
+          error.type == DioExceptionType.receiveTimeout ||
+          error.type == DioExceptionType.sendTimeout ||
+          error.type == DioExceptionType.connectionError) {
+        final String healthUrl =
+            '${gatewayUrl.trim().replaceAll(RegExp(r'/+$'), '')}/health';
+        return '无法连接登录服务。请先用手机浏览器打开 $healthUrl 测试网络；如果打不开，请切换网络。';
+      }
+      final int? statusCode = error.response?.statusCode;
+      if (statusCode != null) {
+        return '登录服务返回异常状态码：$statusCode';
+      }
+    }
+    return error.toString().replaceFirst('Exception: ', '');
+  }
+
+  Future<void> _clearBangumiAuthorization() async {
+    await context.read<SettingsProvider>().clearBangumiAuthorization();
+
+    if (!mounted) {
+      return;
+    }
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Bangumi 授权已清除。')));
   }
 
   void _addRss(SettingsProvider provider) {
@@ -108,9 +265,9 @@ class _SettingsPageState extends State<SettingsPage> {
 
     final Uri? uri = Uri.tryParse(url);
     if (uri == null || (uri.scheme != 'http' && uri.scheme != 'https')) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('请填写合法的 HTTP 或 HTTPS 地址。')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('请输入合法的 HTTP 或 HTTPS 地址。')));
       return;
     }
 
@@ -140,30 +297,28 @@ class _SettingsPageState extends State<SettingsPage> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: <Widget>[
+          _buildBangumiCard(provider),
+          const SizedBox(height: 12),
           _buildAppearanceCard(),
           const SizedBox(height: 12),
-          _buildAccountCard(),
+          _buildDandanplayCard(provider),
           const SizedBox(height: 12),
           _buildRssCard(provider),
           const SizedBox(height: 12),
+          _buildUpdateCard(),
+          const SizedBox(height: 12),
           Card(
-            child: Column(
-              children: <Widget>[
-                ListTile(
-                  leading: const Icon(Icons.info_outline),
-                  title: const Text('关于 AnimeMaster'),
-                  subtitle: Text(provider.coreEngineVersion),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute<void>(
-                        builder: (_) => const AboutPage(),
-                      ),
-                    );
-                  },
-                ),
-              ],
+            child: ListTile(
+              leading: const Icon(Icons.info_outline),
+              title: const Text('关于 AnimeMaster'),
+              subtitle: Text(provider.coreEngineVersion),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute<void>(builder: (_) => const AboutPage()),
+                );
+              },
             ),
           ),
         ],
@@ -171,12 +326,176 @@ class _SettingsPageState extends State<SettingsPage> {
       bottomNavigationBar: SafeArea(
         minimum: const EdgeInsets.all(16),
         child: FilledButton.icon(
-          onPressed: _saveSettings,
-          icon: const Icon(Icons.save_outlined),
-          label: const Text('保存设置'),
+          onPressed: isSaving ? null : _saveSettings,
+          icon: isSaving
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.save_outlined),
+          label: Text(isSaving ? '保存中...' : '保存设置'),
         ),
       ),
     );
+  }
+
+  Widget _buildBangumiCard(SettingsProvider provider) {
+    final DateTime? expiresAt = provider.bgmTokenExpiresAt;
+    final String status = provider.isBangumiAuthorized
+        ? '已登录${expiresAt != null ? '，授权有效期至 ${_formatLocalDateTime(expiresAt)}' : ''}'
+        : '未登录';
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                const Padding(
+                  padding: EdgeInsets.only(top: 1),
+                  child: Icon(Icons.account_circle_outlined),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      const Text(
+                        'Bangumi 账号',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        status,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: provider.isBangumiAuthorized
+                              ? Colors.green
+                              : Colors.grey,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            if (provider.hasBangumiProfile) ...<Widget>[
+              const SizedBox(height: 14),
+              Row(
+                children: <Widget>[
+                  CircleAvatar(
+                    radius: 28,
+                    backgroundImage: provider.bgmAvatarUrl.trim().isNotEmpty
+                        ? NetworkImage(provider.bgmAvatarUrl)
+                        : null,
+                    child: provider.bgmAvatarUrl.trim().isEmpty
+                        ? const Icon(Icons.person_rounded)
+                        : null,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        Text(
+                          provider.bangumiDisplayName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        if (provider.bgmAcc.trim().isNotEmpty)
+                          Text(
+                            '@${provider.bgmAcc}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: Theme.of(context).hintColor,
+                            ),
+                          ),
+                        if (provider.bgmBio.trim().isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 4),
+                            child: Text(
+                              provider.bgmBio,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Theme.of(context).hintColor,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: provider.isBangumiAuthorized
+                        ? () async {
+                            await provider.refreshBangumiProfile();
+                            if (mounted) {
+                              _syncControllers(provider);
+                            }
+                          }
+                        : null,
+                    icon: const Icon(Icons.refresh_rounded),
+                    tooltip: '刷新资料',
+                  ),
+                ],
+              ),
+            ],
+            const SizedBox(height: 14),
+            Row(
+              children: <Widget>[
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: isAuthorizingBangumi
+                        ? null
+                        : _startBangumiOAuthLogin,
+                    icon: isAuthorizingBangumi
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.login_rounded),
+                    label: Text(isAuthorizingBangumi ? '授权中...' : '网页登录'),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                OutlinedButton.icon(
+                  onPressed: provider.isBangumiAuthorized
+                      ? _clearBangumiAuthorization
+                      : null,
+                  icon: const Icon(Icons.logout_rounded),
+                  label: const Text('退出'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _formatLocalDateTime(DateTime value) {
+    final DateTime local = value.toLocal();
+    String twoDigits(int number) => number.toString().padLeft(2, '0');
+    return '${local.year}-${twoDigits(local.month)}-${twoDigits(local.day)} '
+        '${twoDigits(local.hour)}:${twoDigits(local.minute)}';
   }
 
   Widget _buildAppearanceCard() {
@@ -195,14 +514,8 @@ class _SettingsPageState extends State<SettingsPage> {
               initialValue: themeMode,
               decoration: const InputDecoration(labelText: '主题模式'),
               items: const <DropdownMenuItem<String>>[
-                DropdownMenuItem(
-                  value: '浅色 (Light)',
-                  child: Text('浅色 (Light)'),
-                ),
-                DropdownMenuItem(
-                  value: '深色 (Dark)',
-                  child: Text('深色 (Dark)'),
-                ),
+                DropdownMenuItem(value: 'Light', child: Text('浅色 (Light)')),
+                DropdownMenuItem(value: 'Dark', child: Text('深色 (Dark)')),
               ],
               onChanged: (String? value) {
                 if (value == null) {
@@ -218,8 +531,8 @@ class _SettingsPageState extends State<SettingsPage> {
               controller: bgController,
               readOnly: true,
               decoration: InputDecoration(
-                labelText: '自定义背景',
-                hintText: '选择一张图片作为首页背景',
+                labelText: '首页背景',
+                hintText: '仅首页使用这张背景图',
                 suffixIcon: IconButton(
                   onPressed: _pickAndCropImage,
                   icon: const Icon(Icons.image_outlined),
@@ -248,7 +561,20 @@ class _SettingsPageState extends State<SettingsPage> {
                       '暂无背景预览',
                       style: TextStyle(color: Colors.white70),
                     )
-                  : null,
+                  : Container(
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.2),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 6,
+                      ),
+                      child: const Text(
+                        '仅首页显示',
+                        style: TextStyle(color: Colors.white),
+                      ),
+                    ),
             ),
           ],
         ),
@@ -256,7 +582,7 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
-  Widget _buildAccountCard() {
+  Widget _buildDandanplayCard(SettingsProvider provider) {
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -264,24 +590,19 @@ class _SettingsPageState extends State<SettingsPage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
             const Text(
-              'Bangumi 账号',
+              '弹弹play 弹幕',
               style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
             ),
-            const SizedBox(height: 8),
-            const Text(
-              '账号字段填写 Bangumi 用户名或数字 UID，Token 用于同步收藏、评分与进度。',
-              style: TextStyle(fontSize: 12, color: Colors.grey),
+            const SizedBox(height: 12),
+            TextField(
+              controller: dandanAppIdController,
+              decoration: const InputDecoration(labelText: 'AppId'),
             ),
             const SizedBox(height: 12),
             TextField(
-              controller: bgmAccController,
-              decoration: const InputDecoration(labelText: '账号 / UID'),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: bgmTokenController,
+              controller: dandanAppSecretController,
               obscureText: true,
-              decoration: const InputDecoration(labelText: 'Access Token'),
+              decoration: const InputDecoration(labelText: 'AppSecret'),
             ),
           ],
         ),
@@ -315,7 +636,9 @@ class _SettingsPageState extends State<SettingsPage> {
                   final bool isSelected = selectedRssIndex == index;
                   return ListTile(
                     selected: isSelected,
-                    selectedTileColor: Colors.blueAccent.withValues(alpha: 0.08),
+                    selectedTileColor: Colors.blueAccent.withValues(
+                      alpha: 0.08,
+                    ),
                     title: Text(item['name'] ?? '未知源'),
                     subtitle: Text(item['url'] ?? ''),
                     onTap: () {
@@ -356,6 +679,50 @@ class _SettingsPageState extends State<SettingsPage> {
                   label: const Text('添加'),
                 ),
               ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildUpdateCard() {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            const Text(
+              '应用更新',
+              style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 12),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('启动时检查更新'),
+              subtitle: const Text('开启后，应用启动时会自动读取内置更新清单。'),
+              value: autoCheckUpdates,
+              onChanged: (bool value) {
+                setState(() {
+                  autoCheckUpdates = value;
+                });
+              },
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: isCheckingUpdate ? null : _checkForUpdates,
+                icon: isCheckingUpdate
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.system_update_alt_rounded),
+                label: Text(isCheckingUpdate ? '检查中...' : '检查更新'),
+              ),
             ),
           ],
         ),

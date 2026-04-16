@@ -36,6 +36,9 @@ class TorrentResolver {
             PlayableMedia(
               url: streamUrl,
               title: title.isEmpty ? mediaInfo.title : title,
+              localFilePath: mediaInfo.filePath,
+              subjectTitle: mediaInfo.title,
+              episodeLabel: mediaInfo.episodeLabel,
             ),
           );
         }

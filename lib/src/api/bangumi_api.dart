@@ -1,8 +1,10 @@
 import 'dart:convert';
+
 import 'package:dio/dio.dart';
+import 'package:html/dom.dart' as dom;
 import 'package:html/parser.dart' as parser;
 import 'package:flutter/foundation.dart';
-import 'dio_client.dart'; 
+import 'dio_client.dart';
 
 class _ApiConfig {
   static const String apiBase = 'https://api.bgm.tv';
@@ -28,14 +30,53 @@ class BangumiApi {
     }
   }
 
+  static List<Map<String, String>> _parseSubjectCommentsDocument(
+    dom.Document document,
+  ) {
+    final List<Map<String, String>> comments = <Map<String, String>>[];
+    final Iterable<dom.Element> items = document.querySelectorAll(
+      '#comment_box .item, #comment_list .item',
+    );
+
+    for (final dom.Element item in items) {
+      final String author =
+          item.querySelector('.text a')?.text.trim() ?? '网络用户';
+      final String content = item.querySelector('p')?.text.trim() ?? '';
+      String rate = '未评级';
+
+      final dom.Element? starSpan = item.querySelector('.text span.starlight');
+      if (starSpan != null) {
+        final RegExpMatch? match = RegExp(
+          r'stars(\d+)',
+        ).firstMatch(starSpan.attributes['class'] ?? '');
+        if (match != null) {
+          rate = '${match.group(1)}分';
+        }
+      }
+
+      if (content.isNotEmpty) {
+        comments.add(<String, String>{
+          'author': author,
+          'rate': rate,
+          'content': content,
+        });
+      }
+    }
+
+    return comments;
+  }
+
   // 统一的 HTML 列表解析器，消除冗余代码
-  static List<Map<String, dynamic>> _parseBrowserItemList(String html, int limit) {
+  static List<Map<String, dynamic>> _parseBrowserItemList(
+    String html,
+    int limit,
+  ) {
     List<Map<String, dynamic>> results = [];
     final document = parser.parse(html);
     final ul = document.getElementById('browserItemList');
-    
+
     if (ul != null) {
-      final items = ul.getElementsByClassName('item').take(limit); 
+      final items = ul.getElementsByClassName('item').take(limit);
       for (var item in items) {
         final aTag = item.querySelector('a.l');
         if (aTag == null) continue;
@@ -44,7 +85,7 @@ class BangumiApi {
         final name = aTag.text.trim();
         final scoreTag = item.querySelector('small.fade');
         final score = scoreTag != null ? scoreTag.text.trim() : '暂无数据';
-        
+
         final imgTag = item.querySelector('img');
         String imgUrl = '';
         if (imgTag != null && imgTag.attributes.containsKey('src')) {
@@ -56,18 +97,27 @@ class BangumiApi {
           'id': int.tryParse(sid) ?? sid,
           'name': name,
           'rating': {'score': score},
-          'images': {'large': imgUrl}
+          'images': {'large': imgUrl},
         });
       }
     }
     return results;
   }
 
-  static Future<List<dynamic>> search(String keyword, {int type = 2, int start = 0, int maxResults = 25}) async {
+  static Future<List<dynamic>> search(
+    String keyword, {
+    int type = 2,
+    int start = 0,
+    int maxResults = 25,
+  }) async {
     try {
       final response = await _dio.get(
         '${_ApiConfig.apiBase}/search/subject/${Uri.encodeComponent(keyword)}',
-        queryParameters: {'type': type, 'start': start, 'max_results': maxResults},
+        queryParameters: {
+          'type': type,
+          'start': start,
+          'max_results': maxResults,
+        },
       );
       if (response.statusCode == 200) return response.data['list'] ?? [];
     } catch (e) {
@@ -76,7 +126,11 @@ class BangumiApi {
     return [];
   }
 
-  static Future<List<Map<String, dynamic>>> getSubjectsByTag(String tag, {int type = 2, int page = 1}) async {
+  static Future<List<Map<String, dynamic>>> getSubjectsByTag(
+    String tag, {
+    int type = 2,
+    int page = 1,
+  }) async {
     try {
       final typeStr = type == 1 ? 'book' : 'anime';
       final response = await _dio.get(
@@ -96,7 +150,9 @@ class BangumiApi {
 
   static Future<List<dynamic>> getCharacterSubjects(int characterId) async {
     try {
-      final response = await _dio.get('${_ApiConfig.apiBase}/v0/characters/$characterId/subjects');
+      final response = await _dio.get(
+        '${_ApiConfig.apiBase}/v0/characters/$characterId/subjects',
+      );
       if (response.statusCode == 200) return response.data ?? [];
     } catch (e) {
       debugPrint('[BangumiApi.getCharacterSubjects] Exception: $e');
@@ -106,7 +162,9 @@ class BangumiApi {
 
   static Future<List<dynamic>> getPersonSubjects(int personId) async {
     try {
-      final response = await _dio.get('${_ApiConfig.apiBase}/v0/persons/$personId/subjects');
+      final response = await _dio.get(
+        '${_ApiConfig.apiBase}/v0/persons/$personId/subjects',
+      );
       if (response.statusCode == 200) return response.data ?? [];
     } catch (e) {
       debugPrint('[BangumiApi.getPersonSubjects] Exception: $e');
@@ -117,7 +175,9 @@ class BangumiApi {
   static Future<List<dynamic>> getCalendar() async {
     try {
       final response = await _dio.get('${_ApiConfig.apiBase}/calendar');
-      if (response.statusCode == 200 && response.data is List) return response.data;
+      if (response.statusCode == 200 && response.data is List) {
+        return response.data;
+      }
     } catch (e) {
       debugPrint('[BangumiApi.getCalendar] Exception: $e');
     }
@@ -132,7 +192,7 @@ class BangumiApi {
         queryParameters: {'sort': 'rank'},
         options: Options(responseType: ResponseType.bytes),
       );
-      
+
       if (response.statusCode != 200) {
         response = await _dio.get(
           '${_ApiConfig.webBase}/anime/browser',
@@ -151,7 +211,7 @@ class BangumiApi {
   }
 
   static Future<Map<String, dynamic>?> getAnimeDetail(int id) async {
-    if (_animeDetailCache.containsKey(id)) return _animeDetailCache[id]; 
+    if (_animeDetailCache.containsKey(id)) return _animeDetailCache[id];
     try {
       final response = await _dio.get('${_ApiConfig.apiBase}/v0/subjects/$id');
       if (response.statusCode == 200 && response.data is Map) {
@@ -165,26 +225,40 @@ class BangumiApi {
     return null;
   }
 
-  static Future<Map<String, dynamic>?> getUserCollection(int subjectId, String username, String token) async {
+  static Future<Map<String, dynamic>?> getUserCollection(
+    int subjectId,
+    String username,
+    String token,
+  ) async {
     if (username.isEmpty || token.isEmpty) return null;
     try {
       final response = await _dio.get(
         '${_ApiConfig.apiBase}/v0/users/$username/collections/$subjectId',
         options: Options(headers: {'Authorization': 'Bearer $token'}),
       );
-      if (response.statusCode == 200 && response.data is Map) return response.data;
+      if (response.statusCode == 200 && response.data is Map) {
+        return response.data;
+      }
     } catch (e) {
       debugPrint('[BangumiApi.getUserCollection] Exception: $e');
     }
-    return null; 
+    return null;
   }
 
-  static Future<List<dynamic>> getUserCollectionList(String username, {int type = 3, int subjectType = 2}) async {
+  static Future<List<dynamic>> getUserCollectionList(
+    String username, {
+    int type = 3,
+    int subjectType = 2,
+  }) async {
     if (username.isEmpty) return [];
     try {
       final response = await _dio.get(
         '${_ApiConfig.apiBase}/v0/users/$username/collections',
-        queryParameters: {'subject_type': subjectType, 'type': type, 'limit': 100},
+        queryParameters: {
+          'subject_type': subjectType,
+          'type': type,
+          'limit': 100,
+        },
       );
       if (response.statusCode == 200 && response.data is Map) {
         return response.data['data'] is List ? response.data['data'] : [];
@@ -195,36 +269,50 @@ class BangumiApi {
     return [];
   }
 
-  static Future<bool> updateCollection(int subjectId, String token, Map<String, dynamic> postData) async {
+  static Future<bool> updateCollection(
+    int subjectId,
+    String token,
+    Map<String, dynamic> postData,
+  ) async {
     if (token.isEmpty) return false;
     try {
       final response = await _dio.post(
         '${_ApiConfig.apiBase}/v0/users/-/collections/$subjectId',
-        data: postData, 
-        options: Options(headers: {
-          'Authorization': 'Bearer $token',
-          'Content-Type': 'application/json'
-        }),
+        data: postData,
+        options: Options(
+          headers: {
+            'Authorization': 'Bearer $token',
+            'Content-Type': 'application/json',
+          },
+        ),
       );
-      return response.statusCode != null && response.statusCode! >= 200 && response.statusCode! < 300;
+      return response.statusCode != null &&
+          response.statusCode! >= 200 &&
+          response.statusCode! < 300;
     } catch (e) {
       debugPrint('[BangumiApi.updateCollection] Exception: $e');
     }
     return false;
   }
 
-  static Future<bool> updateEpisodeStatus(int subjectId, String token, int epStatus) async {
+  static Future<bool> updateEpisodeStatus(
+    int subjectId,
+    String token,
+    int epStatus,
+  ) async {
     if (token.isEmpty) return false;
     try {
       final response = await _dio.post(
-        '${_ApiConfig.apiBase}/subject/$subjectId/update/watched_eps', 
-        data: {'watched_eps': epStatus.toString()},                 
+        '${_ApiConfig.apiBase}/subject/$subjectId/update/watched_eps',
+        data: {'watched_eps': epStatus.toString()},
         options: Options(
           headers: {'Authorization': 'Bearer $token'},
-          contentType: Headers.formUrlEncodedContentType,           
+          contentType: Headers.formUrlEncodedContentType,
         ),
       );
-      return response.statusCode != null && response.statusCode! >= 200 && response.statusCode! < 300;
+      return response.statusCode != null &&
+          response.statusCode! >= 200 &&
+          response.statusCode! < 300;
     } catch (e) {
       debugPrint('[BangumiApi.updateEpisodeStatus] Exception: $e');
     }
@@ -233,40 +321,52 @@ class BangumiApi {
 
   static Future<List<Map<String, String>>> getSubjectComments(int id) async {
     if (_commentsCache.containsKey(id)) return _commentsCache[id]!;
-    List<Map<String, String>> comments = [];
+    final List<Map<String, String>> comments = <Map<String, String>>[];
 
     try {
-      final response = await _dio.get(
-        '${_ApiConfig.chiiBase}/subject/$id',
-        options: Options(responseType: ResponseType.bytes),
-      );
-      
-      if (response.statusCode == 200) {
-        final document = parser.parse(utf8.decode(response.data));
-        final commentBox = document.getElementById('comment_box');
-        
-        if (commentBox != null) {
-          for (var item in commentBox.getElementsByClassName('item')) {
-            final author = item.querySelector('.text a')?.text.trim() ?? '网络用户';
-            final content = item.querySelector('p')?.text.trim() ?? '';
-            String rate = '未评级';
-            
-            final starSpan = item.querySelector('.text span.starlight');
-            if (starSpan != null) {
-              final match = RegExp(r'stars(\d+)').firstMatch(starSpan.attributes['class'] ?? '');
-              if (match != null) rate = '${match.group(1)}分';
-            }
+      for (int page = 1; page <= 3; page++) {
+        final String url = page == 1
+            ? '${_ApiConfig.chiiBase}/subject/$id/comments'
+            : '${_ApiConfig.chiiBase}/subject/$id/comments?page=$page';
+        final Response<dynamic> response = await _dio.get(
+          url,
+          options: Options(responseType: ResponseType.bytes),
+        );
 
-            if (content.isNotEmpty) {
-              comments.add({'author': author, 'rate': rate, 'content': content});
-            }
-          }
+        if (response.statusCode != 200) {
+          break;
+        }
+
+        final dom.Document document = parser.parse(utf8.decode(response.data));
+        final List<Map<String, String>> pageComments =
+            _parseSubjectCommentsDocument(document);
+
+        if (pageComments.isEmpty) {
+          break;
+        }
+
+        comments.addAll(pageComments);
+        if (pageComments.length < 20) {
+          break;
+        }
+      }
+
+      if (comments.isEmpty) {
+        final Response<dynamic> fallbackResponse = await _dio.get(
+          '${_ApiConfig.chiiBase}/subject/$id',
+          options: Options(responseType: ResponseType.bytes),
+        );
+        if (fallbackResponse.statusCode == 200) {
+          final dom.Document document = parser.parse(
+            utf8.decode(fallbackResponse.data),
+          );
+          comments.addAll(_parseSubjectCommentsDocument(document));
         }
       }
     } catch (e) {
       debugPrint('[BangumiApi.getSubjectComments] Exception: $e');
     }
-    
+
     if (comments.isNotEmpty) {
       _commentsCache[id] = comments;
       _trimCache(_commentsCache);
@@ -277,7 +377,9 @@ class BangumiApi {
   static Future<List<dynamic>> getSubjectCharacters(int id) async {
     if (_charactersCache.containsKey(id)) return _charactersCache[id]!;
     try {
-      final response = await _dio.get('${_ApiConfig.apiBase}/v0/subjects/$id/characters');
+      final response = await _dio.get(
+        '${_ApiConfig.apiBase}/v0/subjects/$id/characters',
+      );
       if (response.statusCode == 200 && response.data is List) {
         _charactersCache[id] = response.data;
         _trimCache(_charactersCache);
@@ -292,7 +394,9 @@ class BangumiApi {
   static Future<List<dynamic>> getSubjectPersons(int id) async {
     if (_personsCache.containsKey(id)) return _personsCache[id]!;
     try {
-      final response = await _dio.get('${_ApiConfig.apiBase}/v0/subjects/$id/persons');
+      final response = await _dio.get(
+        '${_ApiConfig.apiBase}/v0/subjects/$id/persons',
+      );
       if (response.statusCode == 200 && response.data is List) {
         _personsCache[id] = response.data;
         _trimCache(_personsCache);
@@ -307,7 +411,9 @@ class BangumiApi {
   static Future<List<dynamic>> getSubjectRelations(int id) async {
     if (_relationsCache.containsKey(id)) return _relationsCache[id]!;
     try {
-      final response = await _dio.get('${_ApiConfig.apiBase}/v0/subjects/$id/subjects');
+      final response = await _dio.get(
+        '${_ApiConfig.apiBase}/v0/subjects/$id/subjects',
+      );
       if (response.statusCode == 200 && response.data is List) {
         _relationsCache[id] = response.data;
         _trimCache(_relationsCache);

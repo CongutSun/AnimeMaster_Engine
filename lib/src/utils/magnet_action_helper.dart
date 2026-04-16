@@ -26,7 +26,9 @@ class MagnetActionHelper {
       builder: (BuildContext dialogContext) => PopScope(
         canPop: false,
         child: Dialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
             child: Row(
@@ -116,7 +118,10 @@ class MagnetActionHelper {
   }
 
   static String _friendlyErrorText(Object error) {
-    final String message = error.toString().replaceFirst('Exception: ', '').trim();
+    final String message = error
+        .toString()
+        .replaceFirst('Exception: ', '')
+        .trim();
     return message.isEmpty ? '未知错误' : message;
   }
 
@@ -143,8 +148,17 @@ class MagnetActionHelper {
             title: config.displayTitle,
             url: config.targetPath,
             isLocal: true,
+            localFilePath: config.targetPath,
+            subjectTitle: config.subjectTitle,
+            episodeLabel: config.episodeLabel,
           )
-        : PlayableMedia(title: config.displayTitle, url: config.url);
+        : PlayableMedia(
+            title: config.displayTitle,
+            url: config.url,
+            localFilePath: config.targetPath,
+            subjectTitle: config.subjectTitle,
+            episodeLabel: config.episodeLabel,
+          );
 
     if (!context.mounted) {
       return;

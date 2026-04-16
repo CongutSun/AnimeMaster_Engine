@@ -49,6 +49,8 @@ dependencies:
   package_info_plus: ^9.0.1
   path_provider: ^2.1.5
   cached_network_image: ^3.4.1
+  crypto: ^3.0.6
+  flutter_web_auth_2: ^5.0.2
   
   # 热更新 (Hot Update)
   shorebird_code_push: ^2.0.5

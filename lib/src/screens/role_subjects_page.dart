@@ -60,14 +60,18 @@ class _RoleSubjectsPageState extends State<RoleSubjectsPage> {
             imageUrl = 'https:$imageUrl';
           }
 
-          parsedAnime.add(Anime(
-            id: item['id'] is int ? item['id'] : int.tryParse(item['id']?.toString() ?? '') ?? 0,
-            name: item['name']?.toString() ?? '',
-            nameCn: item['name_cn']?.toString() ?? '',
-            imageUrl: imageUrl,
-            // 如果 API 带有职位或角色关系信息，也可以在此扩展
-            score: item['staff']?.toString() ?? '', 
-          ));
+          parsedAnime.add(
+            Anime(
+              id: item['id'] is int
+                  ? item['id']
+                  : int.tryParse(item['id']?.toString() ?? '') ?? 0,
+              name: item['name']?.toString() ?? '',
+              nameCn: item['name_cn']?.toString() ?? '',
+              imageUrl: imageUrl,
+              // 如果 API 带有职位或角色关系信息，也可以在此扩展
+              score: item['staff']?.toString() ?? '',
+            ),
+          );
         }
       }
 
@@ -112,10 +116,7 @@ class _RoleSubjectsPageState extends State<RoleSubjectsPage> {
             const SizedBox(height: 16),
             Text(errorMessage!, style: const TextStyle(color: Colors.grey)),
             const SizedBox(height: 16),
-            ElevatedButton(
-              onPressed: _loadData,
-              child: const Text('重试'),
-            )
+            ElevatedButton(onPressed: _loadData, child: const Text('重试')),
           ],
         ),
       );
@@ -138,7 +139,10 @@ class _RoleSubjectsPageState extends State<RoleSubjectsPage> {
               const SizedBox(width: 8),
               Text(
                 '共 ${subjects.length} 部参演/制作作品',
-                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
             ],
           ),

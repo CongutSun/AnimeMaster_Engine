@@ -1,0 +1,12 @@
+name = "animemaster-bangumi-auth"
+main = "worker.js"
+compatibility_date = "2026-04-16"
+
+[[kv_namespaces]]
+binding = "BANGUMI_AUTH_KV"
+id = "cde856e4cf7e4af28d946732ee4342af"
+
+# Required secrets:
+# wrangler secret put BANGUMI_CLIENT_ID
+# wrangler secret put BANGUMI_CLIENT_SECRET
+# wrangler secret put BANGUMI_CALLBACK_URL
