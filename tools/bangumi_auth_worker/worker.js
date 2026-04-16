@@ -19,12 +19,13 @@ const APP_UPDATE_MANIFEST = {
       'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.1.4/app-release.apk',
   },
   notes: [
-    'Restore the 3% add-and-play startup buffer to reduce incomplete-fragment playback artifacts.',
-    'Improve local torrent streaming reads by waiting for writable chunks instead of serving sparse holes.',
-    'Speed up Bangumi detail first paint and cache tag, role, staff related-result pages.',
-    'Keep internal Android build code monotonic while showing only the semantic version in app UI.',
+    '恢复“添加与播放”的 3% 起播缓冲，降低未缓存片段导致的花屏和噪点。',
+    '优化边下边播流式读取，遇到未写入片段时等待可读数据。',
+    '优化 Bangumi 番剧详情页首屏加载，评论、角色和制作人员改为异步补齐。',
+    '标签、角色、声优、制作人员相关作品列表增加本地缓存，重复进入更快。',
+    '应用内更新弹窗只展示语义版本号，内部构建号保持递增以保证覆盖安装。',
   ],
-  publishedAt: '2026-04-16T19:20:00+08:00',
+  publishedAt: '2026-04-16T19:58:29+08:00',
   forceUpdate: false,
 };
 
