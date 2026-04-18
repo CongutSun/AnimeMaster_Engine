@@ -153,6 +153,7 @@ class _AboutPageState extends State<AboutPage> {
                       '弹幕加载支持无弹弹play凭证时自动回退到 Animeko 公益弹幕源。',
                       '播放任务开始携带 Bangumi 条目 ID，并可按标题和集数推断 Bangumi 剧集 ID。',
                       '弹弹play 手动匹配保留为高级兜底，未配置凭证时不再阻断弹幕入口。',
+                      '修复缓存中心手动添加任务时输入法挤压按钮导致重叠的问题。',
                     ],
                   ),
                   SizedBox(height: 14),

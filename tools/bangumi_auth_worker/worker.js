@@ -4,28 +4,27 @@ const SESSION_TTL_SECONDS = 60 * 60 * 24 * 60;
 const BANGUMI_API_USER_AGENT =
   'animemaster-19277/AnimeMaster/1.0.0 (Cloudflare Workers; https://animemaster-bangumi-auth.animemaster-19277.workers.dev)';
 const APP_UPDATE_MANIFEST = {
-  version: '2.1.4',
-  build: 6,
+  version: '2.1.5',
+  build: 7,
   apkUrl:
-    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.1.4/app-release.apk',
+    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.1.5/app-release.apk',
   apkUrls: {
     'android-arm64':
-      'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.1.4/app-arm64-v8a-release.apk',
+      'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.1.5/app-arm64-v8a-release.apk',
     'android-arm':
-      'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.1.4/app-armeabi-v7a-release.apk',
+      'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.1.5/app-armeabi-v7a-release.apk',
     'android-x64':
-      'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.1.4/app-x86_64-release.apk',
+      'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.1.5/app-x86_64-release.apk',
     universal:
-      'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.1.4/app-release.apk',
+      'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.1.5/app-release.apk',
   },
   notes: [
-    '恢复“添加与播放”的 3% 起播缓冲，降低未缓存片段导致的花屏和噪点。',
-    '优化边下边播流式读取，遇到未写入片段时等待可读数据。',
-    '优化 Bangumi 番剧详情页首屏加载，评论、角色和制作人员改为异步补齐。',
-    '标签、角色、声优、制作人员相关作品列表增加本地缓存，重复进入更快。',
-    '应用内更新弹窗只展示语义版本号，内部构建号保持递增以保证覆盖安装。',
+    '弹幕加载支持无弹弹play凭证时自动回退到 Animeko 公益弹幕源。',
+    '播放任务开始携带 Bangumi 条目 ID，并可按标题和集数推断 Bangumi 剧集 ID。',
+    '弹弹play 手动匹配保留为高级兜底，未配置凭证时不再阻断弹幕入口。',
+    '修复缓存中心手动添加任务时输入法挤压按钮导致重叠的问题。',
   ],
-  publishedAt: '2026-04-16T19:58:29+08:00',
+  publishedAt: '2026-04-18T11:54:32+08:00',
   forceUpdate: false,
 };
 
