@@ -1,6 +1,11 @@
 name = "animemaster-bangumi-auth"
 main = "worker.js"
 compatibility_date = "2026-04-16"
+workers_dev = true
+preview_urls = true
+routes = [
+  { pattern = "auth.congutsun.com", custom_domain = true }
+]
 
 [[kv_namespaces]]
 binding = "BANGUMI_AUTH_KV"
