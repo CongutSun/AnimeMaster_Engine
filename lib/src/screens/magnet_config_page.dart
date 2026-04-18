@@ -11,11 +11,13 @@ import 'download_center_page.dart';
 class MagnetConfigPage extends StatefulWidget {
   final String animeName;
   final List<String> aliases;
+  final int bangumiSubjectId;
 
   const MagnetConfigPage({
     super.key,
     required this.animeName,
     required this.aliases,
+    this.bangumiSubjectId = 0,
   });
 
   @override
@@ -372,6 +374,7 @@ class _MagnetConfigPageState extends State<MagnetConfigPage> {
                                       preferredTitle: title,
                                       subjectTitle: widget.animeName,
                                       episodeLabel: episodeLabel,
+                                      bangumiSubjectId: widget.bangumiSubjectId,
                                     );
                                   },
                             icon: const Icon(Icons.play_circle_fill_rounded),

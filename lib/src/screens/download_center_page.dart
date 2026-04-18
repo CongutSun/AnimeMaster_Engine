@@ -292,6 +292,8 @@ class DownloadCenterPage extends StatelessWidget {
             localFilePath: config.targetPath,
             subjectTitle: config.subjectTitle,
             episodeLabel: config.episodeLabel,
+            bangumiSubjectId: config.bangumiSubjectId,
+            bangumiEpisodeId: config.bangumiEpisodeId,
           )
         : PlayableMedia(
             title: config.displayTitle,
@@ -299,6 +301,8 @@ class DownloadCenterPage extends StatelessWidget {
             localFilePath: config.targetPath,
             subjectTitle: config.subjectTitle,
             episodeLabel: config.episodeLabel,
+            bangumiSubjectId: config.bangumiSubjectId,
+            bangumiEpisodeId: config.bangumiEpisodeId,
           );
 
     Navigator.push(

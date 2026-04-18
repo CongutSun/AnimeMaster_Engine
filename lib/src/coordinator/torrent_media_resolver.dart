@@ -71,6 +71,8 @@ class TorrentMediaResolver {
     String preferredTitle = '',
     String subjectTitle = '',
     String episodeLabel = '',
+    int bangumiSubjectId = 0,
+    int bangumiEpisodeId = 0,
   }) async {
     final String normalizedSource = rawSource.trim();
     if (normalizedSource.isEmpty) {
@@ -140,6 +142,8 @@ class TorrentMediaResolver {
       targetPath: mediaInfo.filePath,
       subjectTitle: resolvedSubjectTitle,
       episodeLabel: resolvedEpisodeLabel,
+      bangumiSubjectId: bangumiSubjectId,
+      bangumiEpisodeId: bangumiEpisodeId,
     );
 
     return PreparedTorrentTask(
@@ -156,12 +160,16 @@ class TorrentMediaResolver {
     String preferredTitle = '',
     String subjectTitle = '',
     String episodeLabel = '',
+    int bangumiSubjectId = 0,
+    int bangumiEpisodeId = 0,
   }) async {
     final PreparedTorrentTask preparedTask = await prepareTask(
       rawSource,
       preferredTitle: preferredTitle,
       subjectTitle: subjectTitle,
       episodeLabel: episodeLabel,
+      bangumiSubjectId: bangumiSubjectId,
+      bangumiEpisodeId: bangumiEpisodeId,
     );
     await DownloadManager().addTask(
       preparedTask.taskInfo,

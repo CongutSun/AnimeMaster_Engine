@@ -14,6 +14,7 @@ import '../models/dandanplay_models.dart';
 import '../models/download_task_info.dart';
 import '../models/playable_media.dart';
 import '../providers/settings_provider.dart';
+import '../services/animeko_danmaku_service.dart';
 import '../services/dandanplay_service.dart';
 
 class VideoPlayerPage extends StatefulWidget {
@@ -272,16 +273,6 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
     _danmakuSeed = 0;
 
     final SettingsProvider settings = context.read<SettingsProvider>();
-    if (!settings.hasDandanplayCredentials) {
-      if (mounted) {
-        setState(() {
-          _danmakuComments = <DandanplayComment>[];
-          _isDanmakuLoading = false;
-          _danmakuStatusText = '未配置弹弹play';
-        });
-      }
-      return;
-    }
 
     if (!forceReload &&
         _activeMedia?.url == media.url &&
@@ -296,18 +287,16 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
         _danmakuComments = <DandanplayComment>[];
         _activeDanmaku = <_ActiveDanmakuItem>[];
         _isDanmakuLoading = true;
-        _danmakuStatusText = '正在匹配弹幕...';
+        _danmakuStatusText = settings.hasDandanplayCredentials
+            ? '正在匹配弹幕...'
+            : '正在加载 Animeko 公益弹幕...';
       });
     }
 
-    final DandanplayService service = _createDandanplayService(settings);
-
     try {
-      final DandanplayLoadResult result = await service.loadDanmaku(
-        displayTitle: media.title,
-        localFilePath: _resolveLocalFilePath(media),
-        subjectTitle: _resolveSubjectTitle(media),
-        episodeLabel: _resolveEpisodeLabel(media),
+      final DandanplayLoadResult result = await _loadBestAvailableDanmaku(
+        media,
+        settings,
       );
 
       if (!mounted || serial != _danmakuSerial) {
@@ -319,7 +308,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
         _isDanmakuLoading = false;
         _danmakuStatusText = result.comments.isEmpty
             ? '未找到弹幕'
-            : '已匹配 ${result.match.animeTitle} ${result.match.episodeTitle}';
+            : '已加载 ${result.comments.length} 条弹幕';
       });
 
       _resyncDanmakuCursor(_effectivePosition);
@@ -336,9 +325,45 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
         _isDanmakuLoading = false;
         _danmakuStatusText = _friendlyDanmakuError(error);
       });
-      if (_shouldSuggestManualDanmakuMatch(error)) {
+      if (settings.hasDandanplayCredentials &&
+          _shouldSuggestManualDanmakuMatch(error)) {
         _showManualDanmakuMatchPrompt();
       }
+    }
+  }
+
+  Future<DandanplayLoadResult> _loadBestAvailableDanmaku(
+    PlayableMedia media,
+    SettingsProvider settings,
+  ) async {
+    Object? dandanplayError;
+
+    if (settings.hasDandanplayCredentials) {
+      try {
+        return await _createDandanplayService(settings).loadDanmaku(
+          displayTitle: media.title,
+          localFilePath: _resolveLocalFilePath(media),
+          subjectTitle: _resolveSubjectTitle(media),
+          episodeLabel: _resolveEpisodeLabel(media),
+        );
+      } catch (error) {
+        dandanplayError = error;
+      }
+    }
+
+    try {
+      return await AnimekoDanmakuService().loadDanmaku(
+        displayTitle: media.title,
+        subjectTitle: _resolveSubjectTitle(media),
+        episodeLabel: _resolveEpisodeLabel(media),
+        bangumiSubjectId: media.bangumiSubjectId,
+        bangumiEpisodeId: media.bangumiEpisodeId,
+      );
+    } catch (_) {
+      if (dandanplayError != null) {
+        throw dandanplayError;
+      }
+      rethrow;
     }
   }
 
@@ -518,9 +543,11 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
 
     final SettingsProvider settings = context.read<SettingsProvider>();
     if (!settings.hasDandanplayCredentials) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('请先在设置中填写弹弹play 凭证。')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('弹弹play 手动匹配需要 AppId/AppSecret；当前会自动尝试 Animeko 公益弹幕。'),
+        ),
+      );
       return;
     }
 
@@ -764,6 +791,8 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
         localFilePath: task.targetPath,
         subjectTitle: task.subjectTitle,
         episodeLabel: task.episodeLabel,
+        bangumiSubjectId: task.bangumiSubjectId,
+        bangumiEpisodeId: task.bangumiEpisodeId,
       );
     }
     return PlayableMedia(
@@ -772,6 +801,8 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
       localFilePath: task.targetPath,
       subjectTitle: task.subjectTitle,
       episodeLabel: task.episodeLabel,
+      bangumiSubjectId: task.bangumiSubjectId,
+      bangumiEpisodeId: task.bangumiEpisodeId,
     );
   }
 

@@ -6,6 +6,8 @@ class DownloadTaskInfo {
   final String targetPath;
   final String subjectTitle;
   final String episodeLabel;
+  final int bangumiSubjectId;
+  final int bangumiEpisodeId;
   bool isCompleted;
 
   DownloadTaskInfo({
@@ -16,6 +18,8 @@ class DownloadTaskInfo {
     required this.targetPath,
     this.subjectTitle = '',
     this.episodeLabel = '',
+    this.bangumiSubjectId = 0,
+    this.bangumiEpisodeId = 0,
     this.isCompleted = false,
   });
 
@@ -28,6 +32,10 @@ class DownloadTaskInfo {
       targetPath: json['targetPath'] ?? '',
       subjectTitle: json['subjectTitle'] ?? '',
       episodeLabel: json['episodeLabel'] ?? '',
+      bangumiSubjectId:
+          int.tryParse(json['bangumiSubjectId']?.toString() ?? '') ?? 0,
+      bangumiEpisodeId:
+          int.tryParse(json['bangumiEpisodeId']?.toString() ?? '') ?? 0,
       isCompleted: json['isCompleted'] ?? false,
     );
   }
@@ -40,6 +48,8 @@ class DownloadTaskInfo {
     'targetPath': targetPath,
     'subjectTitle': subjectTitle,
     'episodeLabel': episodeLabel,
+    'bangumiSubjectId': bangumiSubjectId,
+    'bangumiEpisodeId': bangumiEpisodeId,
     'isCompleted': isCompleted,
   };
 
@@ -61,6 +71,8 @@ class DownloadTaskInfo {
     String? targetPath,
     String? subjectTitle,
     String? episodeLabel,
+    int? bangumiSubjectId,
+    int? bangumiEpisodeId,
     bool? isCompleted,
   }) {
     return DownloadTaskInfo(
@@ -71,6 +83,8 @@ class DownloadTaskInfo {
       targetPath: targetPath ?? this.targetPath,
       subjectTitle: subjectTitle ?? this.subjectTitle,
       episodeLabel: episodeLabel ?? this.episodeLabel,
+      bangumiSubjectId: bangumiSubjectId ?? this.bangumiSubjectId,
+      bangumiEpisodeId: bangumiEpisodeId ?? this.bangumiEpisodeId,
       isCompleted: isCompleted ?? this.isCompleted,
     );
   }

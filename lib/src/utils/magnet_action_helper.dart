@@ -19,6 +19,8 @@ class MagnetActionHelper {
     String preferredTitle = '',
     String subjectTitle = '',
     String episodeLabel = '',
+    int bangumiSubjectId = 0,
+    int bangumiEpisodeId = 0,
   }) async {
     bool loadingDialogOpen = false;
 
@@ -84,6 +86,8 @@ class MagnetActionHelper {
         preferredTitle: preferredTitle,
         subjectTitle: subjectTitle,
         episodeLabel: episodeLabel,
+        bangumiSubjectId: bangumiSubjectId,
+        bangumiEpisodeId: bangumiEpisodeId,
       );
 
       await DownloadManager().addTask(
@@ -160,6 +164,8 @@ class MagnetActionHelper {
             localFilePath: config.targetPath,
             subjectTitle: config.subjectTitle,
             episodeLabel: config.episodeLabel,
+            bangumiSubjectId: config.bangumiSubjectId,
+            bangumiEpisodeId: config.bangumiEpisodeId,
           )
         : PlayableMedia(
             title: config.displayTitle,
@@ -167,6 +173,8 @@ class MagnetActionHelper {
             localFilePath: config.targetPath,
             subjectTitle: config.subjectTitle,
             episodeLabel: config.episodeLabel,
+            bangumiSubjectId: config.bangumiSubjectId,
+            bangumiEpisodeId: config.bangumiEpisodeId,
           );
 
     if (!context.mounted) {

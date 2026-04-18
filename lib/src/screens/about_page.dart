@@ -148,6 +148,15 @@ class _AboutPageState extends State<AboutPage> {
                   ),
                   SizedBox(height: 12),
                   _LogEntry(
+                    version: '2.1.5',
+                    items: <String>[
+                      '弹幕加载支持无弹弹play凭证时自动回退到 Animeko 公益弹幕源。',
+                      '播放任务开始携带 Bangumi 条目 ID，并可按标题和集数推断 Bangumi 剧集 ID。',
+                      '弹弹play 手动匹配保留为高级兜底，未配置凭证时不再阻断弹幕入口。',
+                    ],
+                  ),
+                  SizedBox(height: 14),
+                  _LogEntry(
                     version: '2.1.4',
                     items: <String>[
                       '恢复“添加与播放”的 3% 起播缓冲，降低未缓存片段导致的花屏和噪点。',

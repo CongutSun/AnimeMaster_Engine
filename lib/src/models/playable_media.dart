@@ -6,6 +6,8 @@ class PlayableMedia {
   final String localFilePath;
   final String subjectTitle;
   final String episodeLabel;
+  final int bangumiSubjectId;
+  final int bangumiEpisodeId;
 
   PlayableMedia({
     required this.title,
@@ -15,6 +17,8 @@ class PlayableMedia {
     this.localFilePath = '',
     this.subjectTitle = '',
     this.episodeLabel = '',
+    this.bangumiSubjectId = 0,
+    this.bangumiEpisodeId = 0,
   });
 }
 

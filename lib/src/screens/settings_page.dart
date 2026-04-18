@@ -593,6 +593,11 @@ class _SettingsPageState extends State<SettingsPage> {
               '弹弹play 弹幕',
               style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
             ),
+            const SizedBox(height: 6),
+            const Text(
+              '未填写时会使用 Animeko 公益弹幕源；填写后优先使用弹弹play 聚合弹幕。AppSecret 不会内嵌到 APK。',
+              style: TextStyle(fontSize: 12, color: Colors.grey),
+            ),
             const SizedBox(height: 12),
             TextField(
               controller: dandanAppIdController,

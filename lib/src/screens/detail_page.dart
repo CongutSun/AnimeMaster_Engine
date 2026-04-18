@@ -724,6 +724,7 @@ class _DetailPageState extends State<DetailPage>
                       builder: (_) => MagnetConfigPage(
                         animeName: displayName,
                         aliases: _extractAliases(cnName, originalName),
+                        bangumiSubjectId: widget.animeId,
                       ),
                     ),
                   ),

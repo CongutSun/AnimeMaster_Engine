@@ -24,6 +24,8 @@ class BangumiApi {
   static final Map<String, List<Map<String, dynamic>>> _tagSubjectsCache = {};
   static final Map<int, List<dynamic>> _characterSubjectsCache = {};
   static final Map<int, List<dynamic>> _personSubjectsCache = {};
+  static final Map<int, List<Map<String, dynamic>>> _subjectEpisodesCache = {};
+  static final Map<String, int?> _episodeIdResolveCache = {};
 
   static void _trimCache(Map cache, {int maxSize = 50}) {
     if (cache.length > maxSize) {
@@ -259,6 +261,173 @@ class BangumiApi {
     return [];
   }
 
+  static Future<List<Map<String, dynamic>>> getSubjectEpisodes(
+    int subjectId,
+  ) async {
+    if (subjectId <= 0) {
+      return <Map<String, dynamic>>[];
+    }
+    if (_subjectEpisodesCache.containsKey(subjectId)) {
+      return _subjectEpisodesCache[subjectId]!;
+    }
+
+    final List<Map<String, dynamic>> episodes = <Map<String, dynamic>>[];
+    int offset = 0;
+    const int limit = 100;
+
+    try {
+      while (true) {
+        final Response<dynamic> response = await _dio.get(
+          '${_ApiConfig.apiBase}/v0/episodes',
+          queryParameters: <String, dynamic>{
+            'subject_id': subjectId,
+            'type': 0,
+            'limit': limit,
+            'offset': offset,
+          },
+        );
+        if (response.statusCode != 200 || response.data is! Map) {
+          break;
+        }
+
+        final Map<String, dynamic> data = Map<String, dynamic>.from(
+          response.data as Map,
+        );
+        final List<dynamic> page = data['data'] is List
+            ? data['data'] as List<dynamic>
+            : <dynamic>[];
+        episodes.addAll(
+          page.whereType<Map>().map((Map<dynamic, dynamic> item) {
+            return Map<String, dynamic>.from(item);
+          }).toList(),
+        );
+
+        final int total = int.tryParse(data['total']?.toString() ?? '') ?? 0;
+        offset += page.length;
+        if (page.isEmpty || offset >= total) {
+          break;
+        }
+      }
+    } catch (e) {
+      debugPrint('[BangumiApi.getSubjectEpisodes] Exception: $e');
+    }
+
+    _subjectEpisodesCache[subjectId] = episodes;
+    _trimCache(_subjectEpisodesCache, maxSize: 80);
+    return episodes;
+  }
+
+  static Future<int?> resolveEpisodeId({
+    int subjectId = 0,
+    int episodeId = 0,
+    String subjectTitle = '',
+    String episodeLabel = '',
+    String displayTitle = '',
+  }) async {
+    if (episodeId > 0) {
+      return episodeId;
+    }
+
+    final String cacheKey =
+        '$subjectId|${subjectTitle.trim()}|${episodeLabel.trim()}|${displayTitle.trim()}';
+    if (_episodeIdResolveCache.containsKey(cacheKey)) {
+      return _episodeIdResolveCache[cacheKey];
+    }
+
+    int resolvedSubjectId = subjectId;
+    if (resolvedSubjectId <= 0) {
+      resolvedSubjectId =
+          await _resolveSubjectIdByTitle(
+            subjectTitle.trim().isNotEmpty ? subjectTitle : displayTitle,
+          ) ??
+          0;
+    }
+
+    if (resolvedSubjectId <= 0) {
+      _episodeIdResolveCache[cacheKey] = null;
+      return null;
+    }
+
+    final List<Map<String, dynamic>> episodes = await getSubjectEpisodes(
+      resolvedSubjectId,
+    );
+    if (episodes.isEmpty) {
+      _episodeIdResolveCache[cacheKey] = null;
+      return null;
+    }
+
+    final int? episodeNumber = _extractEpisodeNumber(
+      '${episodeLabel.trim()} ${displayTitle.trim()}',
+    );
+    Map<String, dynamic>? match;
+    if (episodeNumber != null && episodeNumber > 0) {
+      match = episodes.firstWhere(
+        (Map<String, dynamic> item) =>
+            _numberValue(item['ep']) == episodeNumber ||
+            _numberValue(item['sort']) == episodeNumber,
+        orElse: () => <String, dynamic>{},
+      );
+      if (match.isEmpty) {
+        match = null;
+      }
+    }
+
+    match ??= episodes.length == 1 ? episodes.first : null;
+    final int? resolvedEpisodeId = match == null
+        ? null
+        : int.tryParse(match['id']?.toString() ?? '');
+    _episodeIdResolveCache[cacheKey] = resolvedEpisodeId;
+    _trimCache(_episodeIdResolveCache, maxSize: 100);
+    return resolvedEpisodeId;
+  }
+
+  static Future<int?> _resolveSubjectIdByTitle(String rawTitle) async {
+    final String keyword = _sanitizeSubjectKeyword(rawTitle);
+    if (keyword.length < 2) {
+      return null;
+    }
+
+    try {
+      final Response<dynamic> response = await _dio.post(
+        '${_ApiConfig.apiBase}/v0/search/subjects',
+        data: <String, dynamic>{
+          'keyword': keyword,
+          'filter': <String, dynamic>{
+            'type': <int>[2],
+          },
+        },
+      );
+      if (response.statusCode != 200 || response.data is! Map) {
+        return null;
+      }
+
+      final List<dynamic> subjects = (response.data as Map)['data'] is List
+          ? (response.data as Map)['data'] as List<dynamic>
+          : <dynamic>[];
+      final List<Map<String, dynamic>> items = subjects
+          .whereType<Map>()
+          .map((Map<dynamic, dynamic> item) => Map<String, dynamic>.from(item))
+          .toList();
+      if (items.isEmpty) {
+        return null;
+      }
+
+      final String normalizedKeyword = _normalizeTitle(keyword);
+      final Map<String, dynamic> best = items.firstWhere(
+        (Map<String, dynamic> item) =>
+            _normalizeTitle(item['name_cn']?.toString() ?? '') ==
+                normalizedKeyword ||
+            _normalizeTitle(item['name']?.toString() ?? '') ==
+                normalizedKeyword,
+        orElse: () => items.first,
+      );
+      return int.tryParse(best['id']?.toString() ?? '');
+    } catch (e) {
+      debugPrint('[BangumiApi._resolveSubjectIdByTitle] Exception: $e');
+      return null;
+    }
+  }
+
   static Future<Map<String, dynamic>?> getAnimeDetail(int id) async {
     if (_animeDetailCache.containsKey(id)) return _animeDetailCache[id];
     try {
@@ -272,6 +441,61 @@ class BangumiApi {
       debugPrint('[BangumiApi.getAnimeDetail] Exception: $e');
     }
     return null;
+  }
+
+  static int? _extractEpisodeNumber(String value) {
+    final List<RegExp> patterns = <RegExp>[
+      RegExp(r'\bS\d{1,2}E(\d{1,3})\b', caseSensitive: false),
+      RegExp(r'\bEP?\s*\.?\s*(\d{1,3})\b', caseSensitive: false),
+      RegExp(r'第\s*(\d{1,3})\s*[话話集回]'),
+      RegExp(r'(?<!\d)(\d{1,3})(?!\d)'),
+    ];
+
+    for (final RegExp pattern in patterns) {
+      final RegExpMatch? match = pattern.firstMatch(value);
+      final int? number = int.tryParse(match?.group(1) ?? '');
+      if (number != null && number > 0) {
+        return number;
+      }
+    }
+    return null;
+  }
+
+  static int? _numberValue(dynamic value) {
+    if (value is int) {
+      return value;
+    }
+    if (value is num) {
+      return value.round();
+    }
+    return int.tryParse(value?.toString() ?? '');
+  }
+
+  static String _sanitizeSubjectKeyword(String value) {
+    final String cleaned = value
+        .replaceAll(RegExp(r'^\[[^\]]+\]\s*'), ' ')
+        .replaceAll(RegExp(r'\[[^\]]+\]'), ' ')
+        .replaceAll(RegExp(r'\([^\)]*\)'), ' ')
+        .replaceAll(
+          RegExp(
+            r'\b(1080p|720p|2160p|x264|x265|hevc|aac|gb|big5|mp4|mkv|web-dl|webdl|baha|cr)\b',
+            caseSensitive: false,
+          ),
+          ' ',
+        )
+        .replaceAll(RegExp(r'\bS\d{1,2}E\d{1,3}\b', caseSensitive: false), ' ')
+        .replaceAll(RegExp(r'\bEP?\s*\.?\s*\d+\b', caseSensitive: false), ' ')
+        .replaceAll(RegExp(r'第\s*\d{1,3}\s*[话話集回]'), ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+    return cleaned.isNotEmpty ? cleaned : value.trim();
+  }
+
+  static String _normalizeTitle(String value) {
+    return value
+        .replaceAll(RegExp(r'\s+'), '')
+        .replaceAll('　', '')
+        .toLowerCase();
   }
 
   static Future<Map<String, dynamic>?> getUserCollection(
