@@ -53,6 +53,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
   Timer? _controlsTimer;
   Timer? _danmakuTicker;
   PlayableMedia? _activeMedia;
+  DateTime? _lastManualSeekAt;
   List<DandanplayComment> _danmakuComments = <DandanplayComment>[];
   List<_ActiveDanmakuItem> _activeDanmaku = <_ActiveDanmakuItem>[];
   String _danmakuStatusText = '';
@@ -76,8 +77,9 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
         if (!mounted) {
           return;
         }
+        final Duration normalized = _normalizeIncomingPosition(value);
         setState(() {
-          _position = value;
+          _position = normalized;
         });
       }),
     );
@@ -86,8 +88,9 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
         if (!mounted) {
           return;
         }
+        final Duration normalized = _normalizeIncomingDuration(value);
         setState(() {
-          _duration = value;
+          _duration = normalized;
         });
       }),
     );
@@ -180,6 +183,14 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
   }
 
   Future<void> _openMedia(PlayableMedia media) async {
+    if (mounted) {
+      setState(() {
+        _position = Duration.zero;
+        _duration = Duration.zero;
+        _dragPosition = null;
+        _lastManualSeekAt = null;
+      });
+    }
     await _player.open(Media(media.url, httpHeaders: media.headers));
     if (_rate != 1.0) {
       await _player.setRate(_rate);
@@ -252,9 +263,11 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
     final Duration clamped = target < Duration.zero
         ? Duration.zero
         : (target > max ? max : target);
+    _lastManualSeekAt = DateTime.now();
     await _player.seek(clamped);
     if (mounted) {
       setState(() {
+        _position = clamped;
         _dragPosition = null;
       });
     }
@@ -885,6 +898,38 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
 
   Duration get _effectivePosition => _dragPosition ?? _position;
 
+  bool get _isStreamingPlayback {
+    final String url = _activeMedia?.url ?? widget.media.url;
+    return _isMagnet || url.startsWith('http://127.0.0.1:');
+  }
+
+  Duration _normalizeIncomingDuration(Duration value) {
+    if (!_isStreamingPlayback || value <= Duration.zero) {
+      return value;
+    }
+    if (_duration > Duration.zero && value < _duration) {
+      return _duration;
+    }
+    return value;
+  }
+
+  Duration _normalizeIncomingPosition(Duration value) {
+    if (!_isStreamingPlayback || _dragPosition != null) {
+      return value;
+    }
+    final DateTime? lastManualSeekAt = _lastManualSeekAt;
+    if (lastManualSeekAt != null &&
+        DateTime.now().difference(lastManualSeekAt) <
+            const Duration(seconds: 2)) {
+      return value;
+    }
+    if (_position > const Duration(seconds: 5) &&
+        value + const Duration(seconds: 2) < _position) {
+      return _position;
+    }
+    return value;
+  }
+
   void _removeDanmakuItem(int id) {
     if (!mounted) {
       return;
@@ -1169,9 +1214,11 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
                             final Duration target = Duration(
                               milliseconds: value.round(),
                             );
+                            _lastManualSeekAt = DateTime.now();
                             await _player.seek(target);
                             if (mounted) {
                               setState(() {
+                                _position = target;
                                 _dragPosition = null;
                               });
                             }

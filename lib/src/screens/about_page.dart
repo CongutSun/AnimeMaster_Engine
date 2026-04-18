@@ -148,6 +148,15 @@ class _AboutPageState extends State<AboutPage> {
                   ),
                   SizedBox(height: 12),
                   _LogEntry(
+                    version: '2.1.6',
+                    items: <String>[
+                      '优化边下边播本地代理读取策略，减少未缓存片段导致的播放器重试和进度条跳动。',
+                      '下载和做种期间启用 Android 前台服务与唤醒锁，降低切到后台后任务停止的概率。',
+                      '下载完成后不再自动停止任务，默认进入做种状态，并在缓存中心显示上传速度。',
+                    ],
+                  ),
+                  SizedBox(height: 14),
+                  _LogEntry(
                     version: '2.1.5',
                     items: <String>[
                       '弹幕加载支持无弹弹play凭证时自动回退到 Animeko 公益弹幕源。',

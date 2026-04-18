@@ -37,8 +37,12 @@ class DownloadCenterPage extends StatelessWidget {
                     final DownloadTaskInfo config = tasks[index];
                     final double progress = manager.getProgress(config.hash);
                     final double speed = manager.getSpeed(config.hash);
+                    final double uploadSpeed = manager.getUploadSpeed(
+                      config.hash,
+                    );
                     final bool isPaused = manager.isPaused(config.hash);
                     final bool isCompleted = progress >= 1.0;
+                    final bool isSeeding = manager.isSeeding(config.hash);
 
                     return Card(
                       child: Padding(
@@ -109,11 +113,13 @@ class DownloadCenterPage extends StatelessWidget {
                               value: isCompleted ? 1.0 : progress,
                               minHeight: 8,
                               borderRadius: BorderRadius.circular(4),
-                              color: isCompleted
-                                  ? Colors.green
-                                  : (isPaused
-                                        ? Colors.grey
-                                        : Colors.blueAccent),
+                              color: isSeeding
+                                  ? Colors.orange
+                                  : (isCompleted
+                                        ? Colors.green
+                                        : (isPaused
+                                              ? Colors.grey
+                                              : Colors.blueAccent)),
                               backgroundColor: Colors.grey.withValues(
                                 alpha: 0.2,
                               ),
@@ -124,15 +130,19 @@ class DownloadCenterPage extends StatelessWidget {
                                 progress: progress,
                                 isPaused: isPaused,
                                 isCompleted: isCompleted,
+                                isSeeding: isSeeding,
                                 speed: speed,
+                                uploadSpeed: uploadSpeed,
                               ),
                               style: TextStyle(
                                 fontSize: 12,
-                                color: isCompleted
-                                    ? Colors.green
-                                    : (isPaused
-                                          ? Colors.grey
-                                          : Colors.blueAccent),
+                                color: isSeeding
+                                    ? Colors.orange
+                                    : (isCompleted
+                                          ? Colors.green
+                                          : (isPaused
+                                                ? Colors.grey
+                                                : Colors.blueAccent)),
                                 fontWeight: FontWeight.w600,
                               ),
                             ),
@@ -148,17 +158,18 @@ class DownloadCenterPage extends StatelessWidget {
                                   ),
                                   onPressed: () => _playVideo(context, config),
                                 ),
-                                if (!isCompleted)
-                                  IconButton(
-                                    tooltip: isPaused ? '继续' : '暂停',
-                                    icon: Icon(
-                                      isPaused
-                                          ? Icons.play_arrow_rounded
-                                          : Icons.pause_rounded,
-                                    ),
-                                    onPressed: () =>
-                                        manager.toggleTask(config.hash),
+                                IconButton(
+                                  tooltip: isPaused
+                                      ? (isCompleted ? '开始做种' : '继续')
+                                      : (isCompleted ? '暂停做种' : '暂停'),
+                                  icon: Icon(
+                                    isPaused
+                                        ? Icons.play_arrow_rounded
+                                        : Icons.pause_rounded,
                                   ),
+                                  onPressed: () =>
+                                      manager.toggleTask(config.hash),
+                                ),
                                 IconButton(
                                   tooltip: '删除',
                                   icon: const Icon(
@@ -193,10 +204,15 @@ class DownloadCenterPage extends StatelessWidget {
     required double progress,
     required bool isPaused,
     required bool isCompleted,
+    required bool isSeeding,
     required double speed,
+    required double uploadSpeed,
   }) {
+    if (isSeeding) {
+      return '做种中  ·  上传 ${_formatSpeed(uploadSpeed)}';
+    }
     if (isCompleted) {
-      return '已完成';
+      return isPaused ? '已完成  ·  做种已暂停' : '已完成';
     }
     if (isPaused) {
       return '已暂停  ·  ${(progress * 100).toStringAsFixed(1)}%';

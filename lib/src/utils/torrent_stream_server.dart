@@ -7,7 +7,7 @@ import '../managers/download_manager.dart';
 class TorrentStreamServer {
   static const int _chunkSize = 64 * 1024;
   static const int _startupProbeBytes = 512 * 1024;
-  static const int _maxHoleRetries = 120;
+  static const int _maxHoleRetries = 480;
   static const Duration _probeDelay = Duration(milliseconds: 250);
 
   HttpServer? _server;
@@ -119,7 +119,7 @@ class TorrentStreamServer {
           bytesToRead,
         );
 
-        if (buffer.isEmpty) {
+        if (buffer.length != bytesToRead) {
           break;
         }
 
@@ -171,17 +171,14 @@ class TorrentStreamServer {
       RandomAccessFile? raf;
       try {
         final int fileLength = await file.length();
-        if (fileLength <= start) {
+        final int probeLength = min(requiredBytes, _chunkSize);
+        if (fileLength < start + probeLength) {
           await Future.delayed(_probeDelay);
           continue;
         }
 
         raf = await file.open(mode: FileMode.read);
         await raf.setPosition(start);
-        final int probeLength = min(
-          requiredBytes,
-          min(fileLength - start, _chunkSize),
-        );
         final List<int> probe = await raf.read(probeLength);
         if (probe.isNotEmpty && !_isZeroFilled(probe)) {
           return true;
@@ -209,8 +206,14 @@ class TorrentStreamServer {
       }
 
       await raf.setPosition(position);
+      final int availableLength = await raf.length();
+      if (availableLength < position + length) {
+        await Future.delayed(_probeDelay);
+        continue;
+      }
+
       final List<int> buffer = await raf.read(length);
-      if (buffer.isNotEmpty && !_isZeroFilled(buffer)) {
+      if (buffer.length == length && !_isZeroFilled(buffer)) {
         return buffer;
       }
 

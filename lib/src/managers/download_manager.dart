@@ -7,6 +7,7 @@ import 'package:dtorrent_parser/dtorrent_parser.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/download_task_info.dart';
+import '../services/background_download_service.dart';
 import '../utils/tracker_pool.dart';
 
 class DownloadManager extends ChangeNotifier {
@@ -18,6 +19,7 @@ class DownloadManager extends ChangeNotifier {
   final Map<String, bool> _pausedStates = {};
   final Map<String, int> _lastDownloadedBytes = {};
   final Map<String, double> _currentSpeeds = {};
+  final Map<String, double> _currentUploadSpeeds = {};
   final Map<String, Timer> _peerWarmupTimers = {};
   Timer? _speedTimer;
 
@@ -55,9 +57,14 @@ class DownloadManager extends ChangeNotifier {
             final task = TorrentTask.newTask(torrent, info.savePath);
             _activeTasks[info.hash] = task;
             _taskConfigs[info.hash] = info;
-            _pausedStates[info.hash] = true; // 重启后默认均为暂停状态
+            _pausedStates[info.hash] = !info.isCompleted; // 完成任务启动后自动做种
             _lastDownloadedBytes[info.hash] = 0;
             _currentSpeeds[info.hash] = 0.0;
+            _currentUploadSpeeds[info.hash] = 0.0;
+
+            if (info.isCompleted) {
+              await _startOrResumeTask(info.hash);
+            }
           } catch (e) {
             debugPrint('Failed to restore task: $e');
           }
@@ -66,6 +73,7 @@ class DownloadManager extends ChangeNotifier {
       if (hasMigratedTask) {
         await _saveTasksToPrefs();
       }
+      _syncBackgroundService();
       notifyListeners();
     }
   }
@@ -83,21 +91,32 @@ class DownloadManager extends ChangeNotifier {
       final task = entry.value;
       final config = _taskConfigs[hash];
 
-      // 1. 状态拦截：如果任务刚达到 100% 且标记未完成
+      final bool isPaused = _pausedStates[hash] == true;
+
+      // 1. 完成后保持任务运行，进入做种状态。
       if (config != null && !config.isCompleted && task.progress >= 1.0) {
         config.isCompleted = true;
-        _pausedStates[hash] = true;
+        _pausedStates[hash] = false;
         _peerWarmupTimers.remove(hash)?.cancel();
-        task.stop();
         _currentSpeeds[hash] = 0.0;
+        _currentUploadSpeeds[hash] = _uploadSpeedInKb(task);
         _saveTasksToPrefs();
+        _syncBackgroundService();
         shouldNotify = true;
         continue;
       }
 
-      // 2. 暂停或已完成的任务，速度归零
-      if (_pausedStates[hash] == true || config?.isCompleted == true) {
+      // 2. 暂停任务速度归零；已完成但未暂停的任务显示上传速度。
+      if (isPaused) {
         _currentSpeeds[hash] = 0.0;
+        _currentUploadSpeeds[hash] = 0.0;
+        continue;
+      }
+
+      if (config?.isCompleted == true) {
+        _currentSpeeds[hash] = 0.0;
+        _currentUploadSpeeds[hash] = _uploadSpeedInKb(task);
+        shouldNotify = true;
         continue;
       }
 
@@ -108,6 +127,7 @@ class DownloadManager extends ChangeNotifier {
       final double peerSpeed = (task.currentDownloadSpeed * 1000) / 1024.0;
       final double speed = peerSpeed > deltaSpeed ? peerSpeed : deltaSpeed;
       _currentSpeeds[hash] = speed > 0 ? speed : 0.0;
+      _currentUploadSpeeds[hash] = _uploadSpeedInKb(task);
       _lastDownloadedBytes[hash] = currentBytes;
       shouldNotify = true;
     }
@@ -131,6 +151,12 @@ class DownloadManager extends ChangeNotifier {
             existingConfig.episodeLabel,
             info.episodeLabel,
           ),
+          bangumiSubjectId: existingConfig.bangumiSubjectId > 0
+              ? existingConfig.bangumiSubjectId
+              : info.bangumiSubjectId,
+          bangumiEpisodeId: existingConfig.bangumiEpisodeId > 0
+              ? existingConfig.bangumiEpisodeId
+              : info.bangumiEpisodeId,
         );
         await _startOrResumeTask(info.hash);
         await _saveTasksToPrefs();
@@ -160,16 +186,18 @@ class DownloadManager extends ChangeNotifier {
     _pausedStates[info.hash] = false;
     _lastDownloadedBytes[info.hash] = 0;
     _currentSpeeds[info.hash] = 0.0;
+    _currentUploadSpeeds[info.hash] = 0.0;
 
     await _startOrResumeTask(info.hash);
     await _saveTasksToPrefs();
+    _syncBackgroundService();
     notifyListeners();
   }
 
   Future<void> _startOrResumeTask(String hash) async {
     final DownloadTaskInfo? config = _taskConfigs[hash];
     TorrentTask? task = _activeTasks[hash];
-    if (task == null || config == null || config.isCompleted) {
+    if (task == null || config == null) {
       return;
     }
 
@@ -187,7 +215,10 @@ class DownloadManager extends ChangeNotifier {
     _addDhtBootstrapNodes(task);
     _pausedStates[hash] = false;
     _lastDownloadedBytes[hash] = task.downloaded ?? 0;
-    _boostPeerDiscovery(hash);
+    if (!config.isCompleted) {
+      _boostPeerDiscovery(hash);
+    }
+    _syncBackgroundService();
   }
 
   void _addDhtBootstrapNodes(TorrentTask task) {
@@ -350,15 +381,20 @@ class DownloadManager extends ChangeNotifier {
   }
 
   double getSpeed(String hash) => _currentSpeeds[hash] ?? 0.0;
+  double getUploadSpeed(String hash) => _currentUploadSpeeds[hash] ?? 0.0;
   bool isPaused(String hash) => _pausedStates[hash] ?? false;
+  bool isSeeding(String hash) {
+    final DownloadTaskInfo? config = _taskConfigs[hash];
+    final TorrentTask? task = _activeTasks[hash];
+    return config?.isCompleted == true &&
+        _pausedStates[hash] != true &&
+        task?.state == TaskState.running;
+  }
 
   Future<void> toggleTask(String hash) async {
     final task = _activeTasks[hash];
     final config = _taskConfigs[hash];
     if (task == null || config == null) return;
-
-    // 已完成的任务禁止再次启动
-    if (config.isCompleted) return;
 
     if (isPaused(hash)) {
       await _startOrResumeTask(hash);
@@ -367,8 +403,10 @@ class DownloadManager extends ChangeNotifier {
       _pausedStates[hash] = true;
       _peerWarmupTimers.remove(hash)?.cancel();
       _currentSpeeds[hash] = 0.0;
+      _currentUploadSpeeds[hash] = 0.0;
     }
     await _saveTasksToPrefs();
+    _syncBackgroundService();
     notifyListeners();
   }
 
@@ -382,6 +420,7 @@ class DownloadManager extends ChangeNotifier {
     _taskConfigs.remove(hash);
     _pausedStates.remove(hash);
     _currentSpeeds.remove(hash);
+    _currentUploadSpeeds.remove(hash);
     _lastDownloadedBytes.remove(hash);
 
     if (config != null) {
@@ -394,7 +433,26 @@ class DownloadManager extends ChangeNotifier {
     }
 
     await _saveTasksToPrefs();
+    _syncBackgroundService();
     notifyListeners();
+  }
+
+  double _uploadSpeedInKb(TorrentTask task) {
+    final double peerUploadSpeed = (task.uploadSpeed * 1000) / 1024.0;
+    return peerUploadSpeed > 0 ? peerUploadSpeed : 0.0;
+  }
+
+  void _syncBackgroundService() {
+    final bool hasActiveTransfer = _activeTasks.keys.any((String hash) {
+      final DownloadTaskInfo? config = _taskConfigs[hash];
+      final TorrentTask? task = _activeTasks[hash];
+      if (config == null || task == null || _pausedStates[hash] == true) {
+        return false;
+      }
+      return task.state == TaskState.running;
+    });
+
+    unawaited(BackgroundDownloadService.setActive(hasActiveTransfer));
   }
 
   @override
@@ -407,6 +465,7 @@ class DownloadManager extends ChangeNotifier {
     for (var task in _activeTasks.values) {
       task.stop();
     }
+    unawaited(BackgroundDownloadService.setActive(false));
     super.dispose();
   }
 }
