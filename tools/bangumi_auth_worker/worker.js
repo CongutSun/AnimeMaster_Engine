@@ -11,27 +11,33 @@ const RESOURCE_PROXY_ALLOWED_HOSTS = new Set([
   'share.dmhy.org',
 ]);
 const APP_UPDATE_MANIFEST = {
-  version: '2.1.7',
-  build: 9,
-  apkUrl:
-    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.1.7/app-release.apk',
+  version: '2.1.8',
+  build: 10,
+  apkUrl: 'https://auth.congutsun.com/download/apk/universal',
   apkUrls: {
-    'android-arm64':
-      'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.1.7/app-arm64-v8a-release.apk',
-    'android-arm':
-      'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.1.7/app-armeabi-v7a-release.apk',
-    'android-x64':
-      'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.1.7/app-x86_64-release.apk',
-    universal:
-      'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.1.7/app-release.apk',
+    'android-arm64': 'https://auth.congutsun.com/download/apk/android-arm64',
+    'android-arm': 'https://auth.congutsun.com/download/apk/android-arm',
+    'android-x64': 'https://auth.congutsun.com/download/apk/android-x64',
+    universal: 'https://auth.congutsun.com/download/apk/universal',
   },
   notes: [
-    '资源搜索和 .torrent 下载增加 AnimeMaster 网关兜底，直连 Mikan/DMHY 超时后会自动重试。',
-    '放宽 Mikan RSS 与种子下载超时，并加入 mikanani.me / mikanime.tv 双域名互换重试。',
-    '修复部分网络环境下不开代理无法添加播放或下载资源的问题。',
+    '缓存中心增加下载和做种并发调度，降低多任务并行时的卡顿与发热。',
+    '边下边播改为播放优先分片下载，修复 .torrent 直链播放失败和进度条跳动问题。',
+    '修复缓存中心添加按钮遮挡播放/暂停/删除按钮，并修复首页自定义背景底部裁切。',
+    '自动更新改为启动后在正确页面上下文弹出，APK 下载改走 AnimeMaster 网关。',
   ],
-  publishedAt: '2026-04-18T17:38:00+08:00',
+  publishedAt: '2026-04-18T22:35:00+08:00',
   forceUpdate: false,
+};
+const APK_DOWNLOAD_URLS = {
+  'android-arm64':
+    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.1.8/app-arm64-v8a-release.apk',
+  'android-arm':
+    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.1.8/app-armeabi-v7a-release.apk',
+  'android-x64':
+    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.1.8/app-x86_64-release.apk',
+  universal:
+    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.1.8/app-release.apk',
 };
 
 function json(body, status = 200) {
@@ -134,6 +140,43 @@ async function handleResourceProxy(request, mode) {
   return new Response(response.body, {
     status: 200,
     headers: proxyResponseHeaders(response, mode),
+  });
+}
+
+async function handleApkDownload(request) {
+  const url = new URL(request.url);
+  const abi = url.pathname.split('/').filter(Boolean).pop() || 'universal';
+  const upstreamUrl = APK_DOWNLOAD_URLS[abi] || APK_DOWNLOAD_URLS.universal;
+  const upstream = await fetch(upstreamUrl, {
+    method: request.method === 'HEAD' ? 'HEAD' : 'GET',
+    headers: {
+      accept: 'application/vnd.android.package-archive,*/*',
+      'user-agent': RESOURCE_PROXY_USER_AGENT,
+    },
+  });
+
+  if (!upstream.ok && upstream.status !== 302) {
+    return json({ error: `APK upstream fetch failed: ${upstream.status}` }, 502);
+  }
+
+  const headers = new Headers();
+  headers.set(
+    'content-type',
+    upstream.headers.get('content-type') ||
+      'application/vnd.android.package-archive',
+  );
+  headers.set('cache-control', 'public, max-age=300');
+  headers.set('access-control-allow-origin', '*');
+  const contentLength = upstream.headers.get('content-length');
+  if (contentLength) {
+    headers.set('content-length', contentLength);
+  }
+  const fileName = upstreamUrl.split('/').pop() || 'app-release.apk';
+  headers.set('content-disposition', `attachment; filename="${fileName}"`);
+
+  return new Response(request.method === 'HEAD' ? null : upstream.body, {
+    status: upstream.status,
+    headers,
   });
 }
 
@@ -385,6 +428,12 @@ export default {
       }
       if (request.method === 'GET' && url.pathname === '/app_update.json') {
         return json(APP_UPDATE_MANIFEST);
+      }
+      if (
+        (request.method === 'GET' || request.method === 'HEAD') &&
+        url.pathname.startsWith('/download/apk/')
+      ) {
+        return await handleApkDownload(request);
       }
       if (request.method === 'GET' && url.pathname === '/proxy/rss') {
         return await handleResourceProxy(request, 'rss');

@@ -6,6 +6,7 @@ import '../managers/download_manager.dart';
 import '../models/download_task_info.dart';
 import '../models/playable_media.dart';
 import '../utils/magnet_action_helper.dart';
+import '../utils/torrent_stream_server.dart';
 import 'video_player_page.dart';
 
 class DownloadCenterPage extends StatelessWidget {
@@ -29,7 +30,7 @@ class DownloadCenterPage extends StatelessWidget {
                   ),
                 )
               : ListView.separated(
-                  padding: const EdgeInsets.all(12),
+                  padding: const EdgeInsets.fromLTRB(12, 12, 12, 112),
                   itemCount: tasks.length,
                   separatorBuilder: (BuildContext context, int index) =>
                       const SizedBox(height: 8),
@@ -41,6 +42,7 @@ class DownloadCenterPage extends StatelessWidget {
                       config.hash,
                     );
                     final bool isPaused = manager.isPaused(config.hash);
+                    final bool isQueued = manager.isQueued(config.hash);
                     final bool isCompleted = progress >= 1.0;
                     final bool isSeeding = manager.isSeeding(config.hash);
 
@@ -117,7 +119,7 @@ class DownloadCenterPage extends StatelessWidget {
                                   ? Colors.orange
                                   : (isCompleted
                                         ? Colors.green
-                                        : (isPaused
+                                        : (isPaused || isQueued
                                               ? Colors.grey
                                               : Colors.blueAccent)),
                               backgroundColor: Colors.grey.withValues(
@@ -129,6 +131,7 @@ class DownloadCenterPage extends StatelessWidget {
                               _buildStatusText(
                                 progress: progress,
                                 isPaused: isPaused,
+                                isQueued: isQueued,
                                 isCompleted: isCompleted,
                                 isSeeding: isSeeding,
                                 speed: speed,
@@ -140,7 +143,7 @@ class DownloadCenterPage extends StatelessWidget {
                                     ? Colors.orange
                                     : (isCompleted
                                           ? Colors.green
-                                          : (isPaused
+                                          : (isPaused || isQueued
                                                 ? Colors.grey
                                                 : Colors.blueAccent)),
                                 fontWeight: FontWeight.w600,
@@ -159,11 +162,11 @@ class DownloadCenterPage extends StatelessWidget {
                                   onPressed: () => _playVideo(context, config),
                                 ),
                                 IconButton(
-                                  tooltip: isPaused
+                                  tooltip: isPaused || isQueued
                                       ? (isCompleted ? '开始做种' : '继续')
                                       : (isCompleted ? '暂停做种' : '暂停'),
                                   icon: Icon(
-                                    isPaused
+                                    isPaused || isQueued
                                         ? Icons.play_arrow_rounded
                                         : Icons.pause_rounded,
                                   ),
@@ -203,6 +206,7 @@ class DownloadCenterPage extends StatelessWidget {
   String _buildStatusText({
     required double progress,
     required bool isPaused,
+    required bool isQueued,
     required bool isCompleted,
     required bool isSeeding,
     required double speed,
@@ -210,6 +214,11 @@ class DownloadCenterPage extends StatelessWidget {
   }) {
     if (isSeeding) {
       return '做种中  ·  上传 ${_formatSpeed(uploadSpeed)}';
+    }
+    if (isQueued) {
+      return isCompleted
+          ? '做种排队中'
+          : '排队中  ·  ${(progress * 100).toStringAsFixed(1)}%';
     }
     if (isCompleted) {
       return isPaused ? '已完成  ·  做种已暂停' : '已完成';
@@ -257,81 +266,89 @@ class DownloadCenterPage extends StatelessWidget {
                     48)
                 .clamp(280.0, 560.0);
 
-        return Dialog(
-          insetPadding: const EdgeInsets.symmetric(
-            horizontal: 24,
-            vertical: 24,
-          ),
-          child: ConstrainedBox(
-            constraints: BoxConstraints(maxWidth: 420, maxHeight: maxHeight),
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(24, 20, 24, 16),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  const Text(
-                    '手动添加任务',
-                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
-                  ),
-                  const SizedBox(height: 16),
-                  Flexible(
-                    child: SingleChildScrollView(
-                      keyboardDismissBehavior:
-                          ScrollViewKeyboardDismissBehavior.onDrag,
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: <Widget>[
-                          TextField(
-                            controller: titleController,
-                            textInputAction: TextInputAction.next,
-                            decoration: const InputDecoration(
-                              labelText: '显示标题（可选）',
-                              hintText: '例如：葬送的芙莉莲 第12话',
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                          TextField(
-                            controller: sourceController,
-                            minLines: 3,
-                            maxLines: 5,
-                            textInputAction: TextInputAction.newline,
-                            decoration: const InputDecoration(
-                              labelText: '资源链接',
-                              hintText: '支持 magnet、40 位 Hash 或 .torrent 直链',
-                            ),
-                          ),
-                        ],
+        return AnimatedPadding(
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOutCubic,
+          padding: EdgeInsets.only(bottom: media.viewInsets.bottom),
+          child: Dialog(
+            insetPadding: const EdgeInsets.symmetric(
+              horizontal: 24,
+              vertical: 24,
+            ),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: 420, maxHeight: maxHeight),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(24, 20, 24, 16),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    const Text(
+                      '手动添加任务',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 16),
-                  SafeArea(
-                    top: false,
-                    child: Align(
-                      alignment: Alignment.centerRight,
-                      child: Wrap(
-                        alignment: WrapAlignment.end,
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: <Widget>[
-                          TextButton(
-                            onPressed: () => Navigator.pop(dialogContext),
-                            child: const Text('取消'),
-                          ),
-                          TextButton(
-                            onPressed: () => submit(dialogContext, false),
-                            child: const Text('仅添加'),
-                          ),
-                          FilledButton(
-                            onPressed: () => submit(dialogContext, true),
-                            child: const Text('添加并播放'),
-                          ),
-                        ],
+                    const SizedBox(height: 16),
+                    Flexible(
+                      child: SingleChildScrollView(
+                        keyboardDismissBehavior:
+                            ScrollViewKeyboardDismissBehavior.onDrag,
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: <Widget>[
+                            TextField(
+                              controller: titleController,
+                              textInputAction: TextInputAction.next,
+                              decoration: const InputDecoration(
+                                labelText: '显示标题（可选）',
+                                hintText: '例如：葬送的芙莉莲 第12话',
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            TextField(
+                              controller: sourceController,
+                              minLines: 3,
+                              maxLines: 5,
+                              textInputAction: TextInputAction.newline,
+                              decoration: const InputDecoration(
+                                labelText: '资源链接',
+                                hintText: '支持 magnet、40 位 Hash 或 .torrent 直链',
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
-                  ),
-                ],
+                    const SizedBox(height: 16),
+                    SafeArea(
+                      top: false,
+                      child: Align(
+                        alignment: Alignment.centerRight,
+                        child: Wrap(
+                          alignment: WrapAlignment.end,
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: <Widget>[
+                            TextButton(
+                              onPressed: () => Navigator.pop(dialogContext),
+                              child: const Text('取消'),
+                            ),
+                            TextButton(
+                              onPressed: () => submit(dialogContext, false),
+                              child: const Text('仅添加'),
+                            ),
+                            FilledButton(
+                              onPressed: () => submit(dialogContext, true),
+                              child: const Text('添加并播放'),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -343,33 +360,66 @@ class DownloadCenterPage extends StatelessWidget {
     });
   }
 
-  void _playVideo(BuildContext context, DownloadTaskInfo config) {
+  Future<void> _playVideo(BuildContext context, DownloadTaskInfo config) async {
+    await DownloadManager().prepareForPlayback(config.hash);
     final File localFile = File(config.targetPath);
-    final PlayableMedia media = localFile.existsSync()
-        ? PlayableMedia(
-            title: config.displayTitle,
-            url: config.targetPath,
-            isLocal: true,
-            localFilePath: config.targetPath,
-            subjectTitle: config.subjectTitle,
-            episodeLabel: config.episodeLabel,
-            bangumiSubjectId: config.bangumiSubjectId,
-            bangumiEpisodeId: config.bangumiEpisodeId,
-          )
-        : PlayableMedia(
-            title: config.displayTitle,
-            url: config.url,
-            localFilePath: config.targetPath,
-            subjectTitle: config.subjectTitle,
-            episodeLabel: config.episodeLabel,
-            bangumiSubjectId: config.bangumiSubjectId,
-            bangumiEpisodeId: config.bangumiEpisodeId,
-          );
+    final bool canUseLocalFile = config.isCompleted && localFile.existsSync();
+    TorrentStreamServer? streamServer;
+    final PlayableMedia media;
+    if (canUseLocalFile) {
+      media = PlayableMedia(
+        title: config.displayTitle,
+        url: config.targetPath,
+        isLocal: true,
+        localFilePath: config.targetPath,
+        subjectTitle: config.subjectTitle,
+        episodeLabel: config.episodeLabel,
+        bangumiSubjectId: config.bangumiSubjectId,
+        bangumiEpisodeId: config.bangumiEpisodeId,
+      );
+    } else if (config.targetSize > 0) {
+      DownloadManager().prioritizePlaybackRange(
+        config.hash,
+        config.targetPath,
+        0,
+        512 * 1024,
+      );
+      streamServer = TorrentStreamServer(
+        videoFilePath: config.targetPath,
+        videoSize: config.targetSize,
+        infoHash: config.hash,
+      );
+      final String streamUrl = await streamServer.start();
+      media = PlayableMedia(
+        title: config.displayTitle,
+        url: streamUrl,
+        localFilePath: config.targetPath,
+        subjectTitle: config.subjectTitle,
+        episodeLabel: config.episodeLabel,
+        bangumiSubjectId: config.bangumiSubjectId,
+        bangumiEpisodeId: config.bangumiEpisodeId,
+      );
+    } else {
+      media = PlayableMedia(
+        title: config.displayTitle,
+        url: config.url,
+        localFilePath: config.targetPath,
+        subjectTitle: config.subjectTitle,
+        episodeLabel: config.episodeLabel,
+        bangumiSubjectId: config.bangumiSubjectId,
+        bangumiEpisodeId: config.bangumiEpisodeId,
+      );
+    }
 
+    if (!context.mounted) {
+      streamServer?.stop();
+      return;
+    }
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (BuildContext context) => VideoPlayerPage(media: media),
+        builder: (BuildContext context) =>
+            VideoPlayerPage(media: media, streamServer: streamServer),
       ),
     );
   }

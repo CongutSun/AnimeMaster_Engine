@@ -8,9 +8,11 @@ import '../managers/download_manager.dart';
 import '../models/download_task_info.dart';
 import '../models/playable_media.dart';
 import '../screens/video_player_page.dart';
+import 'torrent_stream_server.dart';
 
 class MagnetActionHelper {
   static const double _playbackBufferThreshold = 0.03;
+  static const int _startupProbeBytes = 512 * 1024;
 
   static Future<void> process(
     BuildContext context,
@@ -93,6 +95,7 @@ class MagnetActionHelper {
       await DownloadManager().addTask(
         preparedTask.taskInfo,
         preparedTask.torrentBytes,
+        streamOptimized: autoPlay,
       );
 
       closeLoadingDialog();
@@ -135,8 +138,21 @@ class MagnetActionHelper {
     BuildContext context,
     DownloadTaskInfo config,
   ) async {
+    await DownloadManager().prepareForPlayback(config.hash);
+    DownloadManager().prioritizePlaybackRange(
+      config.hash,
+      config.targetPath,
+      0,
+      _startupProbeBytes,
+    );
+
     final double progress = DownloadManager().getProgress(config.hash);
-    if (progress < _playbackBufferThreshold && progress < 1.0) {
+    final bool startupReady = await DownloadManager().isRangeReadable(
+      config.hash,
+      config.targetPath,
+      bytes: _startupProbeBytes,
+    );
+    if (!startupReady && progress < 1.0) {
       final bool shouldPlay =
           await showDialog<bool>(
             context: context,
@@ -156,35 +172,60 @@ class MagnetActionHelper {
     final File localFile = File(config.targetPath);
     final bool canUseLocalFile =
         latestProgress >= 1.0 && await localFile.exists();
-    final PlayableMedia media = canUseLocalFile
-        ? PlayableMedia(
-            title: config.displayTitle,
-            url: config.targetPath,
-            isLocal: true,
-            localFilePath: config.targetPath,
-            subjectTitle: config.subjectTitle,
-            episodeLabel: config.episodeLabel,
-            bangumiSubjectId: config.bangumiSubjectId,
-            bangumiEpisodeId: config.bangumiEpisodeId,
-          )
-        : PlayableMedia(
-            title: config.displayTitle,
-            url: config.url,
-            localFilePath: config.targetPath,
-            subjectTitle: config.subjectTitle,
-            episodeLabel: config.episodeLabel,
-            bangumiSubjectId: config.bangumiSubjectId,
-            bangumiEpisodeId: config.bangumiEpisodeId,
-          );
+    TorrentStreamServer? streamServer;
+    final int targetSize = config.targetSize > 0
+        ? config.targetSize
+        : (await localFile.exists() ? await localFile.length() : 0);
+    final PlayableMedia media;
+    if (canUseLocalFile) {
+      media = PlayableMedia(
+        title: config.displayTitle,
+        url: config.targetPath,
+        isLocal: true,
+        localFilePath: config.targetPath,
+        subjectTitle: config.subjectTitle,
+        episodeLabel: config.episodeLabel,
+        bangumiSubjectId: config.bangumiSubjectId,
+        bangumiEpisodeId: config.bangumiEpisodeId,
+      );
+    } else if (targetSize > 0) {
+      streamServer = TorrentStreamServer(
+        videoFilePath: config.targetPath,
+        videoSize: targetSize,
+        infoHash: config.hash,
+      );
+      final String streamUrl = await streamServer.start();
+      media = PlayableMedia(
+        title: config.displayTitle,
+        url: streamUrl,
+        localFilePath: config.targetPath,
+        subjectTitle: config.subjectTitle,
+        episodeLabel: config.episodeLabel,
+        bangumiSubjectId: config.bangumiSubjectId,
+        bangumiEpisodeId: config.bangumiEpisodeId,
+      );
+    } else {
+      media = PlayableMedia(
+        title: config.displayTitle,
+        url: config.url,
+        localFilePath: config.targetPath,
+        subjectTitle: config.subjectTitle,
+        episodeLabel: config.episodeLabel,
+        bangumiSubjectId: config.bangumiSubjectId,
+        bangumiEpisodeId: config.bangumiEpisodeId,
+      );
+    }
 
     if (!context.mounted) {
+      streamServer?.stop();
       return;
     }
 
     await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (BuildContext context) => VideoPlayerPage(media: media),
+        builder: (BuildContext context) =>
+            VideoPlayerPage(media: media, streamServer: streamServer),
       ),
     );
   }
@@ -203,14 +244,15 @@ class _WaitProgressDialog extends StatefulWidget {
 class _WaitProgressDialogState extends State<_WaitProgressDialog> {
   Timer? _timer;
   double _progress = 0;
+  bool _startupReady = false;
 
   @override
   void initState() {
     super.initState();
-    _updateProgress();
+    unawaited(_updateProgress());
     _timer = Timer.periodic(
       const Duration(milliseconds: 500),
-      (_) => _updateProgress(),
+      (_) => unawaited(_updateProgress()),
     );
   }
 
@@ -220,17 +262,29 @@ class _WaitProgressDialogState extends State<_WaitProgressDialog> {
     super.dispose();
   }
 
-  void _updateProgress() {
+  Future<void> _updateProgress() async {
     final double progress = DownloadManager().getProgress(widget.config.hash);
+    DownloadManager().prioritizePlaybackRange(
+      widget.config.hash,
+      widget.config.targetPath,
+      0,
+      MagnetActionHelper._startupProbeBytes,
+    );
+    final bool startupReady = await DownloadManager().isRangeReadable(
+      widget.config.hash,
+      widget.config.targetPath,
+      bytes: MagnetActionHelper._startupProbeBytes,
+    );
     if (!mounted) {
       return;
     }
 
     setState(() {
       _progress = progress;
+      _startupReady = startupReady;
     });
 
-    if (progress >= widget.threshold || progress >= 1.0) {
+    if (startupReady || progress >= 1.0) {
       Navigator.of(context).pop(true);
     }
   }
@@ -238,7 +292,6 @@ class _WaitProgressDialogState extends State<_WaitProgressDialog> {
   @override
   Widget build(BuildContext context) {
     final double percent = (_progress * 100).clamp(0, 100).toDouble();
-    final double targetPercent = widget.threshold * 100;
 
     return PopScope(
       canPop: false,
@@ -249,7 +302,9 @@ class _WaitProgressDialogState extends State<_WaitProgressDialog> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
             Text(
-              '已缓存 ${percent.toStringAsFixed(1)}%，达到 ${targetPercent.toStringAsFixed(0)}% 后自动播放。',
+              _startupReady
+                  ? '目标视频起播片段已就绪，正在打开播放器。'
+                  : '已缓存 ${percent.toStringAsFixed(1)}%，正在优先下载目标视频的起播片段。',
             ),
             const SizedBox(height: 16),
             LinearProgressIndicator(

@@ -61,6 +61,7 @@ class EpisodeCoordinator extends ChangeNotifier {
       await DownloadManager().addTask(
         preparedTask.taskInfo,
         preparedTask.torrentBytes,
+        streamOptimized: true,
       );
 
       _mediaItems = preparedTask.mediaItems;

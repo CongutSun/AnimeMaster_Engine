@@ -148,6 +148,16 @@ class _AboutPageState extends State<AboutPage> {
                   ),
                   SizedBox(height: 12),
                   _LogEntry(
+                    version: '2.1.8',
+                    items: <String>[
+                      '缓存中心增加下载和做种并发调度，降低多个任务同时下载或做种时的卡顿与发热。',
+                      '边下边播改为播放优先分片下载，修复 .torrent 直链播放失败和磁力播放进度条跳动。',
+                      '修复缓存中心添加任务按钮遮挡播放、暂停、删除按钮，以及首页自定义背景底部裁切。',
+                      '自动更新改为启动后自动检查并弹出提示，APK 下载改走 AnimeMaster 网关，减少 GitHub 直连失败。',
+                    ],
+                  ),
+                  SizedBox(height: 14),
+                  _LogEntry(
                     version: '2.1.7',
                     items: <String>[
                       '资源搜索和 .torrent 下载增加 AnimeMaster 网关兜底，直连 Mikan/DMHY 超时后会自动重试。',

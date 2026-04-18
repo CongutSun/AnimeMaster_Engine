@@ -7,7 +7,7 @@ import '../managers/download_manager.dart';
 class TorrentStreamServer {
   static const int _chunkSize = 64 * 1024;
   static const int _startupProbeBytes = 512 * 1024;
-  static const int _maxHoleRetries = 480;
+  static const int _maxHoleRetries = 960;
   static const Duration _probeDelay = Duration(milliseconds: 250);
 
   HttpServer? _server;
@@ -22,6 +22,7 @@ class TorrentStreamServer {
   });
 
   Future<String> start() async {
+    await DownloadManager().prepareForPlayback(infoHash);
     _server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
     _server!.listen(_handlePlayerRequest);
     return 'http://127.0.0.1:${_server!.port}/stream';
@@ -69,6 +70,13 @@ class TorrentStreamServer {
       return;
     }
 
+    DownloadManager().prioritizePlaybackRange(
+      infoHash,
+      videoFilePath,
+      start,
+      min(_startupProbeBytes, end - start + 1),
+    );
+
     if (request.method != 'HEAD' &&
         !await _waitForReadableRange(
           file,
@@ -113,6 +121,12 @@ class TorrentStreamServer {
         }
 
         final int bytesToRead = min(_chunkSize, end - currentPos + 1);
+        DownloadManager().prioritizePlaybackRange(
+          infoHash,
+          videoFilePath,
+          currentPos,
+          bytesToRead,
+        );
         final List<int> buffer = await _readReadyChunk(
           raf,
           currentPos,

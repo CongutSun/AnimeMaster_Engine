@@ -4,11 +4,13 @@ class DownloadTaskInfo {
   final String url;
   final String savePath;
   final String targetPath;
+  final int targetSize;
   final String subjectTitle;
   final String episodeLabel;
   final int bangumiSubjectId;
   final int bangumiEpisodeId;
   bool isCompleted;
+  bool isPaused;
 
   DownloadTaskInfo({
     required this.hash,
@@ -16,11 +18,13 @@ class DownloadTaskInfo {
     required this.url,
     required this.savePath,
     required this.targetPath,
+    this.targetSize = 0,
     this.subjectTitle = '',
     this.episodeLabel = '',
     this.bangumiSubjectId = 0,
     this.bangumiEpisodeId = 0,
     this.isCompleted = false,
+    this.isPaused = false,
   });
 
   factory DownloadTaskInfo.fromJson(Map<String, dynamic> json) {
@@ -30,6 +34,7 @@ class DownloadTaskInfo {
       url: json['url'],
       savePath: json['savePath'],
       targetPath: json['targetPath'] ?? '',
+      targetSize: int.tryParse(json['targetSize']?.toString() ?? '') ?? 0,
       subjectTitle: json['subjectTitle'] ?? '',
       episodeLabel: json['episodeLabel'] ?? '',
       bangumiSubjectId:
@@ -37,6 +42,7 @@ class DownloadTaskInfo {
       bangumiEpisodeId:
           int.tryParse(json['bangumiEpisodeId']?.toString() ?? '') ?? 0,
       isCompleted: json['isCompleted'] ?? false,
+      isPaused: json['isPaused'] ?? false,
     );
   }
 
@@ -46,11 +52,13 @@ class DownloadTaskInfo {
     'url': url,
     'savePath': savePath,
     'targetPath': targetPath,
+    'targetSize': targetSize,
     'subjectTitle': subjectTitle,
     'episodeLabel': episodeLabel,
     'bangumiSubjectId': bangumiSubjectId,
     'bangumiEpisodeId': bangumiEpisodeId,
     'isCompleted': isCompleted,
+    'isPaused': isPaused,
   };
 
   String get displayTitle => title.trim().isEmpty ? hash : title.trim();
@@ -69,11 +77,13 @@ class DownloadTaskInfo {
     String? url,
     String? savePath,
     String? targetPath,
+    int? targetSize,
     String? subjectTitle,
     String? episodeLabel,
     int? bangumiSubjectId,
     int? bangumiEpisodeId,
     bool? isCompleted,
+    bool? isPaused,
   }) {
     return DownloadTaskInfo(
       hash: hash ?? this.hash,
@@ -81,11 +91,13 @@ class DownloadTaskInfo {
       url: url ?? this.url,
       savePath: savePath ?? this.savePath,
       targetPath: targetPath ?? this.targetPath,
+      targetSize: targetSize ?? this.targetSize,
       subjectTitle: subjectTitle ?? this.subjectTitle,
       episodeLabel: episodeLabel ?? this.episodeLabel,
       bangumiSubjectId: bangumiSubjectId ?? this.bangumiSubjectId,
       bangumiEpisodeId: bangumiEpisodeId ?? this.bangumiEpisodeId,
       isCompleted: isCompleted ?? this.isCompleted,
+      isPaused: isPaused ?? this.isPaused,
     );
   }
 }

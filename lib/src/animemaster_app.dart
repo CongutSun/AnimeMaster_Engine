@@ -27,28 +27,30 @@ class AnimeMasterApp extends StatelessWidget {
                   settings.themeMode.contains('深色') ||
                   settings.themeMode.contains('暗');
 
-              return _StartupUpdateProbe(
-                settings: settings,
-                child: MaterialApp(
-                  title: 'AnimeMaster',
-                  debugShowCheckedModeBanner: false,
-                  themeMode: isDark ? ThemeMode.dark : ThemeMode.light,
-                  theme: ThemeData(
-                    colorScheme: ColorScheme.fromSeed(
-                      seedColor: Colors.deepPurple,
-                      brightness: Brightness.light,
-                    ),
-                    useMaterial3: true,
+              return MaterialApp(
+                title: 'AnimeMaster',
+                debugShowCheckedModeBanner: false,
+                themeMode: isDark ? ThemeMode.dark : ThemeMode.light,
+                theme: ThemeData(
+                  colorScheme: ColorScheme.fromSeed(
+                    seedColor: Colors.deepPurple,
+                    brightness: Brightness.light,
                   ),
-                  darkTheme: ThemeData(
-                    colorScheme: ColorScheme.fromSeed(
-                      seedColor: Colors.deepPurple,
-                      brightness: Brightness.dark,
-                    ),
-                    useMaterial3: true,
-                  ),
-                  home: const HomePage(),
+                  useMaterial3: true,
                 ),
+                darkTheme: ThemeData(
+                  colorScheme: ColorScheme.fromSeed(
+                    seedColor: Colors.deepPurple,
+                    brightness: Brightness.dark,
+                  ),
+                  useMaterial3: true,
+                ),
+                builder: (BuildContext context, Widget? child) =>
+                    _StartupUpdateProbe(
+                      settings: settings,
+                      child: child ?? const SizedBox.shrink(),
+                    ),
+                home: const HomePage(),
               );
             },
       ),

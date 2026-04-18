@@ -141,6 +141,7 @@ class TorrentMediaResolver {
       url: canonicalSource,
       savePath: saveDir.path,
       targetPath: mediaInfo.filePath,
+      targetSize: mediaInfo.fileSize,
       subjectTitle: resolvedSubjectTitle,
       episodeLabel: resolvedEpisodeLabel,
       bangumiSubjectId: bangumiSubjectId,
@@ -175,6 +176,7 @@ class TorrentMediaResolver {
     await DownloadManager().addTask(
       preparedTask.taskInfo,
       preparedTask.torrentBytes,
+      streamOptimized: true,
     );
     return preparedTask.mediaInfo;
   }

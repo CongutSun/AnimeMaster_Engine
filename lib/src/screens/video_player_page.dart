@@ -16,11 +16,13 @@ import '../models/playable_media.dart';
 import '../providers/settings_provider.dart';
 import '../services/animeko_danmaku_service.dart';
 import '../services/dandanplay_service.dart';
+import '../utils/torrent_stream_server.dart';
 
 class VideoPlayerPage extends StatefulWidget {
   final PlayableMedia media;
+  final TorrentStreamServer? streamServer;
 
-  const VideoPlayerPage({super.key, required this.media});
+  const VideoPlayerPage({super.key, required this.media, this.streamServer});
 
   @override
   State<VideoPlayerPage> createState() => _VideoPlayerPageState();
@@ -844,16 +846,56 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
       builder: (BuildContext context) => _CacheSelectionSheet(
         tasks: tasks,
         onSelected: (DownloadTaskInfo task) {
-          final PlayableMedia media = _buildMediaFromTask(task);
-          Navigator.of(this.context).pushReplacement(
-            MaterialPageRoute<void>(
-              builder: (BuildContext context) => VideoPlayerPage(media: media),
-            ),
-          );
+          unawaited(_replaceWithTask(task));
         },
       ),
     );
     _scheduleControlsAutoHide();
+  }
+
+  Future<void> _replaceWithTask(DownloadTaskInfo task) async {
+    await DownloadManager().prepareForPlayback(task.hash);
+    final File localFile = File(task.targetPath);
+    TorrentStreamServer? streamServer;
+    PlayableMedia media = _buildMediaFromTask(task);
+
+    if (!task.isCompleted && task.targetSize > 0) {
+      DownloadManager().prioritizePlaybackRange(
+        task.hash,
+        task.targetPath,
+        0,
+        512 * 1024,
+      );
+      streamServer = TorrentStreamServer(
+        videoFilePath: task.targetPath,
+        videoSize: task.targetSize,
+        infoHash: task.hash,
+      );
+      final String streamUrl = await streamServer.start();
+      media = PlayableMedia(
+        title: task.displayTitle,
+        url: streamUrl,
+        localFilePath: task.targetPath,
+        subjectTitle: task.subjectTitle,
+        episodeLabel: task.episodeLabel,
+        bangumiSubjectId: task.bangumiSubjectId,
+        bangumiEpisodeId: task.bangumiEpisodeId,
+      );
+    } else if (task.isCompleted && localFile.existsSync()) {
+      media = _buildMediaFromTask(task);
+    }
+
+    if (!mounted) {
+      streamServer?.stop();
+      return;
+    }
+
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute<void>(
+        builder: (BuildContext context) =>
+            VideoPlayerPage(media: media, streamServer: streamServer),
+      ),
+    );
   }
 
   Future<void> _toggleFullscreenLock() async {
@@ -952,6 +994,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
       _coordinator.removeListener(_onStateChanged);
       _coordinator.reset();
     }
+    widget.streamServer?.stop();
     _player.dispose();
     _exitPlayerMode();
     super.dispose();

@@ -1,18 +1,19 @@
 {
-  "version": "2.1.7",
-  "build": 9,
-  "apkUrl": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.1.7/app-release.apk",
+  "version": "2.1.8",
+  "build": 10,
+  "apkUrl": "https://auth.congutsun.com/download/apk/universal",
   "apkUrls": {
-    "android-arm64": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.1.7/app-arm64-v8a-release.apk",
-    "android-arm": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.1.7/app-armeabi-v7a-release.apk",
-    "android-x64": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.1.7/app-x86_64-release.apk",
-    "universal": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.1.7/app-release.apk"
+    "android-arm64": "https://auth.congutsun.com/download/apk/android-arm64",
+    "android-arm": "https://auth.congutsun.com/download/apk/android-arm",
+    "android-x64": "https://auth.congutsun.com/download/apk/android-x64",
+    "universal": "https://auth.congutsun.com/download/apk/universal"
   },
   "notes": [
-    "\u8d44\u6e90\u641c\u7d22\u548c .torrent \u4e0b\u8f7d\u589e\u52a0 AnimeMaster \u7f51\u5173\u515c\u5e95\uff0c\u76f4\u8fde Mikan/DMHY \u8d85\u65f6\u540e\u4f1a\u81ea\u52a8\u91cd\u8bd5\u3002",
-    "\u653e\u5bbd Mikan RSS \u4e0e\u79cd\u5b50\u4e0b\u8f7d\u8d85\u65f6\uff0c\u5e76\u52a0\u5165 mikanani.me / mikanime.tv \u53cc\u57df\u540d\u4e92\u6362\u91cd\u8bd5\u3002",
-    "\u4fee\u590d\u90e8\u5206\u7f51\u7edc\u73af\u5883\u4e0b\u4e0d\u5f00\u4ee3\u7406\u65e0\u6cd5\u6dfb\u52a0\u64ad\u653e\u6216\u4e0b\u8f7d\u8d44\u6e90\u7684\u95ee\u9898\u3002"
+    "\u7f13\u5b58\u4e2d\u5fc3\u589e\u52a0\u4e0b\u8f7d\u548c\u505a\u79cd\u5e76\u53d1\u8c03\u5ea6\uff0c\u964d\u4f4e\u591a\u4efb\u52a1\u5e76\u884c\u65f6\u7684\u5361\u987f\u4e0e\u53d1\u70ed\u3002",
+    "\u8fb9\u4e0b\u8fb9\u64ad\u6539\u4e3a\u64ad\u653e\u4f18\u5148\u5206\u7247\u4e0b\u8f7d\uff0c\u4fee\u590d .torrent \u76f4\u94fe\u64ad\u653e\u5931\u8d25\u548c\u8fdb\u5ea6\u6761\u8df3\u52a8\u95ee\u9898\u3002",
+    "\u4fee\u590d\u7f13\u5b58\u4e2d\u5fc3\u6dfb\u52a0\u6309\u94ae\u906e\u6321\u64ad\u653e/\u6682\u505c/\u5220\u9664\u6309\u94ae\uff0c\u5e76\u4fee\u590d\u9996\u9875\u81ea\u5b9a\u4e49\u80cc\u666f\u5e95\u90e8\u88c1\u5207\u3002",
+    "\u81ea\u52a8\u66f4\u65b0\u6539\u4e3a\u542f\u52a8\u540e\u5728\u6b63\u786e\u9875\u9762\u4e0a\u4e0b\u6587\u5f39\u51fa\uff0cAPK \u4e0b\u8f7d\u6539\u8d70 AnimeMaster \u7f51\u5173\u3002"
   ],
-  "publishedAt": "2026-04-18T17:38:00+08:00",
+  "publishedAt": "2026-04-18T22:35:00+08:00",
   "forceUpdate": false
 }

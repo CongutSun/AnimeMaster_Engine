@@ -21,8 +21,18 @@ class TorrentResolver {
       final double progress =
           DownloadManager().getProgress(mediaInfo.infoHash) * 100;
       onProgress(progress);
+      DownloadManager().prioritizePlaybackRange(
+        mediaInfo.infoHash,
+        mediaInfo.filePath,
+        0,
+        512 * 1024,
+      );
+      final bool startupReady = await DownloadManager().isRangeReadable(
+        mediaInfo.infoHash,
+        mediaInfo.filePath,
+      );
 
-      if (progress >= 3.0 || progress == 100.0) {
+      if (startupReady || progress == 100.0) {
         _streamServer?.stop();
         _streamServer = TorrentStreamServer(
           videoFilePath: mediaInfo.filePath,

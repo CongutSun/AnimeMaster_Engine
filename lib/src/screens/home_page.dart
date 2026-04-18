@@ -290,7 +290,13 @@ class _HomePageState extends State<HomePage> {
         fit: StackFit.expand,
         children: <Widget>[
           if (hasBg)
-            Positioned.fill(child: Image.file(File(bgPath), fit: BoxFit.cover)),
+            Positioned.fill(
+              child: Image.file(
+                File(bgPath),
+                fit: BoxFit.cover,
+                alignment: Alignment.bottomCenter,
+              ),
+            ),
           if (hasBg)
             Positioned.fill(
               child: ColoredBox(
