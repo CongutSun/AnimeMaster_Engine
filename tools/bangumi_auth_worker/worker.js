@@ -3,27 +3,34 @@ const PENDING_TTL_SECONDS = 600;
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 60;
 const BANGUMI_API_USER_AGENT =
   'animemaster-19277/AnimeMaster/1.0.0 (Cloudflare Workers; https://animemaster-bangumi-auth.animemaster-19277.workers.dev)';
+const RESOURCE_PROXY_USER_AGENT =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+const RESOURCE_PROXY_ALLOWED_HOSTS = new Set([
+  'mikanani.me',
+  'mikanime.tv',
+  'share.dmhy.org',
+]);
 const APP_UPDATE_MANIFEST = {
-  version: '2.1.6',
-  build: 8,
+  version: '2.1.7',
+  build: 9,
   apkUrl:
-    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.1.6/app-release.apk',
+    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.1.7/app-release.apk',
   apkUrls: {
     'android-arm64':
-      'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.1.6/app-arm64-v8a-release.apk',
+      'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.1.7/app-arm64-v8a-release.apk',
     'android-arm':
-      'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.1.6/app-armeabi-v7a-release.apk',
+      'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.1.7/app-armeabi-v7a-release.apk',
     'android-x64':
-      'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.1.6/app-x86_64-release.apk',
+      'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.1.7/app-x86_64-release.apk',
     universal:
-      'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.1.6/app-release.apk',
+      'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.1.7/app-release.apk',
   },
   notes: [
-    '优化边下边播本地代理读取策略，减少未缓存片段导致的播放器重试和进度条跳动。',
-    '下载和做种期间启用 Android 前台服务与唤醒锁，降低切到后台后任务停止的概率。',
-    '下载完成后不再自动停止任务，默认进入做种状态，并在缓存中心显示上传速度。',
+    '资源搜索和 .torrent 下载增加 AnimeMaster 网关兜底，直连 Mikan/DMHY 超时后会自动重试。',
+    '放宽 Mikan RSS 与种子下载超时，并加入 mikanani.me / mikanime.tv 双域名互换重试。',
+    '修复部分网络环境下不开代理无法添加播放或下载资源的问题。',
   ],
-  publishedAt: '2026-04-18T13:01:53+08:00',
+  publishedAt: '2026-04-18T17:38:00+08:00',
   forceUpdate: false,
 };
 
@@ -47,6 +54,86 @@ function redirect(location) {
       location,
       'cache-control': 'no-store',
     },
+  });
+}
+
+function proxyResponseHeaders(response, mode) {
+  const headers = new Headers();
+  headers.set(
+    'content-type',
+    response.headers.get('content-type') ||
+      (mode === 'torrent'
+        ? 'application/x-bittorrent'
+        : 'application/rss+xml; charset=utf-8'),
+  );
+  headers.set(
+    'cache-control',
+    mode === 'torrent' ? 'public, max-age=86400' : 'public, max-age=300',
+  );
+  headers.set('access-control-allow-origin', '*');
+  headers.set('access-control-allow-methods', 'GET,OPTIONS');
+  headers.set('access-control-allow-headers', 'content-type');
+  return headers;
+}
+
+function validateProxyTarget(rawTarget, mode) {
+  if (!rawTarget) {
+    throw new Error('Missing proxy target url.');
+  }
+
+  const target = new URL(rawTarget);
+  const host = target.hostname.toLowerCase();
+  if (target.protocol !== 'https:' || !RESOURCE_PROXY_ALLOWED_HOSTS.has(host)) {
+    throw new Error('Proxy target is not allowed.');
+  }
+
+  const pathname = target.pathname.toLowerCase();
+  if (
+    mode === 'rss' &&
+    !(
+      pathname.includes('/rss/') ||
+      pathname.includes('/topics/rss/') ||
+      pathname.endsWith('/rss.xml')
+    )
+  ) {
+    throw new Error('Proxy target is not an RSS endpoint.');
+  }
+
+  if (
+    mode === 'torrent' &&
+    !(pathname.includes('/download/') || pathname.endsWith('.torrent'))
+  ) {
+    throw new Error('Proxy target is not a torrent endpoint.');
+  }
+
+  return target;
+}
+
+async function handleResourceProxy(request, mode) {
+  const url = new URL(request.url);
+  const target = validateProxyTarget(url.searchParams.get('url') || '', mode);
+  const response = await fetch(target.toString(), {
+    headers: {
+      accept:
+        mode === 'torrent'
+          ? 'application/x-bittorrent,application/octet-stream,*/*'
+          : 'application/rss+xml,application/xml,text/xml,*/*',
+      'user-agent': RESOURCE_PROXY_USER_AGENT,
+    },
+  });
+
+  if (!response.ok) {
+    return json(
+      {
+        error: `Resource proxy fetch failed: ${response.status}`,
+      },
+      502,
+    );
+  }
+
+  return new Response(response.body, {
+    status: 200,
+    headers: proxyResponseHeaders(response, mode),
   });
 }
 
@@ -298,6 +385,12 @@ export default {
       }
       if (request.method === 'GET' && url.pathname === '/app_update.json') {
         return json(APP_UPDATE_MANIFEST);
+      }
+      if (request.method === 'GET' && url.pathname === '/proxy/rss') {
+        return await handleResourceProxy(request, 'rss');
+      }
+      if (request.method === 'GET' && url.pathname === '/proxy/torrent') {
+        return await handleResourceProxy(request, 'torrent');
       }
       if (
         request.method === 'GET' &&

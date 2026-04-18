@@ -1,18 +1,18 @@
 {
-  "version": "2.1.6",
-  "build": 8,
-  "apkUrl": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.1.6/app-release.apk",
+  "version": "2.1.7",
+  "build": 9,
+  "apkUrl": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.1.7/app-release.apk",
   "apkUrls": {
-    "android-arm64": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.1.6/app-arm64-v8a-release.apk",
-    "android-arm": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.1.6/app-armeabi-v7a-release.apk",
-    "android-x64": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.1.6/app-x86_64-release.apk",
-    "universal": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.1.6/app-release.apk"
+    "android-arm64": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.1.7/app-arm64-v8a-release.apk",
+    "android-arm": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.1.7/app-armeabi-v7a-release.apk",
+    "android-x64": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.1.7/app-x86_64-release.apk",
+    "universal": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.1.7/app-release.apk"
   },
   "notes": [
-    "优化边下边播本地代理读取策略，减少未缓存片段导致的播放器重试和进度条跳动。",
-    "下载和做种期间启用 Android 前台服务与唤醒锁，降低切到后台后任务停止的概率。",
-    "下载完成后不再自动停止任务，默认进入做种状态，并在缓存中心显示上传速度。"
+    "\u8d44\u6e90\u641c\u7d22\u548c .torrent \u4e0b\u8f7d\u589e\u52a0 AnimeMaster \u7f51\u5173\u515c\u5e95\uff0c\u76f4\u8fde Mikan/DMHY \u8d85\u65f6\u540e\u4f1a\u81ea\u52a8\u91cd\u8bd5\u3002",
+    "\u653e\u5bbd Mikan RSS \u4e0e\u79cd\u5b50\u4e0b\u8f7d\u8d85\u65f6\uff0c\u5e76\u52a0\u5165 mikanani.me / mikanime.tv \u53cc\u57df\u540d\u4e92\u6362\u91cd\u8bd5\u3002",
+    "\u4fee\u590d\u90e8\u5206\u7f51\u7edc\u73af\u5883\u4e0b\u4e0d\u5f00\u4ee3\u7406\u65e0\u6cd5\u6dfb\u52a0\u64ad\u653e\u6216\u4e0b\u8f7d\u8d44\u6e90\u7684\u95ee\u9898\u3002"
   ],
-  "publishedAt": "2026-04-18T13:01:53+08:00",
+  "publishedAt": "2026-04-18T17:38:00+08:00",
   "forceUpdate": false
 }

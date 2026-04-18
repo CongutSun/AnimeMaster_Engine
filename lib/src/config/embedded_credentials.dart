@@ -6,6 +6,7 @@ class EmbeddedCredentials {
   static const String bangumiAuthGatewayUrl = 'https://auth.congutsun.com';
   static const String appUpdateFeedUrl =
       'https://auth.congutsun.com/app_update.json';
+  static const String resourceProxyBaseUrl = 'https://auth.congutsun.com';
 
   static const String dandanplayAppId = '';
   static const String dandanplayAppSecret = '';

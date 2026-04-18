@@ -5,6 +5,7 @@ import 'package:dart_rss/dart_rss.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 
+import '../config/embedded_credentials.dart';
 import 'dio_client.dart';
 
 class MagnetApi {
@@ -17,16 +18,16 @@ class MagnetApi {
     String quality = '',
     String exclude = '',
   }) async {
-    final Iterable<Future<List<Map<String, String>>>> futures =
-        selectedSources.map(
-      (Map<String, String> source) => _fetchFromSource(
-        source: source,
-        keyword: keyword,
-        mustInclude: mustInclude,
-        quality: quality,
-        exclude: exclude,
-      ),
-    );
+    final Iterable<Future<List<Map<String, String>>>> futures = selectedSources
+        .map(
+          (Map<String, String> source) => _fetchFromSource(
+            source: source,
+            keyword: keyword,
+            mustInclude: mustInclude,
+            quality: quality,
+            exclude: exclude,
+          ),
+        );
 
     final List<List<Map<String, String>>> results = await Future.wait(futures);
     final Map<String, Map<String, String>> deduplicated =
@@ -34,12 +35,11 @@ class MagnetApi {
 
     for (final List<Map<String, String>> sourceResults in results) {
       for (final Map<String, String> item in sourceResults) {
-        final String key =
-            item['torrent']?.trim().isNotEmpty == true
-                ? item['torrent']!.trim()
-                : item['magnet']?.trim().isNotEmpty == true
-                ? item['magnet']!.trim()
-                : '${item['source']}|${item['title']}';
+        final String key = item['torrent']?.trim().isNotEmpty == true
+            ? item['torrent']!.trim()
+            : item['magnet']?.trim().isNotEmpty == true
+            ? item['magnet']!.trim()
+            : '${item['source']}|${item['title']}';
         deduplicated[key] = item;
       }
     }
@@ -111,7 +111,9 @@ class MagnetApi {
         }
 
         if (magnet.isEmpty) {
-          final String hashSource = torrentUrl.isNotEmpty ? torrentUrl : linkUrl;
+          final String hashSource = torrentUrl.isNotEmpty
+              ? torrentUrl
+              : linkUrl;
           final Match? hashMatch = RegExp(
             r'([a-zA-Z0-9]{32,40})\.torrent',
             caseSensitive: false,
@@ -137,7 +139,9 @@ class MagnetApi {
 
       return results;
     } catch (error) {
-      debugPrint('[MagnetApi] Fetch failed for source ${source['name']}: $error');
+      debugPrint(
+        '[MagnetApi] Fetch failed for source ${source['name']}: $error',
+      );
       return <Map<String, String>>[];
     }
   }
@@ -148,6 +152,7 @@ class MagnetApi {
     final List<String> candidates = <String>[requestUrl];
 
     if (host.contains('share.dmhy.org')) {
+      candidates.add(_proxyUrl('rss', requestUrl));
       candidates.add(
         'https://api.codetabs.com/v1/proxy?quest=${Uri.encodeComponent(requestUrl)}',
       );
@@ -155,7 +160,24 @@ class MagnetApi {
         'https://api.allorigins.win/raw?url=${Uri.encodeComponent(requestUrl)}',
       );
     } else if (host.contains('mikanani.me')) {
-      candidates.add(requestUrl.replaceAll('mikanani.me', 'mikanime.tv'));
+      final String mirrorUrl = requestUrl.replaceAll(
+        'mikanani.me',
+        'mikanime.tv',
+      );
+      candidates.add(mirrorUrl);
+      candidates.add(_proxyUrl('rss', requestUrl));
+      candidates.add(_proxyUrl('rss', mirrorUrl));
+      candidates.add(
+        'https://api.allorigins.win/raw?url=${Uri.encodeComponent(requestUrl)}',
+      );
+    } else if (host.contains('mikanime.tv')) {
+      final String mirrorUrl = requestUrl.replaceAll(
+        'mikanime.tv',
+        'mikanani.me',
+      );
+      candidates.add(mirrorUrl);
+      candidates.add(_proxyUrl('rss', requestUrl));
+      candidates.add(_proxyUrl('rss', mirrorUrl));
       candidates.add(
         'https://api.allorigins.win/raw?url=${Uri.encodeComponent(requestUrl)}',
       );
@@ -164,7 +186,9 @@ class MagnetApi {
     return candidates.toSet().toList();
   }
 
-  static Future<Uint8List?> _requestFeedBytes(List<String> candidateUrls) async {
+  static Future<Uint8List?> _requestFeedBytes(
+    List<String> candidateUrls,
+  ) async {
     if (candidateUrls.isEmpty) {
       return null;
     }
@@ -173,7 +197,7 @@ class MagnetApi {
     int pending = candidateUrls.length;
     bool resolved = false;
 
-    final Timer globalTimeout = Timer(const Duration(seconds: 8), () {
+    final Timer globalTimeout = Timer(const Duration(seconds: 20), () {
       if (!resolved) {
         resolved = true;
         completer.complete(null);
@@ -207,8 +231,8 @@ class MagnetApi {
         url,
         options: Options(
           responseType: ResponseType.bytes,
-          receiveTimeout: const Duration(seconds: 6),
-          sendTimeout: const Duration(seconds: 6),
+          receiveTimeout: const Duration(seconds: 15),
+          sendTimeout: const Duration(seconds: 10),
         ),
       );
 
@@ -233,6 +257,14 @@ class MagnetApi {
 
   static bool _isMagnetLink(String value) {
     return value.toLowerCase().startsWith('magnet:');
+  }
+
+  static String _proxyUrl(String mode, String targetUrl) {
+    final String baseUrl = EmbeddedCredentials.resourceProxyBaseUrl.trim();
+    if (baseUrl.isEmpty) {
+      return targetUrl;
+    }
+    return '${baseUrl.replaceFirst(RegExp(r'/$'), '')}/proxy/$mode?url=${Uri.encodeComponent(targetUrl)}';
   }
 
   static bool _looksLikeTorrentUrl(String value) {

@@ -5,6 +5,7 @@ import 'package:dtorrent_parser/dtorrent_parser.dart';
 import 'package:flutter/foundation.dart';
 
 import '../api/dio_client.dart';
+import '../config/embedded_credentials.dart';
 import '../managers/download_manager.dart';
 import '../models/download_task_info.dart';
 import '../utils/app_storage_paths.dart';
@@ -235,11 +236,34 @@ class TorrentMediaResolver {
   }
 
   Future<Uint8List> _fetchTorrentFromUrl(String url) async {
+    final List<String> candidateUrls = _buildCandidateTorrentUrls(url);
+    Object? lastError;
+
+    for (final String candidateUrl in candidateUrls) {
+      try {
+        return await _fetchTorrentCandidate(candidateUrl);
+      } catch (error) {
+        lastError = error;
+        debugPrint(
+          '[TorrentMediaResolver] Torrent candidate failed: $candidateUrl $error',
+        );
+      }
+    }
+
+    if (lastError is Exception) {
+      throw lastError;
+    }
+    throw Exception('HTTP torrent download failed.');
+  }
+
+  Future<Uint8List> _fetchTorrentCandidate(String url) async {
     try {
       final Response<dynamic> response = await DioClient().dio.get<dynamic>(
         url,
         options: Options(
           responseType: ResponseType.bytes,
+          receiveTimeout: const Duration(seconds: 30),
+          sendTimeout: const Duration(seconds: 15),
           headers: const <String, String>{
             'Accept': 'application/x-bittorrent,application/octet-stream,*/*',
           },
@@ -272,6 +296,36 @@ class TorrentMediaResolver {
       }
       throw Exception('HTTP 种子下载失败：${error.message ?? '未知错误'}');
     }
+  }
+
+  List<String> _buildCandidateTorrentUrls(String url) {
+    final Uri? uri = Uri.tryParse(url);
+    final String host = uri?.host.toLowerCase() ?? '';
+    final List<String> candidates = <String>[url];
+
+    if (host.contains('mikanani.me')) {
+      final String mirrorUrl = url.replaceAll('mikanani.me', 'mikanime.tv');
+      candidates.add(mirrorUrl);
+      candidates.add(_proxyUrl('torrent', url));
+      candidates.add(_proxyUrl('torrent', mirrorUrl));
+    } else if (host.contains('mikanime.tv')) {
+      final String mirrorUrl = url.replaceAll('mikanime.tv', 'mikanani.me');
+      candidates.add(mirrorUrl);
+      candidates.add(_proxyUrl('torrent', url));
+      candidates.add(_proxyUrl('torrent', mirrorUrl));
+    } else if (host.contains('share.dmhy.org')) {
+      candidates.add(_proxyUrl('torrent', url));
+    }
+
+    return candidates.toSet().toList();
+  }
+
+  String _proxyUrl(String mode, String targetUrl) {
+    final String baseUrl = EmbeddedCredentials.resourceProxyBaseUrl.trim();
+    if (baseUrl.isEmpty) {
+      return targetUrl;
+    }
+    return '${baseUrl.replaceFirst(RegExp(r'/$'), '')}/proxy/$mode?url=${Uri.encodeComponent(targetUrl)}';
   }
 
   List<TorrentFile> _collectPlayableFiles(Torrent torrent) {

@@ -148,6 +148,15 @@ class _AboutPageState extends State<AboutPage> {
                   ),
                   SizedBox(height: 12),
                   _LogEntry(
+                    version: '2.1.7',
+                    items: <String>[
+                      '资源搜索和 .torrent 下载增加 AnimeMaster 网关兜底，直连 Mikan/DMHY 超时后会自动重试。',
+                      '放宽 Mikan RSS 与种子下载超时，并加入 mikanani.me / mikanime.tv 双域名互换重试。',
+                      '修复部分网络环境下不开代理无法添加播放或下载资源的问题。',
+                    ],
+                  ),
+                  SizedBox(height: 14),
+                  _LogEntry(
                     version: '2.1.6',
                     items: <String>[
                       '优化边下边播本地代理读取策略，减少未缓存片段导致的播放器重试和进度条跳动。',
