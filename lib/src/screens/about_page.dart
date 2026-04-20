@@ -148,6 +148,14 @@ class _AboutPageState extends State<AboutPage> {
                   ),
                   SizedBox(height: 12),
                   _LogEntry(
+                    version: '2.1.9',
+                    items: <String>[
+                      '修复缓存中心手动添加任务弹窗被输入法重复挤压，导致资源链接无法正常输入的问题。',
+                      '资源链接输入框增加键盘滚动留白，保持输入区和底部操作按钮可用。',
+                    ],
+                  ),
+                  SizedBox(height: 14),
+                  _LogEntry(
                     version: '2.1.8',
                     items: <String>[
                       '缓存中心增加下载和做种并发调度，降低多个任务同时下载或做种时的卡顿与发热。',
