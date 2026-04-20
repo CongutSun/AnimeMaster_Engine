@@ -148,6 +148,16 @@ class _AboutPageState extends State<AboutPage> {
                   ),
                   SizedBox(height: 12),
                   _LogEntry(
+                    version: '2.1.10',
+                    items: <String>[
+                      '下载调度改为单主任务优先，减少多个任务同时下载造成的卡顿、发热和磁盘争用。',
+                      '增加活跃 Peer 上限和低质量连接清理，降低下载与做种时的后台负载。',
+                      '下载末段自动增强 DHT 与 Tracker 补偿，缓解最后 10% 因稀缺分片导致的速度骤降。',
+                      '优化下载速度统计和缓存中心刷新节流，减少无意义的全页面重建。',
+                    ],
+                  ),
+                  SizedBox(height: 14),
+                  _LogEntry(
                     version: '2.1.9',
                     items: <String>[
                       '修复缓存中心手动添加任务弹窗被输入法重复挤压，导致资源链接无法正常输入的问题。',

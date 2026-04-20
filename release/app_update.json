@@ -1,6 +1,6 @@
 {
-  "version": "2.1.9",
-  "build": 11,
+  "version": "2.1.10",
+  "build": 12,
   "apkUrl": "https://auth.congutsun.com/download/apk/universal",
   "apkUrls": {
     "android-arm64": "https://auth.congutsun.com/download/apk/android-arm64",
@@ -9,9 +9,11 @@
     "universal": "https://auth.congutsun.com/download/apk/universal"
   },
   "notes": [
-    "\u4fee\u590d\u7f13\u5b58\u4e2d\u5fc3\u624b\u52a8\u6dfb\u52a0\u4efb\u52a1\u5f39\u7a97\u88ab\u8f93\u5165\u6cd5\u91cd\u590d\u6324\u538b\uff0c\u5bfc\u81f4\u8d44\u6e90\u94fe\u63a5\u65e0\u6cd5\u6b63\u5e38\u8f93\u5165\u7684\u95ee\u9898\u3002",
-    "\u8d44\u6e90\u94fe\u63a5\u8f93\u5165\u6846\u589e\u52a0\u952e\u76d8\u6eda\u52a8\u7559\u767d\uff0c\u4fdd\u6301\u8f93\u5165\u533a\u548c\u5e95\u90e8\u64cd\u4f5c\u6309\u94ae\u53ef\u7528\u3002"
+    "下载调度改为单主任务优先，减少多个任务同时下载造成的卡顿、发热和磁盘争用。",
+    "增加活跃 Peer 上限和低质量连接清理，降低下载与做种时的后台负载。",
+    "下载末段自动增强 DHT 与 Tracker 补偿，缓解最后 10% 因稀缺分片导致的速度骤降。",
+    "优化下载速度统计和缓存中心刷新节流，减少无意义的全页面重建。"
   ],
-  "publishedAt": "2026-04-20T14:30:30+08:00",
+  "publishedAt": "2026-04-20T16:23:50+08:00",
   "forceUpdate": false
 }

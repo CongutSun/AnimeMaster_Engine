@@ -11,8 +11,8 @@ const RESOURCE_PROXY_ALLOWED_HOSTS = new Set([
   'share.dmhy.org',
 ]);
 const APP_UPDATE_MANIFEST = {
-  version: '2.1.9',
-  build: 11,
+  version: '2.1.10',
+  build: 12,
   apkUrl: 'https://auth.congutsun.com/download/apk/universal',
   apkUrls: {
     'android-arm64': 'https://auth.congutsun.com/download/apk/android-arm64',
@@ -21,21 +21,23 @@ const APP_UPDATE_MANIFEST = {
     universal: 'https://auth.congutsun.com/download/apk/universal',
   },
   notes: [
-    '修复缓存中心手动添加任务弹窗被输入法重复挤压，导致资源链接无法正常输入的问题。',
-    '资源链接输入框增加键盘滚动留白，保持输入区和底部操作按钮可用。',
+    '下载调度改为单主任务优先，减少多个任务同时下载造成的卡顿、发热和磁盘争用。',
+    '增加活跃 Peer 上限和低质量连接清理，降低下载与做种时的后台负载。',
+    '下载末段自动增强 DHT 与 Tracker 补偿，缓解最后 10% 因稀缺分片导致的速度骤降。',
+    '优化下载速度统计和缓存中心刷新节流，减少无意义的全页面重建。',
   ],
-  publishedAt: '2026-04-20T14:30:30+08:00',
+  publishedAt: '2026-04-20T16:23:50+08:00',
   forceUpdate: false,
 };
 const APK_DOWNLOAD_URLS = {
   'android-arm64':
-    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.1.9/app-arm64-v8a-release.apk',
+    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.1.10/app-arm64-v8a-release.apk',
   'android-arm':
-    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.1.9/app-armeabi-v7a-release.apk',
+    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.1.10/app-armeabi-v7a-release.apk',
   'android-x64':
-    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.1.9/app-x86_64-release.apk',
+    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.1.10/app-x86_64-release.apk',
   universal:
-    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.1.9/app-release.apk',
+    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.1.10/app-release.apk',
 };
 
 function json(body, status = 200) {
