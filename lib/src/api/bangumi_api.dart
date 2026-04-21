@@ -77,37 +77,134 @@ class BangumiApi {
     dom.Document document,
   ) {
     final List<Map<String, String>> comments = <Map<String, String>>[];
-    final Iterable<dom.Element> items = document.querySelectorAll(
-      '#comment_list .row_reply, #comment_list .item, .topic_sub_reply, .reply',
-    );
 
-    for (final dom.Element item in items) {
-      final String author =
-          item.querySelector('.inner strong a')?.text.trim() ??
-          item.querySelector('.text a')?.text.trim() ??
-          item.querySelector('.userInfo strong a')?.text.trim() ??
-          item.querySelector('a.l')?.text.trim() ??
-          '网络用户';
-      final String time =
-          item.querySelector('small')?.text.trim() ??
-          item.querySelector('.tip_j')?.text.trim() ??
-          '';
-      final String content =
-          item.querySelector('.reply_content')?.text.trim() ??
-          item.querySelector('.message')?.text.trim() ??
-          item.querySelector('p')?.text.trim() ??
-          '';
+    final List<dom.Element> items = document
+        .querySelectorAll('#comment_list > .row_reply, #comment_list > .item')
+        .toList();
 
-      if (content.isNotEmpty) {
-        comments.add(<String, String>{
-          'author': author,
-          'time': time,
-          'content': content,
-        });
+    final Iterable<dom.Element> roots = items.isNotEmpty
+        ? items
+        : document.querySelectorAll('#comment_list .row_reply');
+
+    for (final dom.Element item in roots) {
+      final Map<String, String>? comment = _parseEpisodeCommentElement(item);
+      if (comment != null) {
+        comments.add(comment);
+      }
+
+      for (final dom.Element reply in item.querySelectorAll(
+        '.topic_sub_reply .sub_reply_bg, .topic_sub_reply .row_reply, .topic_sub_reply .item',
+      )) {
+        final Map<String, String>? subReply = _parseEpisodeCommentElement(
+          reply,
+          isReply: true,
+        );
+        if (subReply != null) {
+          comments.add(subReply);
+        }
       }
     }
 
-    return comments;
+    return _dedupeEpisodeComments(comments);
+  }
+
+  static Map<String, String>? _parseEpisodeCommentElement(
+    dom.Element item, {
+    bool isReply = false,
+  }) {
+    final String author = _firstText(item, <String>[
+      '.inner strong a',
+      '.text a',
+      '.userInfo strong a',
+      'a.l',
+      'a',
+    ]);
+    final String time = _firstText(item, <String>[
+      'small.grey',
+      'small',
+      '.tip_j',
+      '.date',
+    ]);
+    final String content = _episodeCommentContent(item, isReply: isReply);
+
+    if (content.isEmpty) {
+      return null;
+    }
+
+    return <String, String>{
+      'author': author.isEmpty ? '网络用户' : author,
+      'time': time,
+      'content': content,
+      'type': isReply ? 'reply' : 'comment',
+    };
+  }
+
+  static String _episodeCommentContent(
+    dom.Element item, {
+    required bool isReply,
+  }) {
+    final Iterable<String> selectors = isReply
+        ? <String>['.cmt_sub_content', '.reply_content', '.message', 'p']
+        : <String>['.reply_content', '.message', '.inner > p', 'p'];
+
+    for (final String selector in selectors) {
+      final dom.Element? contentElement = item.querySelector(selector);
+      if (contentElement == null) {
+        continue;
+      }
+      final String text = _textWithoutNestedReplies(contentElement);
+      if (text.isNotEmpty) {
+        return text;
+      }
+    }
+
+    return _textWithoutNestedReplies(item);
+  }
+
+  static String _firstText(dom.Element item, Iterable<String> selectors) {
+    for (final String selector in selectors) {
+      final String text = _compactText(
+        item.querySelector(selector)?.text ?? '',
+      );
+      if (text.isNotEmpty) {
+        return text;
+      }
+    }
+    return '';
+  }
+
+  static String _textWithoutNestedReplies(dom.Element element) {
+    final dom.Document document = parser.parse(element.outerHtml);
+    for (final dom.Element nested in document.querySelectorAll(
+      '.topic_sub_reply, .sub_reply',
+    )) {
+      nested.remove();
+    }
+    return _compactText(
+      document.body?.text ?? document.documentElement?.text ?? '',
+    );
+  }
+
+  static String _compactText(String value) {
+    return value
+        .replaceAll('\u00a0', ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+  }
+
+  static List<Map<String, String>> _dedupeEpisodeComments(
+    List<Map<String, String>> comments,
+  ) {
+    final Set<String> seen = <String>{};
+    final List<Map<String, String>> result = <Map<String, String>>[];
+    for (final Map<String, String> comment in comments) {
+      final String key =
+          '${comment['type']}|${comment['author']}|${comment['time']}|${comment['content']}';
+      if (seen.add(key)) {
+        result.add(comment);
+      }
+    }
+    return result;
   }
 
   // 统一的 HTML 列表解析器，消除冗余代码

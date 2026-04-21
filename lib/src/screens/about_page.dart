@@ -148,6 +148,14 @@ class _AboutPageState extends State<AboutPage> {
                   ),
                   SizedBox(height: 12),
                   _LogEntry(
+                    version: '2.1.12',
+                    items: <String>[
+                      '修复 Bangumi 本集讨论解析错乱，避免楼中楼回复被拆成错误评论。',
+                      '优化本集讨论展示样式，作者、时间和正文改为自适应卡片布局，减少大空白和文字错位。',
+                    ],
+                  ),
+                  SizedBox(height: 14),
+                  _LogEntry(
                     version: '2.1.11',
                     items: <String>[
                       '修复启动后自动检查更新不弹窗的问题，应用打开后会按设置自动提示可用新版本。',

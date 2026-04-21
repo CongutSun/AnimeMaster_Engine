@@ -11,8 +11,8 @@ const RESOURCE_PROXY_ALLOWED_HOSTS = new Set([
   'share.dmhy.org',
 ]);
 const APP_UPDATE_MANIFEST = {
-  version: '2.1.11',
-  build: 13,
+  version: '2.1.12',
+  build: 14,
   apkUrl: 'https://auth.congutsun.com/download/apk/universal',
   apkUrls: {
     'android-arm64': 'https://auth.congutsun.com/download/apk/android-arm64',
@@ -21,25 +21,21 @@ const APP_UPDATE_MANIFEST = {
     universal: 'https://auth.congutsun.com/download/apk/universal',
   },
   notes: [
-    '修复启动后自动检查更新不弹窗的问题，应用打开后会按设置自动提示可用新版本。',
-    '播放器新增播放进度记忆，退出后再次进入同一文件会从上次进度继续播放。',
-    '弹幕样式新增字号、透明度、速度、显示区域、描边和底色调整。',
-    '番剧详情新增剧集列表、单集讨论查看，并支持点击剧集直接同步观看进度。',
-    '番剧吐槽改为进入吐槽页签后懒加载，降低详情页首屏请求压力。',
-    '缓存中心和播放页增强 Bangumi 剧集识别，尽量显示具体集数和集名。',
+    '修复 Bangumi 本集讨论解析错乱，避免楼中楼回复被拆成错误评论。',
+    '优化本集讨论展示样式，作者、时间和正文改为自适应卡片布局，减少大空白和文字错位。',
   ],
-  publishedAt: '2026-04-21T11:00:00+08:00',
+  publishedAt: '2026-04-21T23:12:19+08:00',
   forceUpdate: false,
 };
 const APK_DOWNLOAD_URLS = {
   'android-arm64':
-    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.1.11/app-arm64-v8a-release.apk',
+    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.1.12/app-arm64-v8a-release.apk',
   'android-arm':
-    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.1.11/app-armeabi-v7a-release.apk',
+    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.1.12/app-armeabi-v7a-release.apk',
   'android-x64':
-    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.1.11/app-x86_64-release.apk',
+    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.1.12/app-x86_64-release.apk',
   universal:
-    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.1.11/app-release.apk',
+    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.1.12/app-release.apk',
 };
 
 function json(body, status = 200) {

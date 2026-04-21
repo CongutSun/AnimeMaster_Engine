@@ -1097,43 +1097,7 @@ class _DetailPageState extends State<DetailPage>
                         ),
                       );
                     }
-                    return Column(
-                      children: comments.map((Map<String, String> comment) {
-                        return Padding(
-                          padding: const EdgeInsets.only(bottom: 14),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: <Widget>[
-                              Row(
-                                children: <Widget>[
-                                  Expanded(
-                                    child: Text(
-                                      comment['author'] ?? '网络用户',
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.w700,
-                                      ),
-                                    ),
-                                  ),
-                                  if ((comment['time'] ?? '').isNotEmpty)
-                                    Text(
-                                      comment['time']!,
-                                      style: const TextStyle(
-                                        color: Colors.grey,
-                                        fontSize: 12,
-                                      ),
-                                    ),
-                                ],
-                              ),
-                              const SizedBox(height: 6),
-                              Text(
-                                comment['content'] ?? '',
-                                style: const TextStyle(height: 1.45),
-                              ),
-                            ],
-                          ),
-                        );
-                      }).toList(),
-                    );
+                    return _buildEpisodeComments(comments);
                   },
                 ),
               ],
@@ -1141,6 +1105,75 @@ class _DetailPageState extends State<DetailPage>
           },
         );
       },
+    );
+  }
+
+  Widget _buildEpisodeComments(List<Map<String, String>> comments) {
+    return Column(
+      children: comments
+          .map(
+            (Map<String, String> comment) => _buildEpisodeCommentCard(comment),
+          )
+          .toList(),
+    );
+  }
+
+  Widget _buildEpisodeCommentCard(Map<String, String> comment) {
+    final bool isReply = comment['type'] == 'reply';
+    final ColorScheme colors = Theme.of(context).colorScheme;
+    final String author = (comment['author'] ?? '').trim().isEmpty
+        ? '网络用户'
+        : comment['author']!.trim();
+    final String time = (comment['time'] ?? '').trim();
+    final String content = (comment['content'] ?? '').trim();
+
+    return Container(
+      width: double.infinity,
+      margin: EdgeInsets.only(left: isReply ? 18 : 0, bottom: 10),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: colors.surfaceContainerHighest.withValues(
+          alpha: isReply ? 0.34 : 0.22,
+        ),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: colors.outlineVariant.withValues(alpha: 0.35),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Wrap(
+            spacing: 8,
+            runSpacing: 4,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: <Widget>[
+              Text(
+                isReply ? '回复 · $author' : author,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontWeight: FontWeight.w700),
+              ),
+              if (time.isNotEmpty)
+                Text(
+                  time,
+                  style: TextStyle(
+                    color: colors.onSurfaceVariant,
+                    fontSize: 12,
+                    height: 1.2,
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            content,
+            softWrap: true,
+            textAlign: TextAlign.start,
+            style: const TextStyle(height: 1.45),
+          ),
+        ],
+      ),
     );
   }
 
