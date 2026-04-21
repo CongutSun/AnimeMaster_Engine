@@ -2,10 +2,12 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 
+import '../api/bangumi_api.dart';
 import '../managers/download_manager.dart';
 import '../models/download_task_info.dart';
 import '../models/playable_media.dart';
 import '../utils/magnet_action_helper.dart';
+import '../utils/task_title_parser.dart';
 import '../utils/torrent_stream_server.dart';
 import 'video_player_page.dart';
 
@@ -85,16 +87,34 @@ class DownloadCenterPage extends StatelessWidget {
                                           height: 1.35,
                                         ),
                                       ),
-                                      if (config
-                                          .displaySubtitle
-                                          .isNotEmpty) ...<Widget>[
+                                      if (config.displaySubtitle.isNotEmpty ||
+                                          config.bangumiSubjectId >
+                                              0) ...<Widget>[
                                         const SizedBox(height: 6),
-                                        Text(
-                                          config.displaySubtitle,
-                                          style: TextStyle(
-                                            fontSize: 12,
-                                            color: Colors.grey.shade700,
+                                        FutureBuilder<DownloadTaskInfo>(
+                                          future: _enrichTaskEpisodeLabel(
+                                            config,
                                           ),
+                                          builder:
+                                              (
+                                                BuildContext context,
+                                                AsyncSnapshot<DownloadTaskInfo>
+                                                snapshot,
+                                              ) {
+                                                final DownloadTaskInfo task =
+                                                    snapshot.data ?? config;
+                                                return Text(
+                                                  task
+                                                          .displaySubtitle
+                                                          .isNotEmpty
+                                                      ? task.displaySubtitle
+                                                      : '正在匹配剧集信息...',
+                                                  style: TextStyle(
+                                                    fontSize: 12,
+                                                    color: Colors.grey.shade700,
+                                                  ),
+                                                );
+                                              },
                                         ),
                                       ],
                                       const SizedBox(height: 6),
@@ -236,6 +256,86 @@ class DownloadCenterPage extends StatelessWidget {
     return '${speedInKb.toStringAsFixed(1)} KB/s';
   }
 
+  Future<DownloadTaskInfo> _enrichTaskEpisodeLabel(
+    DownloadTaskInfo config,
+  ) async {
+    if (config.bangumiSubjectId <= 0 ||
+        config.episodeLabel.contains('·') ||
+        config.episodeLabel.contains('集 ·')) {
+      return config;
+    }
+
+    final List<Map<String, dynamic>> episodes =
+        await BangumiApi.getSubjectEpisodes(config.bangumiSubjectId);
+    if (episodes.isEmpty) {
+      return config;
+    }
+
+    Map<String, dynamic>? match;
+    if (config.bangumiEpisodeId > 0) {
+      match = episodes.firstWhere(
+        (Map<String, dynamic> episode) =>
+            int.tryParse(episode['id']?.toString() ?? '') ==
+            config.bangumiEpisodeId,
+        orElse: () => <String, dynamic>{},
+      );
+      if (match.isEmpty) {
+        match = null;
+      }
+    }
+
+    final int? episodeNumber = TaskTitleParser.extractEpisodeNumber(
+      '${config.episodeLabel} ${config.title}',
+    );
+    if (match == null && episodeNumber != null) {
+      match = episodes.firstWhere(
+        (Map<String, dynamic> episode) =>
+            _numberValue(episode['ep']) == episodeNumber ||
+            _numberValue(episode['sort']) == episodeNumber,
+        orElse: () => <String, dynamic>{},
+      );
+      if (match.isEmpty) {
+        match = null;
+      }
+    }
+
+    if (match == null) {
+      return config;
+    }
+
+    final int number =
+        _numberValue(match['ep']) ?? _numberValue(match['sort']) ?? 0;
+    final String episodeTitle =
+        (match['name_cn']?.toString().trim().isNotEmpty == true
+                ? match['name_cn']
+                : match['name'])
+            ?.toString()
+            .trim() ??
+        '';
+    final String episodeLabel = TaskTitleParser.buildEpisodeDisplayLabel(
+      episodeNumber: number,
+      episodeTitle: episodeTitle,
+    );
+    if (episodeLabel.isEmpty) {
+      return config;
+    }
+
+    return config.copyWith(
+      episodeLabel: episodeLabel,
+      bangumiEpisodeId: int.tryParse(match['id']?.toString() ?? ''),
+    );
+  }
+
+  int? _numberValue(dynamic value) {
+    if (value is int) {
+      return value;
+    }
+    if (value is num) {
+      return value.round();
+    }
+    return int.tryParse(value?.toString() ?? '');
+  }
+
   void _showAddMagnetDialog(BuildContext context) {
     final TextEditingController titleController = TextEditingController();
     final TextEditingController sourceController = TextEditingController();
@@ -350,53 +450,55 @@ class DownloadCenterPage extends StatelessWidget {
   }
 
   Future<void> _playVideo(BuildContext context, DownloadTaskInfo config) async {
-    await DownloadManager().prepareForPlayback(config.hash);
-    final File localFile = File(config.targetPath);
-    final bool canUseLocalFile = config.isCompleted && localFile.existsSync();
+    final DownloadTaskInfo playConfig = await _enrichTaskEpisodeLabel(config);
+    await DownloadManager().prepareForPlayback(playConfig.hash);
+    final File localFile = File(playConfig.targetPath);
+    final bool canUseLocalFile =
+        playConfig.isCompleted && localFile.existsSync();
     TorrentStreamServer? streamServer;
     final PlayableMedia media;
     if (canUseLocalFile) {
       media = PlayableMedia(
-        title: config.displayTitle,
-        url: config.targetPath,
+        title: playConfig.displayTitle,
+        url: playConfig.targetPath,
         isLocal: true,
-        localFilePath: config.targetPath,
-        subjectTitle: config.subjectTitle,
-        episodeLabel: config.episodeLabel,
-        bangumiSubjectId: config.bangumiSubjectId,
-        bangumiEpisodeId: config.bangumiEpisodeId,
+        localFilePath: playConfig.targetPath,
+        subjectTitle: playConfig.subjectTitle,
+        episodeLabel: playConfig.episodeLabel,
+        bangumiSubjectId: playConfig.bangumiSubjectId,
+        bangumiEpisodeId: playConfig.bangumiEpisodeId,
       );
-    } else if (config.targetSize > 0) {
+    } else if (playConfig.targetSize > 0) {
       DownloadManager().prioritizePlaybackRange(
-        config.hash,
-        config.targetPath,
+        playConfig.hash,
+        playConfig.targetPath,
         0,
         512 * 1024,
       );
       streamServer = TorrentStreamServer(
-        videoFilePath: config.targetPath,
-        videoSize: config.targetSize,
-        infoHash: config.hash,
+        videoFilePath: playConfig.targetPath,
+        videoSize: playConfig.targetSize,
+        infoHash: playConfig.hash,
       );
       final String streamUrl = await streamServer.start();
       media = PlayableMedia(
-        title: config.displayTitle,
+        title: playConfig.displayTitle,
         url: streamUrl,
-        localFilePath: config.targetPath,
-        subjectTitle: config.subjectTitle,
-        episodeLabel: config.episodeLabel,
-        bangumiSubjectId: config.bangumiSubjectId,
-        bangumiEpisodeId: config.bangumiEpisodeId,
+        localFilePath: playConfig.targetPath,
+        subjectTitle: playConfig.subjectTitle,
+        episodeLabel: playConfig.episodeLabel,
+        bangumiSubjectId: playConfig.bangumiSubjectId,
+        bangumiEpisodeId: playConfig.bangumiEpisodeId,
       );
     } else {
       media = PlayableMedia(
-        title: config.displayTitle,
-        url: config.url,
-        localFilePath: config.targetPath,
-        subjectTitle: config.subjectTitle,
-        episodeLabel: config.episodeLabel,
-        bangumiSubjectId: config.bangumiSubjectId,
-        bangumiEpisodeId: config.bangumiEpisodeId,
+        title: playConfig.displayTitle,
+        url: playConfig.url,
+        localFilePath: playConfig.targetPath,
+        subjectTitle: playConfig.subjectTitle,
+        episodeLabel: playConfig.episodeLabel,
+        bangumiSubjectId: playConfig.bangumiSubjectId,
+        bangumiEpisodeId: playConfig.bangumiEpisodeId,
       );
     }
 

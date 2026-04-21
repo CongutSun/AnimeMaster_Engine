@@ -4,6 +4,7 @@ import 'package:dio/dio.dart';
 import 'package:dtorrent_parser/dtorrent_parser.dart';
 import 'package:flutter/foundation.dart';
 
+import '../api/bangumi_api.dart';
 import '../api/dio_client.dart';
 import '../config/embedded_credentials.dart';
 import '../managers/download_manager.dart';
@@ -51,6 +52,13 @@ class PreparedTorrentTask {
     required this.mediaItems,
     required this.initialIndex,
   });
+}
+
+class _ResolvedBangumiEpisode {
+  final String label;
+  final int episodeId;
+
+  const _ResolvedBangumiEpisode({this.label = '', this.episodeId = 0});
 }
 
 class TorrentMediaResolver {
@@ -101,9 +109,22 @@ class TorrentMediaResolver {
         ? preferredTitle.trim()
         : (torrent.name.isNotEmpty ? torrent.name : '下载任务_$infoHash');
     final String resolvedSubjectTitle = subjectTitle.trim();
-    final String resolvedEpisodeLabel = episodeLabel.trim().isNotEmpty
+    final String inferredEpisodeLabel = episodeLabel.trim().isNotEmpty
         ? episodeLabel.trim()
         : TaskTitleParser.extractEpisodeLabel(effectiveTitle);
+    final _ResolvedBangumiEpisode resolvedEpisode =
+        await _resolveBangumiEpisodeMetadata(
+          subjectId: bangumiSubjectId,
+          explicitEpisodeId: bangumiEpisodeId,
+          episodeHint: inferredEpisodeLabel,
+          displayTitle: effectiveTitle,
+        );
+    final String resolvedEpisodeLabel = resolvedEpisode.label.isNotEmpty
+        ? resolvedEpisode.label
+        : inferredEpisodeLabel;
+    final int resolvedBangumiEpisodeId = resolvedEpisode.episodeId > 0
+        ? resolvedEpisode.episodeId
+        : bangumiEpisodeId;
     final String canonicalSource =
         normalizedSource.toLowerCase().startsWith('http')
         ? MagnetOptimizer.optimize(infoHash)
@@ -145,7 +166,7 @@ class TorrentMediaResolver {
       subjectTitle: resolvedSubjectTitle,
       episodeLabel: resolvedEpisodeLabel,
       bangumiSubjectId: bangumiSubjectId,
-      bangumiEpisodeId: bangumiEpisodeId,
+      bangumiEpisodeId: resolvedBangumiEpisodeId,
     );
 
     return PreparedTorrentTask(
@@ -389,6 +410,86 @@ class TorrentMediaResolver {
       return cleanedName.trim();
     }
     return fallbackTitle;
+  }
+
+  Future<_ResolvedBangumiEpisode> _resolveBangumiEpisodeMetadata({
+    required int subjectId,
+    required int explicitEpisodeId,
+    required String episodeHint,
+    required String displayTitle,
+  }) async {
+    if (subjectId <= 0) {
+      return const _ResolvedBangumiEpisode();
+    }
+
+    try {
+      final List<Map<String, dynamic>> episodes =
+          await BangumiApi.getSubjectEpisodes(subjectId);
+      if (episodes.isEmpty) {
+        return const _ResolvedBangumiEpisode();
+      }
+
+      Map<String, dynamic>? match;
+      if (explicitEpisodeId > 0) {
+        match = episodes.firstWhere(
+          (Map<String, dynamic> item) =>
+              int.tryParse(item['id']?.toString() ?? '') == explicitEpisodeId,
+          orElse: () => <String, dynamic>{},
+        );
+        if (match.isEmpty) {
+          match = null;
+        }
+      }
+
+      final int? episodeNumber = TaskTitleParser.extractEpisodeNumber(
+        '$episodeHint $displayTitle',
+      );
+      if (match == null && episodeNumber != null) {
+        match = episodes.firstWhere(
+          (Map<String, dynamic> item) =>
+              _numberValue(item['ep']) == episodeNumber ||
+              _numberValue(item['sort']) == episodeNumber,
+          orElse: () => <String, dynamic>{},
+        );
+        if (match.isEmpty) {
+          match = null;
+        }
+      }
+
+      if (match == null) {
+        return const _ResolvedBangumiEpisode();
+      }
+
+      final int number =
+          _numberValue(match['ep']) ?? _numberValue(match['sort']) ?? 0;
+      final String episodeTitle =
+          (match['name_cn']?.toString().trim().isNotEmpty == true
+                  ? match['name_cn']
+                  : match['name'])
+              ?.toString()
+              .trim() ??
+          '';
+      return _ResolvedBangumiEpisode(
+        label: TaskTitleParser.buildEpisodeDisplayLabel(
+          episodeNumber: number,
+          episodeTitle: episodeTitle,
+        ),
+        episodeId: int.tryParse(match['id']?.toString() ?? '') ?? 0,
+      );
+    } catch (error) {
+      debugPrint('[TorrentMediaResolver] Episode metadata failed: $error');
+      return const _ResolvedBangumiEpisode();
+    }
+  }
+
+  int? _numberValue(dynamic value) {
+    if (value is int) {
+      return value;
+    }
+    if (value is num) {
+      return value.round();
+    }
+    return int.tryParse(value?.toString() ?? '');
   }
 
   int _resolveInitialIndex({

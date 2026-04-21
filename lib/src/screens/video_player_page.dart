@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
 
@@ -7,6 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../coordinator/episode_coordinator.dart';
 import '../managers/download_manager.dart';
@@ -54,13 +56,21 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
   bool _isFullscreenLocked = false;
   Timer? _controlsTimer;
   Timer? _danmakuTicker;
+  Timer? _progressSaveTimer;
   PlayableMedia? _activeMedia;
   DateTime? _lastManualSeekAt;
+  DateTime _lastProgressSavedAt = DateTime.fromMillisecondsSinceEpoch(0);
   List<DandanplayComment> _danmakuComments = <DandanplayComment>[];
   List<_ActiveDanmakuItem> _activeDanmaku = <_ActiveDanmakuItem>[];
   String _danmakuStatusText = '';
   bool _danmakuEnabled = true;
+  bool _danmakuShowBackground = true;
+  bool _danmakuShowStroke = true;
   bool _isDanmakuLoading = false;
+  double _danmakuFontSize = 16.0;
+  double _danmakuOpacity = 1.0;
+  double _danmakuSpeed = 1.0;
+  double _danmakuAreaRatio = 0.55;
   int _nextDanmakuIndex = 0;
   int _danmakuSerial = 0;
   int _danmakuSeed = 0;
@@ -69,6 +79,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
   void initState() {
     super.initState();
     _enterPlayerMode();
+    unawaited(_loadDanmakuStyle());
 
     _player = Player();
     _controller = VideoController(_player);
@@ -83,6 +94,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
         setState(() {
           _position = normalized;
         });
+        _savePlaybackProgressThrottled();
       }),
     );
     _subscriptions.add(
@@ -154,6 +166,10 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
     } else {
       _openMedia(widget.media);
     }
+
+    _progressSaveTimer = Timer.periodic(const Duration(seconds: 10), (_) {
+      unawaited(_savePlaybackProgress(force: true));
+    });
   }
 
   Future<void> _enterPlayerMode() async {
@@ -193,17 +209,114 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
         _lastManualSeekAt = null;
       });
     }
+    _activeMedia = media;
     await _player.open(Media(media.url, httpHeaders: media.headers));
+    await _restorePlaybackProgress(media);
     if (_rate != 1.0) {
       await _player.setRate(_rate);
     }
-    _activeMedia = media;
     await _prepareDanmakuForMedia(media);
     if (mounted) {
       setState(() {
         _showControls = false;
       });
     }
+  }
+
+  Future<void> _restorePlaybackProgress(PlayableMedia media) async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    final String key = _playbackProgressKey(media);
+    final int savedPositionMs = prefs.getInt('$key.position') ?? 0;
+    final int savedDurationMs = prefs.getInt('$key.duration') ?? 0;
+    if (savedPositionMs < const Duration(seconds: 10).inMilliseconds) {
+      return;
+    }
+    if (savedDurationMs > 0 &&
+        savedPositionMs >
+            savedDurationMs - const Duration(seconds: 20).inMilliseconds) {
+      return;
+    }
+
+    final Duration restored = Duration(milliseconds: savedPositionMs);
+    await Future<void>.delayed(const Duration(milliseconds: 250));
+    await _player.seek(restored);
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _position = restored;
+      _dragPosition = null;
+    });
+    _resyncDanmakuCursor(restored);
+  }
+
+  void _savePlaybackProgressThrottled() {
+    final DateTime now = DateTime.now();
+    if (now.difference(_lastProgressSavedAt) < const Duration(seconds: 5)) {
+      return;
+    }
+    _lastProgressSavedAt = now;
+    unawaited(_savePlaybackProgress());
+  }
+
+  Future<void> _savePlaybackProgress({
+    Duration? position,
+    bool force = false,
+  }) async {
+    final PlayableMedia? media = _activeMedia;
+    if (media == null) {
+      return;
+    }
+
+    final Duration currentPosition = position ?? _effectivePosition;
+    if (!force && currentPosition < const Duration(seconds: 5)) {
+      return;
+    }
+
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    final String key = _playbackProgressKey(media);
+    await prefs.setInt('$key.position', currentPosition.inMilliseconds);
+    await prefs.setInt('$key.duration', _duration.inMilliseconds);
+    await prefs.setInt('$key.updatedAt', DateTime.now().millisecondsSinceEpoch);
+  }
+
+  String _playbackProgressKey(PlayableMedia media) {
+    final String identity = media.bangumiEpisodeId > 0
+        ? 'bgm_ep:${media.bangumiEpisodeId}'
+        : [
+            media.localFilePath,
+            media.url,
+            media.subjectTitle,
+            media.episodeLabel,
+            media.title,
+          ].where((String value) => value.trim().isNotEmpty).join('|');
+    final String encoded = base64Url.encode(utf8.encode(identity));
+    return 'playback_progress.$encoded';
+  }
+
+  Future<void> _loadDanmakuStyle() async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _danmakuFontSize = prefs.getDouble('danmaku.fontSize') ?? 16.0;
+      _danmakuOpacity = prefs.getDouble('danmaku.opacity') ?? 1.0;
+      _danmakuSpeed = prefs.getDouble('danmaku.speed') ?? 1.0;
+      _danmakuAreaRatio = prefs.getDouble('danmaku.areaRatio') ?? 0.55;
+      _danmakuShowBackground = prefs.getBool('danmaku.showBackground') ?? true;
+      _danmakuShowStroke = prefs.getBool('danmaku.showStroke') ?? true;
+    });
+  }
+
+  Future<void> _saveDanmakuStyle() async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    await prefs.setDouble('danmaku.fontSize', _danmakuFontSize);
+    await prefs.setDouble('danmaku.opacity', _danmakuOpacity);
+    await prefs.setDouble('danmaku.speed', _danmakuSpeed);
+    await prefs.setDouble('danmaku.areaRatio', _danmakuAreaRatio);
+    await prefs.setBool('danmaku.showBackground', _danmakuShowBackground);
+    await prefs.setBool('danmaku.showStroke', _danmakuShowStroke);
   }
 
   void _toggleControls() {
@@ -267,6 +380,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
         : (target > max ? max : target);
     _lastManualSeekAt = DateTime.now();
     await _player.seek(clamped);
+    unawaited(_savePlaybackProgress(position: clamped, force: true));
     if (mounted) {
       setState(() {
         _position = clamped;
@@ -494,7 +608,11 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
   int _resolveDanmakuLane(int mode) {
     final bool isLandscape =
         MediaQuery.orientationOf(context) == Orientation.landscape;
-    final int laneCount = mode == 1 ? (isLandscape ? 8 : 5) : 2;
+    final int baseLaneCount = mode == 1 ? (isLandscape ? 10 : 6) : 2;
+    final int laneCount = math.max(
+      1,
+      (baseLaneCount * (_danmakuAreaRatio / 0.55)).round(),
+    );
     final int lane = _danmakuSeed % laneCount;
     _danmakuSeed++;
     return lane;
@@ -700,6 +818,177 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
           ),
         ],
       ),
+    );
+    _scheduleControlsAutoHide();
+  }
+
+  Future<void> _showDanmakuStyleSheet() async {
+    _cancelControlsAutoHide();
+    await _showPlayerPanel<void>(
+      portraitHeightFactor: 0.62,
+      landscapeHeightFactor: 0.78,
+      maxLandscapeWidth: 360,
+      maxPortraitWidth: 380,
+      builder: (BuildContext dialogContext) {
+        return StatefulBuilder(
+          builder: (BuildContext context, StateSetter setPanelState) {
+            void update(VoidCallback change) {
+              setState(change);
+              setPanelState(() {});
+              unawaited(_saveDanmakuStyle());
+            }
+
+            Widget buildSlider({
+              required String label,
+              required double value,
+              required double min,
+              required double max,
+              required int divisions,
+              required String display,
+              required ValueChanged<double> onChanged,
+              VoidCallback? afterChanged,
+            }) {
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+                    child: Row(
+                      children: <Widget>[
+                        Expanded(
+                          child: Text(
+                            label,
+                            style: const TextStyle(fontWeight: FontWeight.w600),
+                          ),
+                        ),
+                        Text(display, style: const TextStyle(fontSize: 12)),
+                      ],
+                    ),
+                  ),
+                  Slider(
+                    value: value,
+                    min: min,
+                    max: max,
+                    divisions: divisions,
+                    onChanged: (double next) {
+                      update(() => onChanged(next));
+                      afterChanged?.call();
+                    },
+                  ),
+                ],
+              );
+            }
+
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                const _PlayerPanelHeader(
+                  icon: Icons.tune_rounded,
+                  title: '弹幕样式',
+                ),
+                const Divider(height: 1),
+                Expanded(
+                  child: ListView(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    children: <Widget>[
+                      SwitchListTile(
+                        dense: true,
+                        title: const Text('弹幕开关'),
+                        value: _danmakuEnabled,
+                        onChanged: (bool value) {
+                          update(() {
+                            _danmakuEnabled = value;
+                            if (!value) {
+                              _activeDanmaku = <_ActiveDanmakuItem>[];
+                            }
+                          });
+                          if (value) {
+                            _resyncDanmakuCursor(_effectivePosition);
+                          }
+                        },
+                      ),
+                      SwitchListTile(
+                        dense: true,
+                        title: const Text('文字描边'),
+                        value: _danmakuShowStroke,
+                        onChanged: (bool value) =>
+                            update(() => _danmakuShowStroke = value),
+                      ),
+                      SwitchListTile(
+                        dense: true,
+                        title: const Text('半透明底色'),
+                        value: _danmakuShowBackground,
+                        onChanged: (bool value) =>
+                            update(() => _danmakuShowBackground = value),
+                      ),
+                      buildSlider(
+                        label: '字号',
+                        value: _danmakuFontSize,
+                        min: 12,
+                        max: 28,
+                        divisions: 16,
+                        display: '${_danmakuFontSize.round()} px',
+                        onChanged: (double value) => _danmakuFontSize = value,
+                      ),
+                      buildSlider(
+                        label: '透明度',
+                        value: _danmakuOpacity,
+                        min: 0.35,
+                        max: 1.0,
+                        divisions: 13,
+                        display:
+                            '${(_danmakuOpacity * 100).round().clamp(35, 100)}%',
+                        onChanged: (double value) => _danmakuOpacity = value,
+                      ),
+                      buildSlider(
+                        label: '速度',
+                        value: _danmakuSpeed,
+                        min: 0.7,
+                        max: 1.6,
+                        divisions: 9,
+                        display: '${_danmakuSpeed.toStringAsFixed(1)}x',
+                        onChanged: (double value) => _danmakuSpeed = value,
+                      ),
+                      buildSlider(
+                        label: '显示区域',
+                        value: _danmakuAreaRatio,
+                        min: 0.25,
+                        max: 0.9,
+                        divisions: 13,
+                        display:
+                            '${(_danmakuAreaRatio * 100).round().clamp(25, 90)}%',
+                        onChanged: (double value) {
+                          _danmakuAreaRatio = value;
+                        },
+                        afterChanged: () =>
+                            _resyncDanmakuCursor(_effectivePosition),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                        child: OutlinedButton.icon(
+                          onPressed: () {
+                            update(() {
+                              _danmakuFontSize = 16.0;
+                              _danmakuOpacity = 1.0;
+                              _danmakuSpeed = 1.0;
+                              _danmakuAreaRatio = 0.55;
+                              _danmakuShowBackground = true;
+                              _danmakuShowStroke = true;
+                            });
+                            _resyncDanmakuCursor(_effectivePosition);
+                          },
+                          icon: const Icon(Icons.restore_rounded),
+                          label: const Text('恢复默认样式'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+      },
     );
     _scheduleControlsAutoHide();
   }
@@ -932,10 +1221,17 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
   }
 
   String get _displayTitle {
+    final PlayableMedia media = (_isMagnet && _coordinator.currentMedia != null)
+        ? _coordinator.currentMedia!
+        : (_activeMedia ?? widget.media);
+    if (media.subjectTitle.trim().isNotEmpty &&
+        media.episodeLabel.trim().isNotEmpty) {
+      return '${media.subjectTitle.trim()} · ${media.episodeLabel.trim()}';
+    }
     if (_isMagnet && _coordinator.currentMedia != null) {
       return _coordinator.currentMedia!.title;
     }
-    return widget.media.title;
+    return media.title;
   }
 
   Duration get _effectivePosition => _dragPosition ?? _position;
@@ -985,8 +1281,10 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
 
   @override
   void dispose() {
+    unawaited(_savePlaybackProgress(force: true));
     _cancelControlsAutoHide();
     _cancelDanmakuTicker();
+    _progressSaveTimer?.cancel();
     for (final StreamSubscription<dynamic> subscription in _subscriptions) {
       subscription.cancel();
     }
@@ -1028,6 +1326,11 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
               child: IgnorePointer(
                 child: _DanmakuOverlay(
                   items: _activeDanmaku,
+                  fontSize: _danmakuFontSize,
+                  opacity: _danmakuOpacity,
+                  speed: _danmakuSpeed,
+                  showBackground: _danmakuShowBackground,
+                  showStroke: _danmakuShowStroke,
                   onCompleted: _removeDanmakuItem,
                 ),
               ),
@@ -1183,6 +1486,11 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
                             onPressed: _toggleDanmaku,
                           ),
                           _buildBottomAction(
+                            icon: Icons.tune_rounded,
+                            label: '弹幕样式',
+                            onPressed: _showDanmakuStyleSheet,
+                          ),
+                          _buildBottomAction(
                             icon: _isFullscreenLocked
                                 ? Icons.fullscreen_exit_rounded
                                 : Icons.fullscreen_rounded,
@@ -1259,6 +1567,12 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
                             );
                             _lastManualSeekAt = DateTime.now();
                             await _player.seek(target);
+                            unawaited(
+                              _savePlaybackProgress(
+                                position: target,
+                                force: true,
+                              ),
+                            );
                             if (mounted) {
                               setState(() {
                                 _position = target;
@@ -1800,9 +2114,22 @@ class _ActiveDanmakuItem {
 
 class _DanmakuOverlay extends StatelessWidget {
   final List<_ActiveDanmakuItem> items;
+  final double fontSize;
+  final double opacity;
+  final double speed;
+  final bool showBackground;
+  final bool showStroke;
   final ValueChanged<int> onCompleted;
 
-  const _DanmakuOverlay({required this.items, required this.onCompleted});
+  const _DanmakuOverlay({
+    required this.items,
+    required this.fontSize,
+    required this.opacity,
+    required this.speed,
+    required this.showBackground,
+    required this.showStroke,
+    required this.onCompleted,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1816,6 +2143,11 @@ class _DanmakuOverlay extends StatelessWidget {
                   key: ValueKey<int>(item.id),
                   item: item,
                   viewportSize: constraints.biggest,
+                  fontSize: fontSize,
+                  opacity: opacity,
+                  speed: speed,
+                  showBackground: showBackground,
+                  showStroke: showStroke,
                   onCompleted: () => onCompleted(item.id),
                 ),
               )
@@ -1829,12 +2161,22 @@ class _DanmakuOverlay extends StatelessWidget {
 class _DanmakuBullet extends StatefulWidget {
   final _ActiveDanmakuItem item;
   final Size viewportSize;
+  final double fontSize;
+  final double opacity;
+  final double speed;
+  final bool showBackground;
+  final bool showStroke;
   final VoidCallback onCompleted;
 
   const _DanmakuBullet({
     super.key,
     required this.item,
     required this.viewportSize,
+    required this.fontSize,
+    required this.opacity,
+    required this.speed,
+    required this.showBackground,
+    required this.showStroke,
     required this.onCompleted,
   });
 
@@ -1850,9 +2192,13 @@ class _DanmakuBulletState extends State<_DanmakuBullet>
   void initState() {
     super.initState();
 
-    final int durationMs = widget.item.comment.mode == 1
+    final int baseDurationMs = widget.item.comment.mode == 1
         ? (7000 + widget.item.comment.text.length * 80).clamp(6500, 12000)
         : 4000;
+    final int durationMs = (baseDurationMs / widget.speed).round().clamp(
+      2600,
+      18000,
+    );
     _controller =
         AnimationController(
             vsync: this,
@@ -1873,13 +2219,13 @@ class _DanmakuBulletState extends State<_DanmakuBullet>
   }
 
   double _estimateTextWidth(String text) {
-    return math.max(120.0, text.runes.length * 16.0).toDouble();
+    return math.max(120.0, text.runes.length * widget.fontSize).toDouble();
   }
 
   @override
   Widget build(BuildContext context) {
     final double textWidth = _estimateTextWidth(widget.item.comment.text);
-    final double laneHeight = 30;
+    final double laneHeight = widget.fontSize + 14;
 
     return AnimatedBuilder(
       animation: _controller,
@@ -1908,12 +2254,17 @@ class _DanmakuBulletState extends State<_DanmakuBullet>
         return Positioned(
           left: left,
           top: top,
-          child: Opacity(opacity: opacity.clamp(0, 1), child: child),
+          child: Opacity(
+            opacity: (opacity * widget.opacity).clamp(0, 1),
+            child: child,
+          ),
         );
       },
       child: DecoratedBox(
         decoration: BoxDecoration(
-          color: Colors.black.withValues(alpha: 0.14),
+          color: widget.showBackground
+              ? Colors.black.withValues(alpha: 0.14)
+              : Colors.transparent,
           borderRadius: BorderRadius.circular(6),
         ),
         child: Padding(
@@ -1925,15 +2276,17 @@ class _DanmakuBulletState extends State<_DanmakuBullet>
             softWrap: false,
             style: TextStyle(
               color: Color(0xFF000000 | widget.item.comment.color),
-              fontSize: 16,
+              fontSize: widget.fontSize,
               fontWeight: FontWeight.w600,
-              shadows: const <Shadow>[
-                Shadow(
-                  color: Colors.black87,
-                  blurRadius: 3,
-                  offset: Offset(0.8, 0.8),
-                ),
-              ],
+              shadows: widget.showStroke
+                  ? const <Shadow>[
+                      Shadow(
+                        color: Colors.black87,
+                        blurRadius: 3,
+                        offset: Offset(0.8, 0.8),
+                      ),
+                    ]
+                  : const <Shadow>[],
             ),
           ),
         ),

@@ -45,12 +45,10 @@ class AnimeMasterApp extends StatelessWidget {
                   ),
                   useMaterial3: true,
                 ),
-                builder: (BuildContext context, Widget? child) =>
-                    _StartupUpdateProbe(
-                      settings: settings,
-                      child: child ?? const SizedBox.shrink(),
-                    ),
-                home: const HomePage(),
+                home: _StartupUpdateProbe(
+                  settings: settings,
+                  child: const HomePage(),
+                ),
               );
             },
       ),
@@ -70,6 +68,7 @@ class _StartupUpdateProbe extends StatefulWidget {
 
 class _StartupUpdateProbeState extends State<_StartupUpdateProbe> {
   String _checkedFeedUrl = '';
+  bool _isChecking = false;
 
   @override
   void didChangeDependencies() {
@@ -95,11 +94,20 @@ class _StartupUpdateProbeState extends State<_StartupUpdateProbe> {
     }
 
     _checkedFeedUrl = feedUrl;
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      if (!mounted) {
-        return;
-      }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Future<void>.delayed(
+        const Duration(milliseconds: 900),
+        () => _runStartupUpdateCheck(feedUrl),
+      );
+    });
+  }
 
+  Future<void> _runStartupUpdateCheck(String feedUrl) async {
+    if (!mounted || _isChecking) {
+      return;
+    }
+    _isChecking = true;
+    try {
       final AppUpdateCheckResult result = await const AppUpdateService()
           .checkForUpdates(feedUrl);
       if (!mounted || !result.updateAvailable) {
@@ -111,7 +119,9 @@ class _StartupUpdateProbeState extends State<_StartupUpdateProbe> {
         result,
         quietIfUpToDate: true,
       );
-    });
+    } finally {
+      _isChecking = false;
+    }
   }
 
   @override

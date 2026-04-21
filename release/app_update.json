@@ -1,6 +1,6 @@
 {
-  "version": "2.1.10",
-  "build": 12,
+  "version": "2.1.11",
+  "build": 13,
   "apkUrl": "https://auth.congutsun.com/download/apk/universal",
   "apkUrls": {
     "android-arm64": "https://auth.congutsun.com/download/apk/android-arm64",
@@ -9,11 +9,13 @@
     "universal": "https://auth.congutsun.com/download/apk/universal"
   },
   "notes": [
-    "下载调度改为单主任务优先，减少多个任务同时下载造成的卡顿、发热和磁盘争用。",
-    "增加活跃 Peer 上限和低质量连接清理，降低下载与做种时的后台负载。",
-    "下载末段自动增强 DHT 与 Tracker 补偿，缓解最后 10% 因稀缺分片导致的速度骤降。",
-    "优化下载速度统计和缓存中心刷新节流，减少无意义的全页面重建。"
+    "修复启动后自动检查更新不弹窗的问题，应用打开后会按设置自动提示可用新版本。",
+    "播放器新增播放进度记忆，退出后再次进入同一文件会从上次进度继续播放。",
+    "弹幕样式新增字号、透明度、速度、显示区域、描边和底色调整。",
+    "番剧详情新增剧集列表、单集讨论查看，并支持点击剧集直接同步观看进度。",
+    "番剧吐槽改为进入吐槽页签后懒加载，降低详情页首屏请求压力。",
+    "缓存中心和播放页增强 Bangumi 剧集识别，尽量显示具体集数和集名。"
   ],
-  "publishedAt": "2026-04-20T16:23:50+08:00",
+  "publishedAt": "2026-04-21T11:00:00+08:00",
   "forceUpdate": false
 }

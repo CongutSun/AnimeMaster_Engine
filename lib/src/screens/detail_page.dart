@@ -74,6 +74,7 @@ class _DetailPageState extends State<DetailPage>
 
   Map<String, dynamic>? detailData;
   List<Map<String, String>> realComments = [];
+  List<Map<String, dynamic>> episodesData = [];
   List<dynamic> charactersData = [];
   List<dynamic> staffData = [];
   List<dynamic> relatedData = [];
@@ -81,6 +82,9 @@ class _DetailPageState extends State<DetailPage>
   bool isSummaryExpanded = false;
   bool isLoading = true;
   bool isCommentsLoading = false;
+  bool isEpisodesLoading = false;
+  bool hasRequestedComments = false;
+  bool hasRequestedEpisodes = false;
   bool isSyncing = false;
   bool hasFetchedPersonalData = false;
 
@@ -121,8 +125,11 @@ class _DetailPageState extends State<DetailPage>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 4, vsync: this);
     _tabController.addListener(() {
+      if (!_tabController.indexIsChanging) {
+        _loadTabDataIfNeeded(_tabController.index);
+      }
       if (mounted) setState(() {});
     });
     WidgetsBinding.instance.addPostFrameCallback((_) => _loadAllData());
@@ -182,11 +189,18 @@ class _DetailPageState extends State<DetailPage>
       setState(() {
         detailData = results[0] as Map<String, dynamic>?;
         isLoading = false;
-        isCommentsLoading = true;
       });
     }
     unawaited(_loadSupplementaryData());
-    unawaited(_loadComments());
+  }
+
+  void _loadTabDataIfNeeded(int index) {
+    if (index == 1 && !hasRequestedEpisodes && !isEpisodesLoading) {
+      unawaited(_loadEpisodes());
+    }
+    if (index == 3 && !hasRequestedComments && !isCommentsLoading) {
+      unawaited(_loadComments());
+    }
   }
 
   Future<void> _loadSupplementaryData() async {
@@ -208,6 +222,13 @@ class _DetailPageState extends State<DetailPage>
   }
 
   Future<void> _loadComments() async {
+    if (hasRequestedComments && realComments.isNotEmpty) {
+      return;
+    }
+    setState(() {
+      hasRequestedComments = true;
+      isCommentsLoading = true;
+    });
     final List<Map<String, String>> comments =
         await BangumiApi.getSubjectComments(widget.animeId);
 
@@ -218,6 +239,24 @@ class _DetailPageState extends State<DetailPage>
     setState(() {
       realComments = comments;
       isCommentsLoading = false;
+    });
+  }
+
+  Future<void> _loadEpisodes() async {
+    setState(() {
+      hasRequestedEpisodes = true;
+      isEpisodesLoading = true;
+    });
+    final List<Map<String, dynamic>> episodes =
+        await BangumiApi.getSubjectEpisodes(widget.animeId);
+
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      episodesData = episodes;
+      isEpisodesLoading = false;
     });
   }
 
@@ -685,6 +724,7 @@ class _DetailPageState extends State<DetailPage>
                           : Colors.black87,
                       tabs: const [
                         Tab(text: '详情'),
+                        Tab(text: '剧集'),
                         Tab(text: '进度'),
                         Tab(text: '吐槽'),
                       ],
@@ -754,8 +794,10 @@ class _DetailPageState extends State<DetailPage>
       case 0:
         return _buildDetailsSliver();
       case 1:
-        return _buildProgressSliver(highlightBlue, highlightOrange);
+        return _buildEpisodesSliver(highlightBlue);
       case 2:
+        return _buildProgressSliver(highlightBlue, highlightOrange);
+      case 3:
         return _buildCommentsSliver(highlightOrange);
       default:
         return const SliverToBoxAdapter(child: SizedBox.shrink());
@@ -869,6 +911,249 @@ class _DetailPageState extends State<DetailPage>
     );
   }
 
+  Widget _buildEpisodesSliver(Color highlightBlue) {
+    if (!hasRequestedEpisodes && !isEpisodesLoading) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && !hasRequestedEpisodes && !isEpisodesLoading) {
+          unawaited(_loadEpisodes());
+        }
+      });
+    }
+
+    if (isEpisodesLoading) {
+      return const SliverToBoxAdapter(
+        child: Padding(
+          padding: EdgeInsets.all(32.0),
+          child: Center(child: CircularProgressIndicator()),
+        ),
+      );
+    }
+
+    if (episodesData.isEmpty) {
+      return const SliverToBoxAdapter(
+        child: Padding(
+          padding: EdgeInsets.all(32.0),
+          child: Center(
+            child: Text('暂无剧集数据。', style: TextStyle(color: Colors.grey)),
+          ),
+        ),
+      );
+    }
+
+    return SliverPadding(
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 96),
+      sliver: SliverList.separated(
+        itemCount: episodesData.length,
+        separatorBuilder: (BuildContext context, int index) =>
+            const SizedBox(height: 8),
+        itemBuilder: (BuildContext context, int index) {
+          final Map<String, dynamic> episode = episodesData[index];
+          final int episodeNumber = _episodeNumber(episode);
+          final bool watched = episodeNumber > 0 && episodeNumber <= currentEp;
+          return Card(
+            elevation: 0,
+            child: ListTile(
+              leading: CircleAvatar(
+                backgroundColor: watched
+                    ? Colors.green.withValues(alpha: 0.16)
+                    : highlightBlue.withValues(alpha: 0.12),
+                child: Text(
+                  episodeNumber > 0 ? '$episodeNumber' : '?',
+                  style: TextStyle(
+                    color: watched ? Colors.green.shade700 : highlightBlue,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              title: Text(
+                _episodeTitle(episode),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontWeight: FontWeight.w700),
+              ),
+              subtitle: Text(
+                _episodeMeta(episode),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+              trailing: const Icon(Icons.chevron_right_rounded),
+              onTap: () => _showEpisodeSheet(episode),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  int _episodeNumber(Map<String, dynamic> episode) {
+    final dynamic ep = episode['ep'] ?? episode['sort'];
+    if (ep is int) {
+      return ep;
+    }
+    if (ep is num) {
+      return ep.round();
+    }
+    return int.tryParse(ep?.toString() ?? '') ?? 0;
+  }
+
+  int _episodeId(Map<String, dynamic> episode) {
+    return int.tryParse(episode['id']?.toString() ?? '') ?? 0;
+  }
+
+  String _episodeTitle(Map<String, dynamic> episode) {
+    final int number = _episodeNumber(episode);
+    final String nameCn = episode['name_cn']?.toString().trim() ?? '';
+    final String name = episode['name']?.toString().trim() ?? '';
+    final String title = nameCn.isNotEmpty ? nameCn : name;
+    if (title.isEmpty) {
+      return number > 0 ? '第 $number 集' : '未命名剧集';
+    }
+    return number > 0 ? '第 $number 集  $title' : title;
+  }
+
+  String _episodeMeta(Map<String, dynamic> episode) {
+    final List<String> parts = <String>[
+      if ((episode['airdate']?.toString().trim() ?? '').isNotEmpty)
+        '放送 ${episode['airdate']}',
+      if ((episode['duration']?.toString().trim() ?? '').isNotEmpty)
+        episode['duration'].toString(),
+      if ((episode['desc']?.toString().trim() ?? '').isNotEmpty)
+        episode['desc'].toString(),
+    ];
+    return parts.isEmpty ? '点击查看集名与讨论' : parts.join('  ·  ');
+  }
+
+  Future<void> _showEpisodeSheet(Map<String, dynamic> episode) async {
+    final int episodeId = _episodeId(episode);
+    final int episodeNumber = _episodeNumber(episode);
+    final Future<List<Map<String, String>>> commentsFuture = episodeId > 0
+        ? BangumiApi.getEpisodeComments(episodeId)
+        : Future<List<Map<String, String>>>.value(<Map<String, String>>[]);
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (BuildContext sheetContext) {
+        return DraggableScrollableSheet(
+          expand: false,
+          initialChildSize: 0.72,
+          minChildSize: 0.38,
+          maxChildSize: 0.92,
+          builder: (BuildContext context, ScrollController scrollController) {
+            return ListView(
+              controller: scrollController,
+              padding: const EdgeInsets.fromLTRB(18, 4, 18, 24),
+              children: <Widget>[
+                Text(
+                  _episodeTitle(episode),
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  _episodeMeta(episode),
+                  style: const TextStyle(color: Colors.grey, height: 1.4),
+                ),
+                const SizedBox(height: 14),
+                FilledButton.icon(
+                  onPressed: episodeNumber <= 0
+                      ? null
+                      : () async {
+                          Navigator.pop(sheetContext);
+                          await _setProgressToEpisode(episodeNumber);
+                        },
+                  icon: const Icon(Icons.done_all_rounded),
+                  label: Text(
+                    episodeNumber > 0 ? '把进度更新到第 $episodeNumber 集' : '无法识别集数',
+                  ),
+                ),
+                const SizedBox(height: 18),
+                const Text(
+                  '本集讨论',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 8),
+                FutureBuilder<List<Map<String, String>>>(
+                  future: commentsFuture,
+                  builder: (BuildContext context, AsyncSnapshot snapshot) {
+                    if (snapshot.connectionState != ConnectionState.done) {
+                      return const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 32),
+                        child: Center(child: CircularProgressIndicator()),
+                      );
+                    }
+                    final List<Map<String, String>> comments =
+                        (snapshot.data as List<Map<String, String>>?) ??
+                        <Map<String, String>>[];
+                    if (comments.isEmpty) {
+                      return const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 20),
+                        child: Text(
+                          '暂无讨论，或当前网络无法读取 Bangumi 讨论页。',
+                          style: TextStyle(color: Colors.grey),
+                        ),
+                      );
+                    }
+                    return Column(
+                      children: comments.map((Map<String, String> comment) {
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 14),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: <Widget>[
+                              Row(
+                                children: <Widget>[
+                                  Expanded(
+                                    child: Text(
+                                      comment['author'] ?? '网络用户',
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                  ),
+                                  if ((comment['time'] ?? '').isNotEmpty)
+                                    Text(
+                                      comment['time']!,
+                                      style: const TextStyle(
+                                        color: Colors.grey,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                ],
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                comment['content'] ?? '',
+                                style: const TextStyle(height: 1.45),
+                              ),
+                            ],
+                          ),
+                        );
+                      }).toList(),
+                    );
+                  },
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _setProgressToEpisode(int episodeNumber) async {
+    setState(() {
+      currentEp = episodeNumber;
+      if (currentStatus == '未收藏') {
+        currentStatus = '在看';
+      }
+    });
+    await _syncToCloud();
+  }
+
   Widget _buildProgressSliver(Color highlightBlue, Color highlightOrange) {
     return SliverToBoxAdapter(
       child: Padding(
@@ -960,6 +1245,20 @@ class _DetailPageState extends State<DetailPage>
   }
 
   Widget _buildCommentsSliver(Color highlightOrange) {
+    if (!hasRequestedComments && !isCommentsLoading) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && !hasRequestedComments && !isCommentsLoading) {
+          unawaited(_loadComments());
+        }
+      });
+      return const SliverToBoxAdapter(
+        child: Padding(
+          padding: EdgeInsets.all(32.0),
+          child: Center(child: CircularProgressIndicator()),
+        ),
+      );
+    }
+
     if (isCommentsLoading) {
       return const SliverToBoxAdapter(
         child: Padding(

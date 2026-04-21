@@ -20,6 +20,7 @@ class BangumiApi {
   static final Map<int, List<dynamic>> _personsCache = {};
   static final Map<int, List<dynamic>> _relationsCache = {};
   static final Map<int, List<Map<String, String>>> _commentsCache = {};
+  static final Map<int, List<Map<String, String>>> _episodeCommentsCache = {};
   static final Map<String, List<dynamic>> _searchCache = {};
   static final Map<String, List<Map<String, dynamic>>> _tagSubjectsCache = {};
   static final Map<int, List<dynamic>> _characterSubjectsCache = {};
@@ -64,6 +65,43 @@ class BangumiApi {
         comments.add(<String, String>{
           'author': author,
           'rate': rate,
+          'content': content,
+        });
+      }
+    }
+
+    return comments;
+  }
+
+  static List<Map<String, String>> _parseEpisodeCommentsDocument(
+    dom.Document document,
+  ) {
+    final List<Map<String, String>> comments = <Map<String, String>>[];
+    final Iterable<dom.Element> items = document.querySelectorAll(
+      '#comment_list .row_reply, #comment_list .item, .topic_sub_reply, .reply',
+    );
+
+    for (final dom.Element item in items) {
+      final String author =
+          item.querySelector('.inner strong a')?.text.trim() ??
+          item.querySelector('.text a')?.text.trim() ??
+          item.querySelector('.userInfo strong a')?.text.trim() ??
+          item.querySelector('a.l')?.text.trim() ??
+          '网络用户';
+      final String time =
+          item.querySelector('small')?.text.trim() ??
+          item.querySelector('.tip_j')?.text.trim() ??
+          '';
+      final String content =
+          item.querySelector('.reply_content')?.text.trim() ??
+          item.querySelector('.message')?.text.trim() ??
+          item.querySelector('p')?.text.trim() ??
+          '';
+
+      if (content.isNotEmpty) {
+        comments.add(<String, String>{
+          'author': author,
+          'time': time,
           'content': content,
         });
       }
@@ -644,6 +682,35 @@ class BangumiApi {
       _commentsCache[id] = comments;
       _trimCache(_commentsCache);
     }
+    return comments;
+  }
+
+  static Future<List<Map<String, String>>> getEpisodeComments(
+    int episodeId,
+  ) async {
+    if (episodeId <= 0) {
+      return <Map<String, String>>[];
+    }
+    if (_episodeCommentsCache.containsKey(episodeId)) {
+      return _episodeCommentsCache[episodeId]!;
+    }
+
+    final List<Map<String, String>> comments = <Map<String, String>>[];
+    try {
+      final Response<dynamic> response = await _dio.get(
+        '${_ApiConfig.chiiBase}/ep/$episodeId',
+        options: Options(responseType: ResponseType.bytes),
+      );
+      if (response.statusCode == 200) {
+        final dom.Document document = parser.parse(utf8.decode(response.data));
+        comments.addAll(_parseEpisodeCommentsDocument(document));
+      }
+    } catch (e) {
+      debugPrint('[BangumiApi.getEpisodeComments] Exception: $e');
+    }
+
+    _episodeCommentsCache[episodeId] = comments;
+    _trimCache(_episodeCommentsCache, maxSize: 120);
     return comments;
   }
 
