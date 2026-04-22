@@ -38,7 +38,7 @@ dependencies:
   media_kit: ^1.1.11
   media_kit_video: ^1.2.5
   media_kit_libs_video: ^1.0.4
-  
+
   # 系统工具与设备功能 (System Tools & Device Features)
   image_picker: ^1.2.1
   image_cropper: ^12.1.1
@@ -48,6 +48,8 @@ dependencies:
   cached_network_image: ^3.4.1
   crypto: ^3.0.6
   flutter_web_auth_2: ^5.0.2
+  screen_brightness_platform_interface: ^2.1.0
+  volume_controller: ^3.4.4
   
   # 热更新 (Hot Update)
 

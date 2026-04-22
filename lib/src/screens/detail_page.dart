@@ -8,6 +8,7 @@ import '../providers/settings_provider.dart';
 import '../api/bangumi_api.dart';
 import 'magnet_config_page.dart';
 import 'category_result_page.dart';
+import 'episode_watch_page.dart';
 import 'role_subjects_page.dart';
 import '../utils/image_request.dart';
 
@@ -78,7 +79,6 @@ class _DetailPageState extends State<DetailPage>
   List<dynamic> charactersData = [];
   List<dynamic> staffData = [];
   List<dynamic> relatedData = [];
-
   bool isSummaryExpanded = false;
   bool isLoading = true;
   bool isCommentsLoading = false;
@@ -144,24 +144,43 @@ class _DetailPageState extends State<DetailPage>
 
   Future<void> _loadAllData() async {
     final provider = Provider.of<SettingsProvider>(context, listen: false);
-    await provider.ensureBangumiAccessToken();
-    final bgmUsername = provider.bgmAcc;
-    final bgmToken = provider.bgmToken;
+    final Future<Map<String, dynamic>?> detailFuture =
+        BangumiApi.getAnimeDetail(widget.animeId);
+    final Future<Map<String, dynamic>?> collectionFuture = () async {
+      await provider.ensureBangumiAccessToken();
+      final String bgmUsername = provider.bgmAcc;
+      final String bgmToken = provider.bgmToken;
+      if (bgmUsername.isEmpty || bgmToken.isEmpty) {
+        return null;
+      }
+      return BangumiApi.getUserCollection(
+        widget.animeId,
+        bgmUsername,
+        bgmToken,
+      );
+    }();
 
-    final Future<Map<String, dynamic>?> collectionFuture =
-        bgmUsername.isNotEmpty && bgmToken.isNotEmpty
-        ? BangumiApi.getUserCollection(widget.animeId, bgmUsername, bgmToken)
-        : Future<Map<String, dynamic>?>.value(null);
+    final Map<String, dynamic>? subjectDetail = await detailFuture;
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      detailData = subjectDetail;
+      isLoading = false;
+    });
 
-    final results = await Future.wait<Object?>([
-      BangumiApi.getAnimeDetail(widget.animeId),
-      collectionFuture,
-    ]);
+    unawaited(_applyCollectionData(collectionFuture));
+    unawaited(_loadSupplementaryData());
+  }
 
-    if (!mounted) return;
-
-    final collectionData = results[1] as Map<String, dynamic>?;
-    if (collectionData != null) {
+  Future<void> _applyCollectionData(
+    Future<Map<String, dynamic>?> collectionFuture,
+  ) async {
+    final Map<String, dynamic>? collectionData = await collectionFuture;
+    if (!mounted || collectionData == null) {
+      return;
+    }
+    setState(() {
       hasFetchedPersonalData = true;
       final int typeInt = collectionData['type'] is int
           ? collectionData['type']
@@ -183,15 +202,7 @@ class _DetailPageState extends State<DetailPage>
       currentVol = collectionData['vol_status'] is int
           ? collectionData['vol_status']
           : 0;
-    }
-
-    if (mounted) {
-      setState(() {
-        detailData = results[0] as Map<String, dynamic>?;
-        isLoading = false;
-      });
-    }
-    unawaited(_loadSupplementaryData());
+    });
   }
 
   void _loadTabDataIfNeeded(int index) {
@@ -204,21 +215,29 @@ class _DetailPageState extends State<DetailPage>
   }
 
   Future<void> _loadSupplementaryData() async {
-    final results = await Future.wait<List<dynamic>>([
-      BangumiApi.getSubjectCharacters(widget.animeId),
-      BangumiApi.getSubjectPersons(widget.animeId),
-      BangumiApi.getSubjectRelations(widget.animeId),
-    ]);
-
-    if (!mounted) {
-      return;
-    }
-
-    setState(() {
-      charactersData = results[0];
-      staffData = results[1];
-      relatedData = results[2];
-    });
+    unawaited(
+      BangumiApi.getSubjectCharacters(widget.animeId).then((
+        List<dynamic> data,
+      ) {
+        if (mounted) {
+          setState(() => charactersData = data);
+        }
+      }),
+    );
+    unawaited(
+      BangumiApi.getSubjectPersons(widget.animeId).then((List<dynamic> data) {
+        if (mounted) {
+          setState(() => staffData = data);
+        }
+      }),
+    );
+    unawaited(
+      BangumiApi.getSubjectRelations(widget.animeId).then((List<dynamic> data) {
+        if (mounted) {
+          setState(() => relatedData = data);
+        }
+      }),
+    );
   }
 
   Future<void> _loadComments() async {
@@ -977,10 +996,27 @@ class _DetailPageState extends State<DetailPage>
                 overflow: TextOverflow.ellipsis,
               ),
               trailing: const Icon(Icons.chevron_right_rounded),
-              onTap: () => _showEpisodeSheet(episode),
+              onTap: () => _openEpisodeWatchPage(episode),
             ),
           );
         },
+      ),
+    );
+  }
+
+  Future<void> _openEpisodeWatchPage(Map<String, dynamic> episode) async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute<void>(
+        builder: (BuildContext context) => EpisodeWatchPage(
+          animeId: widget.animeId,
+          initialName: widget.initialName,
+          detailData: detailData,
+          episodes: episodesData,
+          initialEpisode: episode,
+          currentProgress: currentEp,
+          onSetProgress: _setProgressToEpisode,
+        ),
       ),
     );
   }
@@ -994,10 +1030,6 @@ class _DetailPageState extends State<DetailPage>
       return ep.round();
     }
     return int.tryParse(ep?.toString() ?? '') ?? 0;
-  }
-
-  int _episodeId(Map<String, dynamic> episode) {
-    return int.tryParse(episode['id']?.toString() ?? '') ?? 0;
   }
 
   String _episodeTitle(Map<String, dynamic> episode) {
@@ -1021,160 +1053,6 @@ class _DetailPageState extends State<DetailPage>
         episode['desc'].toString(),
     ];
     return parts.isEmpty ? '点击查看集名与讨论' : parts.join('  ·  ');
-  }
-
-  Future<void> _showEpisodeSheet(Map<String, dynamic> episode) async {
-    final int episodeId = _episodeId(episode);
-    final int episodeNumber = _episodeNumber(episode);
-    final Future<List<Map<String, String>>> commentsFuture = episodeId > 0
-        ? BangumiApi.getEpisodeComments(episodeId)
-        : Future<List<Map<String, String>>>.value(<Map<String, String>>[]);
-
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
-      builder: (BuildContext sheetContext) {
-        return DraggableScrollableSheet(
-          expand: false,
-          initialChildSize: 0.72,
-          minChildSize: 0.38,
-          maxChildSize: 0.92,
-          builder: (BuildContext context, ScrollController scrollController) {
-            return ListView(
-              controller: scrollController,
-              padding: const EdgeInsets.fromLTRB(18, 4, 18, 24),
-              children: <Widget>[
-                Text(
-                  _episodeTitle(episode),
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  _episodeMeta(episode),
-                  style: const TextStyle(color: Colors.grey, height: 1.4),
-                ),
-                const SizedBox(height: 14),
-                FilledButton.icon(
-                  onPressed: episodeNumber <= 0
-                      ? null
-                      : () async {
-                          Navigator.pop(sheetContext);
-                          await _setProgressToEpisode(episodeNumber);
-                        },
-                  icon: const Icon(Icons.done_all_rounded),
-                  label: Text(
-                    episodeNumber > 0 ? '把进度更新到第 $episodeNumber 集' : '无法识别集数',
-                  ),
-                ),
-                const SizedBox(height: 18),
-                const Text(
-                  '本集讨论',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
-                ),
-                const SizedBox(height: 8),
-                FutureBuilder<List<Map<String, String>>>(
-                  future: commentsFuture,
-                  builder: (BuildContext context, AsyncSnapshot snapshot) {
-                    if (snapshot.connectionState != ConnectionState.done) {
-                      return const Padding(
-                        padding: EdgeInsets.symmetric(vertical: 32),
-                        child: Center(child: CircularProgressIndicator()),
-                      );
-                    }
-                    final List<Map<String, String>> comments =
-                        (snapshot.data as List<Map<String, String>>?) ??
-                        <Map<String, String>>[];
-                    if (comments.isEmpty) {
-                      return const Padding(
-                        padding: EdgeInsets.symmetric(vertical: 20),
-                        child: Text(
-                          '暂无讨论，或当前网络无法读取 Bangumi 讨论页。',
-                          style: TextStyle(color: Colors.grey),
-                        ),
-                      );
-                    }
-                    return _buildEpisodeComments(comments);
-                  },
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-  }
-
-  Widget _buildEpisodeComments(List<Map<String, String>> comments) {
-    return Column(
-      children: comments
-          .map(
-            (Map<String, String> comment) => _buildEpisodeCommentCard(comment),
-          )
-          .toList(),
-    );
-  }
-
-  Widget _buildEpisodeCommentCard(Map<String, String> comment) {
-    final bool isReply = comment['type'] == 'reply';
-    final ColorScheme colors = Theme.of(context).colorScheme;
-    final String author = (comment['author'] ?? '').trim().isEmpty
-        ? '网络用户'
-        : comment['author']!.trim();
-    final String time = (comment['time'] ?? '').trim();
-    final String content = (comment['content'] ?? '').trim();
-
-    return Container(
-      width: double.infinity,
-      margin: EdgeInsets.only(left: isReply ? 18 : 0, bottom: 10),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: colors.surfaceContainerHighest.withValues(
-          alpha: isReply ? 0.34 : 0.22,
-        ),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: colors.outlineVariant.withValues(alpha: 0.35),
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Wrap(
-            spacing: 8,
-            runSpacing: 4,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: <Widget>[
-              Text(
-                isReply ? '回复 · $author' : author,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontWeight: FontWeight.w700),
-              ),
-              if (time.isNotEmpty)
-                Text(
-                  time,
-                  style: TextStyle(
-                    color: colors.onSurfaceVariant,
-                    fontSize: 12,
-                    height: 1.2,
-                  ),
-                ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Text(
-            content,
-            softWrap: true,
-            textAlign: TextAlign.start,
-            style: const TextStyle(height: 1.45),
-          ),
-        ],
-      ),
-    );
   }
 
   Future<void> _setProgressToEpisode(int episodeNumber) async {

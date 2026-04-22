@@ -152,6 +152,9 @@ class MagnetActionHelper {
       config.targetPath,
       bytes: _startupProbeBytes,
     );
+    if (!context.mounted) {
+      return;
+    }
     if (!startupReady && progress < 1.0) {
       final bool shouldPlay =
           await showDialog<bool>(

@@ -3,28 +3,47 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import 'package:provider/provider.dart';
+import 'package:screen_brightness_platform_interface/screen_brightness_platform_interface.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:volume_controller/volume_controller.dart';
 
 import '../coordinator/episode_coordinator.dart';
 import '../managers/download_manager.dart';
 import '../models/dandanplay_models.dart';
 import '../models/download_task_info.dart';
+import '../models/online_episode_source.dart';
 import '../models/playable_media.dart';
 import '../providers/settings_provider.dart';
 import '../services/animeko_danmaku_service.dart';
 import '../services/dandanplay_service.dart';
+import '../services/online_episode_source_service.dart';
 import '../utils/torrent_stream_server.dart';
+
+enum _GestureAdjustmentKind { brightness, volume }
 
 class VideoPlayerPage extends StatefulWidget {
   final PlayableMedia media;
   final TorrentStreamServer? streamServer;
+  final Player? externalPlayer;
+  final VideoController? externalController;
+  final ValueChanged<PlayableMedia>? onMediaChanged;
+  final bool preferLandscapeOnOpen;
 
-  const VideoPlayerPage({super.key, required this.media, this.streamServer});
+  const VideoPlayerPage({
+    super.key,
+    required this.media,
+    this.streamServer,
+    this.externalPlayer,
+    this.externalController,
+    this.onMediaChanged,
+    this.preferLandscapeOnOpen = false,
+  });
 
   @override
   State<VideoPlayerPage> createState() => _VideoPlayerPageState();
@@ -41,6 +60,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
 
   late final Player _player;
   late final VideoController _controller;
+  late final bool _ownsPlayer;
   final EpisodeCoordinator _coordinator = EpisodeCoordinator();
   final List<StreamSubscription<dynamic>> _subscriptions =
       <StreamSubscription<dynamic>>[];
@@ -54,10 +74,25 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
   bool _isBuffering = false;
   bool _showControls = false;
   bool _isFullscreenLocked = false;
+  bool _suppressControlsOnNextPause = false;
   Timer? _controlsTimer;
   Timer? _danmakuTicker;
   Timer? _progressSaveTimer;
+  Timer? _gestureIndicatorTimer;
   PlayableMedia? _activeMedia;
+  OnlineEpisodeQuery? _onlineQuery;
+  List<OnlineEpisodeQuery> _onlineEpisodes = <OnlineEpisodeQuery>[];
+  List<OnlineEpisodeSourceResult> _onlineSources =
+      <OnlineEpisodeSourceResult>[];
+  StreamSubscription<List<OnlineEpisodeSourceResult>>?
+  _onlineSourceSubscription;
+  final ValueNotifier<List<OnlineEpisodeSourceResult>> _onlineSourcesNotifier =
+      ValueNotifier<List<OnlineEpisodeSourceResult>>(
+        <OnlineEpisodeSourceResult>[],
+      );
+  final ValueNotifier<bool> _onlineSourceSearchingNotifier =
+      ValueNotifier<bool>(false);
+  bool _isOnlineSourceSearching = false;
   DateTime? _lastManualSeekAt;
   DateTime _lastProgressSavedAt = DateTime.fromMillisecondsSinceEpoch(0);
   List<DandanplayComment> _danmakuComments = <DandanplayComment>[];
@@ -74,16 +109,28 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
   int _nextDanmakuIndex = 0;
   int _danmakuSerial = 0;
   int _danmakuSeed = 0;
+  _GestureAdjustmentKind? _gestureAdjustmentKind;
+  double _gestureStartValue = 0.5;
+  double _gestureAccumulatedDy = 0;
+  double _currentBrightness = 0.5;
+  double _currentVolume = 0.5;
+  String _gestureIndicatorText = '';
+  IconData _gestureIndicatorIcon = Icons.touch_app_rounded;
+  double? _gestureIndicatorProgress;
 
   @override
   void initState() {
     super.initState();
+    _isFullscreenLocked = widget.preferLandscapeOnOpen;
     _enterPlayerMode();
     unawaited(_loadDanmakuStyle());
+    unawaited(_loadGestureAdjustmentState());
 
-    _player = Player();
-    _controller = VideoController(_player);
+    _ownsPlayer = widget.externalPlayer == null;
+    _player = widget.externalPlayer ?? Player();
+    _controller = widget.externalController ?? VideoController(_player);
     _isMagnet = widget.media.url.toLowerCase().startsWith('magnet:');
+    _initializeOnlinePlaybackContext(widget.media);
 
     _subscriptions.add(
       _player.stream.position.listen((Duration value) {
@@ -125,8 +172,11 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
         }
         setState(() {
           _isPlaying = value;
-          if (!value) {
+          if (!value && !_suppressControlsOnNextPause) {
             _showControls = true;
+          }
+          if (!value) {
+            _suppressControlsOnNextPause = false;
           }
         });
         if (value) {
@@ -163,8 +213,11 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
         subjectTitle: widget.media.subjectTitle,
         episodeLabel: widget.media.episodeLabel,
       );
-    } else {
+    } else if (_ownsPlayer) {
       _openMedia(widget.media);
+    } else {
+      _activeMedia = widget.media;
+      unawaited(_prepareDanmakuForMedia(widget.media));
     }
 
     _progressSaveTimer = Timer.periodic(const Duration(seconds: 10), (_) {
@@ -174,6 +227,13 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
 
   Future<void> _enterPlayerMode() async {
     await SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+    if (widget.preferLandscapeOnOpen) {
+      await SystemChrome.setPreferredOrientations(const <DeviceOrientation>[
+        DeviceOrientation.landscapeLeft,
+        DeviceOrientation.landscapeRight,
+      ]);
+      return;
+    }
     await SystemChrome.setPreferredOrientations(const <DeviceOrientation>[
       DeviceOrientation.portraitUp,
       DeviceOrientation.landscapeLeft,
@@ -182,11 +242,17 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
   }
 
   Future<void> _exitPlayerMode() async {
-    await SystemChrome.setPreferredOrientations(const <DeviceOrientation>[
-      DeviceOrientation.portraitUp,
-      DeviceOrientation.landscapeLeft,
-      DeviceOrientation.landscapeRight,
-    ]);
+    if (widget.preferLandscapeOnOpen) {
+      await SystemChrome.setPreferredOrientations(const <DeviceOrientation>[
+        DeviceOrientation.portraitUp,
+      ]);
+    } else {
+      await SystemChrome.setPreferredOrientations(const <DeviceOrientation>[
+        DeviceOrientation.portraitUp,
+        DeviceOrientation.landscapeLeft,
+        DeviceOrientation.landscapeRight,
+      ]);
+    }
     await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
   }
 
@@ -210,6 +276,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
       });
     }
     _activeMedia = media;
+    widget.onMediaChanged?.call(media);
     await _player.open(Media(media.url, httpHeaders: media.headers));
     await _restorePlaybackProgress(media);
     if (_rate != 1.0) {
@@ -221,6 +288,244 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
         _showControls = false;
       });
     }
+  }
+
+  bool get _hasOnlineContext =>
+      _onlineQuery != null ||
+      _onlineEpisodes.isNotEmpty ||
+      _onlineSources.isNotEmpty;
+
+  void _initializeOnlinePlaybackContext(PlayableMedia media) {
+    _onlineQuery = media.onlineQuery;
+    _onlineEpisodes = media.onlineEpisodes;
+    _setOnlineSources(media.onlineSources, notifyState: false);
+    if (_onlineQuery != null) {
+      _startOnlineSourceSearch(_onlineQuery!, clearExisting: false);
+    }
+  }
+
+  void _setOnlineSources(
+    List<OnlineEpisodeSourceResult> sources, {
+    bool notifyState = true,
+  }) {
+    final List<OnlineEpisodeSourceResult> next =
+        List<OnlineEpisodeSourceResult>.unmodifiable(sources);
+    _onlineSources = next;
+    _onlineSourcesNotifier.value = next;
+    if (notifyState && mounted) {
+      setState(() {});
+    }
+  }
+
+  void _setOnlineSourceSearching(bool value) {
+    _isOnlineSourceSearching = value;
+    _onlineSourceSearchingNotifier.value = value;
+  }
+
+  void _startOnlineSourceSearch(
+    OnlineEpisodeQuery query, {
+    required bool clearExisting,
+    bool autoPlayFirst = false,
+  }) {
+    unawaited(_onlineSourceSubscription?.cancel());
+    if (clearExisting) {
+      _setOnlineSources(
+        const <OnlineEpisodeSourceResult>[],
+        notifyState: false,
+      );
+    }
+    _onlineQuery = query;
+    bool hasOpenedFirstSource = false;
+    if (mounted) {
+      setState(() {
+        _setOnlineSourceSearching(true);
+      });
+    } else {
+      _setOnlineSourceSearching(true);
+    }
+
+    _onlineSourceSubscription = OnlineEpisodeSourceService()
+        .searchStream(query)
+        .listen(
+          (List<OnlineEpisodeSourceResult> results) {
+            if (!mounted) {
+              return;
+            }
+            setState(() {
+              _setOnlineSources(results, notifyState: false);
+            });
+            if (autoPlayFirst && !hasOpenedFirstSource && results.isNotEmpty) {
+              hasOpenedFirstSource = true;
+              unawaited(
+                _openOnlineSourceInPlayer(
+                  _selectBestOnlineSource(results),
+                  query,
+                  preserveProgress: false,
+                ),
+              );
+            }
+          },
+          onError: (Object error) {
+            if (!mounted) {
+              return;
+            }
+            setState(() {
+              _setOnlineSourceSearching(false);
+            });
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('在线源搜索失败：$error'),
+                backgroundColor: Colors.redAccent,
+              ),
+            );
+          },
+          onDone: () {
+            if (!mounted) {
+              return;
+            }
+            setState(() {
+              _setOnlineSourceSearching(false);
+            });
+            if (autoPlayFirst &&
+                !hasOpenedFirstSource &&
+                _onlineSources.isEmpty) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('未找到该集可直接播放的在线源。'),
+                  backgroundColor: Colors.redAccent,
+                ),
+              );
+            }
+          },
+        );
+  }
+
+  OnlineEpisodeSourceResult _selectBestOnlineSource(
+    List<OnlineEpisodeSourceResult> results,
+  ) {
+    final List<OnlineEpisodeSourceResult> sorted = results.toList()
+      ..sort((OnlineEpisodeSourceResult a, OnlineEpisodeSourceResult b) {
+        if (a.verified != b.verified) {
+          return b.verified ? 1 : -1;
+        }
+        final int byScore = b.score.compareTo(a.score);
+        if (byScore != 0) {
+          return byScore;
+        }
+        return a.title.length.compareTo(b.title.length);
+      });
+    return sorted.first;
+  }
+
+  PlayableMedia _buildMediaFromOnlineSource(
+    OnlineEpisodeSourceResult source,
+    OnlineEpisodeQuery query,
+  ) {
+    return PlayableMedia(
+      title: source.title.trim().isNotEmpty
+          ? source.title.trim()
+          : '${query.subjectTitle} ${query.episodeLabel}'.trim(),
+      url: source.mediaUrl,
+      headers: source.headers,
+      subjectTitle: query.subjectTitle,
+      episodeLabel: query.episodeLabel,
+      bangumiSubjectId: query.bangumiSubjectId,
+      bangumiEpisodeId: query.bangumiEpisodeId,
+      onlineQuery: query,
+      onlineEpisodes: _onlineEpisodes,
+      onlineSources: _onlineSources,
+    );
+  }
+
+  Future<void> _openOnlineSourceInPlayer(
+    OnlineEpisodeSourceResult source,
+    OnlineEpisodeQuery query, {
+    bool preserveProgress = true,
+  }) async {
+    if (source.mediaUrl.trim().isEmpty) {
+      return;
+    }
+    if (preserveProgress) {
+      await _savePlaybackProgress(force: true);
+    }
+    await _openMedia(_buildMediaFromOnlineSource(source, query));
+    _scheduleControlsAutoHide();
+  }
+
+  Future<void> _switchOnlineEpisode(OnlineEpisodeQuery query) async {
+    _cancelControlsAutoHide();
+    await _savePlaybackProgress(force: true);
+    await _player.pause();
+    await _player.stop();
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _onlineQuery = query;
+      _activeMedia = null;
+      _position = Duration.zero;
+      _duration = Duration.zero;
+      _dragPosition = null;
+      _isPlaying = false;
+      _isBuffering = false;
+      _setOnlineSources(
+        const <OnlineEpisodeSourceResult>[],
+        notifyState: false,
+      );
+      _showControls = true;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('正在查找 ${query.episodeLabel} 的在线源...'),
+        duration: const Duration(seconds: 2),
+      ),
+    );
+    _startOnlineSourceSearch(query, clearExisting: true, autoPlayFirst: true);
+  }
+
+  Future<void> _showOnlineSourceSheet() async {
+    _cancelControlsAutoHide();
+    await _showPlayerPanel<void>(
+      portraitHeightFactor: 0.74,
+      landscapeHeightFactor: 0.72,
+      maxLandscapeWidth: 460,
+      builder: (BuildContext context) => _OnlineSourceSelectionSheet(
+        sourcesListenable: _onlineSourcesNotifier,
+        searchingListenable: _onlineSourceSearchingNotifier,
+        activeMediaUrl: _activeMedia?.url ?? '',
+        onSelected: (OnlineEpisodeSourceResult source) {
+          final OnlineEpisodeQuery? query = _onlineQuery;
+          if (query == null) {
+            return;
+          }
+          unawaited(_openOnlineSourceInPlayer(source, query));
+        },
+      ),
+    );
+    _scheduleControlsAutoHide();
+  }
+
+  Future<void> _showOnlineEpisodeSheet() async {
+    if (_onlineEpisodes.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('当前番剧没有可切换的在线剧集列表。')));
+      return;
+    }
+    _cancelControlsAutoHide();
+    await _showPlayerPanel<void>(
+      portraitHeightFactor: 0.78,
+      landscapeHeightFactor: 0.76,
+      maxLandscapeWidth: 460,
+      builder: (BuildContext context) => _OnlineEpisodeSelectionSheet(
+        episodes: _onlineEpisodes,
+        activeQuery: _onlineQuery,
+        onSelected: (OnlineEpisodeQuery query) {
+          unawaited(_switchOnlineEpisode(query));
+        },
+      ),
+    );
+    _scheduleControlsAutoHide();
   }
 
   Future<void> _restorePlaybackProgress(PlayableMedia media) async {
@@ -319,6 +624,24 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
     await prefs.setBool('danmaku.showStroke', _danmakuShowStroke);
   }
 
+  Future<void> _loadGestureAdjustmentState() async {
+    VolumeController.instance.showSystemUI = false;
+    try {
+      final double brightness =
+          await ScreenBrightnessPlatform.instance.application;
+      _currentBrightness = brightness.clamp(0.0, 1.0).toDouble();
+    } catch (_) {
+      _currentBrightness = 0.5;
+    }
+
+    try {
+      final double volume = await VolumeController.instance.getVolume();
+      _currentVolume = volume.clamp(0.0, 1.0).toDouble();
+    } catch (_) {
+      _currentVolume = 0.5;
+    }
+  }
+
   void _toggleControls() {
     if (!mounted) {
       return;
@@ -331,6 +654,111 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
     } else {
       _cancelControlsAutoHide();
     }
+  }
+
+  void _handlePlayerDoubleTap() {
+    final bool willPlay = !_isPlaying;
+    if (_isPlaying) {
+      _suppressControlsOnNextPause = true;
+      _cancelControlsAutoHide();
+      if (mounted) {
+        setState(() {
+          _showControls = false;
+        });
+      }
+    }
+    unawaited(_togglePlayPause());
+    _showGestureIndicator(
+      icon: willPlay ? Icons.play_arrow_rounded : Icons.pause_rounded,
+      text: willPlay ? '播放' : '暂停',
+    );
+  }
+
+  void _handleVerticalDragStart(DragStartDetails details) {
+    final double width = MediaQuery.sizeOf(context).width;
+    _gestureAdjustmentKind = details.localPosition.dx < width / 2
+        ? _GestureAdjustmentKind.brightness
+        : _GestureAdjustmentKind.volume;
+    _gestureAccumulatedDy = 0;
+    _gestureStartValue = _gestureAdjustmentKind == _GestureAdjustmentKind.volume
+        ? _currentVolume
+        : _currentBrightness;
+    _showGestureIndicatorForAdjustment(_gestureStartValue);
+  }
+
+  void _handleVerticalDragUpdate(DragUpdateDetails details) {
+    final _GestureAdjustmentKind? kind = _gestureAdjustmentKind;
+    if (kind == null) {
+      return;
+    }
+    final double height = math.max(MediaQuery.sizeOf(context).height, 1);
+    _gestureAccumulatedDy += details.delta.dy;
+    final double nextValue =
+        (_gestureStartValue - _gestureAccumulatedDy / (height * 0.72))
+            .clamp(0.0, 1.0)
+            .toDouble();
+
+    if (kind == _GestureAdjustmentKind.brightness) {
+      _currentBrightness = nextValue;
+      unawaited(
+        ScreenBrightnessPlatform.instance.setApplicationScreenBrightness(
+          nextValue,
+        ),
+      );
+    } else {
+      _currentVolume = nextValue;
+      unawaited(VolumeController.instance.setVolume(nextValue));
+    }
+    _showGestureIndicatorForAdjustment(nextValue);
+  }
+
+  void _handleVerticalDragEnd([DragEndDetails? details]) {
+    _gestureAdjustmentKind = null;
+    _hideGestureIndicatorDelayed();
+  }
+
+  void _showGestureIndicatorForAdjustment(double value) {
+    final bool isBrightness =
+        _gestureAdjustmentKind == _GestureAdjustmentKind.brightness;
+    _showGestureIndicator(
+      icon: isBrightness ? Icons.brightness_6_rounded : Icons.volume_up_rounded,
+      text: '${isBrightness ? '亮度' : '音量'} ${(value * 100).round()}%',
+      progress: value,
+      autoHide: false,
+    );
+  }
+
+  void _showGestureIndicator({
+    required IconData icon,
+    required String text,
+    double? progress,
+    bool autoHide = true,
+  }) {
+    _gestureIndicatorTimer?.cancel();
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _gestureIndicatorIcon = icon;
+      _gestureIndicatorText = text;
+      _gestureIndicatorProgress = progress;
+    });
+    if (autoHide) {
+      _hideGestureIndicatorDelayed();
+    }
+  }
+
+  void _hideGestureIndicatorDelayed() {
+    _gestureIndicatorTimer?.cancel();
+    _gestureIndicatorTimer = Timer(const Duration(milliseconds: 650), () {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _gestureIndicatorText = '';
+        _gestureIndicatorProgress = null;
+      });
+    });
   }
 
   void _scheduleControlsAutoHide() {
@@ -1189,6 +1617,13 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
 
   Future<void> _toggleFullscreenLock() async {
     _cancelControlsAutoHide();
+    if (widget.preferLandscapeOnOpen) {
+      await _exitPlayerMode();
+      if (mounted) {
+        await Navigator.of(context).maybePop();
+      }
+      return;
+    }
     if (_isFullscreenLocked) {
       await SystemChrome.setPreferredOrientations(const <DeviceOrientation>[
         DeviceOrientation.portraitUp,
@@ -1282,8 +1717,14 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
   @override
   void dispose() {
     unawaited(_savePlaybackProgress(force: true));
+    unawaited(_onlineSourceSubscription?.cancel());
+    unawaited(
+      ScreenBrightnessPlatform.instance.resetApplicationScreenBrightness(),
+    );
+    VolumeController.instance.showSystemUI = true;
     _cancelControlsAutoHide();
     _cancelDanmakuTicker();
+    _gestureIndicatorTimer?.cancel();
     _progressSaveTimer?.cancel();
     for (final StreamSubscription<dynamic> subscription in _subscriptions) {
       subscription.cancel();
@@ -1292,8 +1733,14 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
       _coordinator.removeListener(_onStateChanged);
       _coordinator.reset();
     }
-    widget.streamServer?.stop();
-    _player.dispose();
+    if (_ownsPlayer) {
+      widget.streamServer?.stop();
+    }
+    _onlineSourcesNotifier.dispose();
+    _onlineSourceSearchingNotifier.dispose();
+    if (_ownsPlayer) {
+      _player.dispose();
+    }
     _exitPlayerMode();
     super.dispose();
   }
@@ -1311,6 +1758,12 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
             child: GestureDetector(
               behavior: HitTestBehavior.opaque,
               onTap: showPlayer ? _toggleControls : null,
+              onDoubleTap: showPlayer ? _handlePlayerDoubleTap : null,
+              onVerticalDragStart: showPlayer ? _handleVerticalDragStart : null,
+              onVerticalDragUpdate: showPlayer
+                  ? _handleVerticalDragUpdate
+                  : null,
+              onVerticalDragEnd: showPlayer ? _handleVerticalDragEnd : null,
               child: showPlayer
                   ? Center(
                       child: Video(
@@ -1346,6 +1799,10 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
                 ),
               ),
             ),
+          if (showPlayer && _gestureIndicatorText.isNotEmpty)
+            Positioned.fill(
+              child: IgnorePointer(child: _buildGestureIndicator()),
+            ),
         ],
       ),
     );
@@ -1361,6 +1818,10 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: _toggleControls,
+      onDoubleTap: _handlePlayerDoubleTap,
+      onVerticalDragStart: _handleVerticalDragStart,
+      onVerticalDragUpdate: _handleVerticalDragUpdate,
+      onVerticalDragEnd: _handleVerticalDragEnd,
       child: SafeArea(
         child: Container(
           decoration: const BoxDecoration(
@@ -1465,11 +1926,26 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
                         runSpacing: isLandscape ? 4 : 2,
                         crossAxisAlignment: WrapCrossAlignment.center,
                         children: <Widget>[
-                          _buildBottomAction(
-                            icon: Icons.video_library_rounded,
-                            label: '选集 (${DownloadManager().allTasks.length})',
-                            onPressed: _showCacheSelectionSheet,
-                          ),
+                          if (_hasOnlineContext) ...<Widget>[
+                            _buildBottomAction(
+                              icon: Icons.playlist_play_rounded,
+                              label: '选集 (${_onlineEpisodes.length})',
+                              onPressed: _showOnlineEpisodeSheet,
+                            ),
+                            _buildBottomAction(
+                              icon: Icons.hub_rounded,
+                              label: _isOnlineSourceSearching
+                                  ? '找源中 (${_onlineSources.length})'
+                                  : '换源 (${_onlineSources.length})',
+                              onPressed: _showOnlineSourceSheet,
+                            ),
+                          ] else
+                            _buildBottomAction(
+                              icon: Icons.video_library_rounded,
+                              label:
+                                  '选集 (${DownloadManager().allTasks.length})',
+                              onPressed: _showCacheSelectionSheet,
+                            ),
                           _buildBottomAction(
                             icon: Icons.speed_rounded,
                             label:
@@ -1608,6 +2084,53 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
     );
   }
 
+  Widget _buildGestureIndicator() {
+    final double? progress = _gestureIndicatorProgress;
+    return Center(
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.68),
+          borderRadius: BorderRadius.circular(18),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 18),
+          child: SizedBox(
+            width: 132,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                Icon(_gestureIndicatorIcon, color: Colors.white, size: 34),
+                const SizedBox(height: 10),
+                Text(
+                  _gestureIndicatorText,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                if (progress != null) ...<Widget>[
+                  const SizedBox(height: 12),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(999),
+                    child: LinearProgressIndicator(
+                      minHeight: 5,
+                      value: progress.clamp(0.0, 1.0).toDouble(),
+                      color: Colors.white,
+                      backgroundColor: Colors.white24,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildBottomAction({
     required IconData icon,
     required String label,
@@ -1726,6 +2249,461 @@ class _PlayerPanelHeader extends StatelessWidget {
             style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
           ),
         ],
+      ),
+    );
+  }
+}
+
+Map<String, List<OnlineEpisodeSourceResult>> _groupOnlineSources(
+  List<OnlineEpisodeSourceResult> sources,
+) {
+  final Map<String, List<OnlineEpisodeSourceResult>> grouped =
+      <String, List<OnlineEpisodeSourceResult>>{};
+  for (final OnlineEpisodeSourceResult source in sources) {
+    grouped.putIfAbsent(source.sourceName, () => <OnlineEpisodeSourceResult>[]);
+    grouped[source.sourceName]!.add(source);
+  }
+  for (final List<OnlineEpisodeSourceResult> items in grouped.values) {
+    items.sort((OnlineEpisodeSourceResult a, OnlineEpisodeSourceResult b) {
+      if (a.verified != b.verified) {
+        return b.verified ? 1 : -1;
+      }
+      return b.score.compareTo(a.score);
+    });
+  }
+  return grouped;
+}
+
+String _onlineSourceLineLabel(OnlineEpisodeSourceResult source, int index) {
+  final String prefix = source.verified ? '已探测 · ' : '';
+  final RegExpMatch? macLine = RegExp(
+    r'/sid/(\d+)/nid/\d+',
+  ).firstMatch(source.pageUrl);
+  if (macLine != null) {
+    return '$prefix${macLine.group(1)} 号线';
+  }
+
+  final RegExpMatch? ageLine = RegExp(
+    r'/play/\d+/(\d+)/\d+',
+  ).firstMatch(source.pageUrl);
+  if (ageLine != null) {
+    return '$prefix线路 ${ageLine.group(1)}';
+  }
+
+  if (source.sourceName.toLowerCase().contains('anime1')) {
+    return prefix + source.sourceName;
+  }
+
+  return '$prefix线路 ${index + 1}';
+}
+
+String _onlineSourceTierLabel(OnlineEpisodeSourceResult source) {
+  final String normalized = source.sourceName.toLowerCase();
+  if (normalized.contains('omofun') ||
+      normalized.contains('age') ||
+      normalized.contains('anime1')) {
+    return '优先';
+  }
+  if (normalized.contains('风铃') ||
+      normalized.contains('稀饭') ||
+      normalized.contains('mutefun') ||
+      normalized.contains('七色') ||
+      normalized.contains('5弹幕')) {
+    return '可用';
+  }
+  return '备用';
+}
+
+Color _onlineSourceTierColor(ColorScheme colors, String tier) {
+  return switch (tier) {
+    '优先' => colors.primary,
+    '可用' => Colors.green.shade700,
+    _ => colors.onSurfaceVariant,
+  };
+}
+
+class _OnlineSourceTierPill extends StatelessWidget {
+  final String label;
+  final Color color;
+
+  const _OnlineSourceTierPill({required this.label, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: color,
+            fontSize: 11,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+bool _isSameOnlineEpisode(
+  OnlineEpisodeQuery? current,
+  OnlineEpisodeQuery candidate,
+) {
+  if (current == null) {
+    return false;
+  }
+  if (current.bangumiEpisodeId > 0 && candidate.bangumiEpisodeId > 0) {
+    return current.bangumiEpisodeId == candidate.bangumiEpisodeId;
+  }
+  return current.episodeNumber > 0 &&
+      current.episodeNumber == candidate.episodeNumber;
+}
+
+class _OnlineSourceSelectionSheet extends StatelessWidget {
+  final ValueListenable<List<OnlineEpisodeSourceResult>> sourcesListenable;
+  final ValueListenable<bool> searchingListenable;
+  final String activeMediaUrl;
+  final ValueChanged<OnlineEpisodeSourceResult> onSelected;
+
+  const _OnlineSourceSelectionSheet({
+    required this.sourcesListenable,
+    required this.searchingListenable,
+    required this.activeMediaUrl,
+    required this.onSelected,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<List<OnlineEpisodeSourceResult>>(
+      valueListenable: sourcesListenable,
+      builder:
+          (
+            BuildContext context,
+            List<OnlineEpisodeSourceResult> sources,
+            Widget? child,
+          ) {
+            return ValueListenableBuilder<bool>(
+              valueListenable: searchingListenable,
+              builder: (BuildContext context, bool searching, Widget? child) {
+                final List<MapEntry<String, List<OnlineEpisodeSourceResult>>>
+                groups = _groupOnlineSources(sources).entries.toList()
+                  ..sort((
+                    MapEntry<String, List<OnlineEpisodeSourceResult>> a,
+                    MapEntry<String, List<OnlineEpisodeSourceResult>> b,
+                  ) {
+                    final OnlineEpisodeSourceResult left = a.value.first;
+                    final OnlineEpisodeSourceResult right = b.value.first;
+                    if (left.verified != right.verified) {
+                      return right.verified ? 1 : -1;
+                    }
+                    return right.score.compareTo(left.score);
+                  });
+
+                return ListView.separated(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 18),
+                  itemCount: groups.length + 1,
+                  separatorBuilder: (BuildContext context, int index) =>
+                      const SizedBox(height: 10),
+                  itemBuilder: (BuildContext context, int index) {
+                    if (index == 0) {
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: <Widget>[
+                          const _PlayerPanelHeader(
+                            icon: Icons.hub_rounded,
+                            title: '在线换源',
+                          ),
+                          Text(
+                            searching
+                                ? '正在继续搜索，已解析 ${sources.length} 个可播源'
+                                : '已解析 ${sources.length} 个可播源',
+                            style: const TextStyle(color: Colors.grey),
+                          ),
+                          if (sources.isEmpty) ...<Widget>[
+                            const SizedBox(height: 30),
+                            Center(
+                              child: searching
+                                  ? const CircularProgressIndicator()
+                                  : const Text(
+                                      '暂无可切换的在线播放源。',
+                                      style: TextStyle(color: Colors.grey),
+                                    ),
+                            ),
+                          ],
+                        ],
+                      );
+                    }
+
+                    final MapEntry<String, List<OnlineEpisodeSourceResult>>
+                    group = groups[index - 1];
+                    final String tier = _onlineSourceTierLabel(
+                      group.value.first,
+                    );
+                    final Color tierColor = _onlineSourceTierColor(
+                      Theme.of(context).colorScheme,
+                      tier,
+                    );
+                    return Card(
+                      elevation: 0,
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: <Widget>[
+                            Row(
+                              children: <Widget>[
+                                CircleAvatar(
+                                  radius: 15,
+                                  child: Text(
+                                    group.key.trim().isEmpty
+                                        ? '?'
+                                        : group.key.trim().substring(0, 1),
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Text(
+                                    group.key,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ),
+                                _OnlineSourceTierPill(
+                                  label: tier,
+                                  color: tierColor,
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  '${group.value.length} 条线路',
+                                  style: const TextStyle(
+                                    color: Colors.grey,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 10),
+                            Wrap(
+                              spacing: 8,
+                              runSpacing: 8,
+                              children: List<Widget>.generate(
+                                group.value.length,
+                                (int sourceIndex) {
+                                  final OnlineEpisodeSourceResult source =
+                                      group.value[sourceIndex];
+                                  final bool selected =
+                                      source.mediaUrl == activeMediaUrl;
+                                  return ChoiceChip(
+                                    selected: selected,
+                                    avatar: Icon(
+                                      selected
+                                          ? Icons.check_rounded
+                                          : Icons.play_arrow_rounded,
+                                      size: 18,
+                                    ),
+                                    label: Text(
+                                      _onlineSourceLineLabel(
+                                        source,
+                                        sourceIndex,
+                                      ),
+                                    ),
+                                    onSelected: (_) {
+                                      Navigator.pop(context);
+                                      onSelected(source);
+                                    },
+                                  );
+                                },
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                );
+              },
+            );
+          },
+    );
+  }
+}
+
+class _OnlineEpisodeSelectionSheet extends StatelessWidget {
+  final List<OnlineEpisodeQuery> episodes;
+  final OnlineEpisodeQuery? activeQuery;
+  final ValueChanged<OnlineEpisodeQuery> onSelected;
+
+  const _OnlineEpisodeSelectionSheet({
+    required this.episodes,
+    required this.activeQuery,
+    required this.onSelected,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final bool isLandscape =
+        MediaQuery.orientationOf(context) == Orientation.landscape;
+    final String subjectTitle = episodes.isEmpty
+        ? ''
+        : episodes.first.subjectTitle;
+
+    return Padding(
+      padding: EdgeInsets.fromLTRB(16, 12, 16, isLandscape ? 14 : 18),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          const _PlayerPanelHeader(
+            icon: Icons.playlist_play_rounded,
+            title: '在线选集',
+          ),
+          if (subjectTitle.trim().isNotEmpty)
+            Text(
+              subjectTitle,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+            ),
+          const SizedBox(height: 4),
+          const Text(
+            '切换后会自动查找该集最优可播源并开始播放。',
+            style: TextStyle(color: Colors.grey),
+          ),
+          const SizedBox(height: 12),
+          Expanded(
+            child: LayoutBuilder(
+              builder: (BuildContext context, BoxConstraints constraints) {
+                final double spacing = isLandscape ? 8 : 10;
+                final int columns = constraints.maxWidth >= 520
+                    ? 4
+                    : (constraints.maxWidth >= 360 ? 3 : 2);
+                final double itemWidth =
+                    (constraints.maxWidth - spacing * (columns - 1)) / columns;
+
+                return SingleChildScrollView(
+                  child: Wrap(
+                    spacing: spacing,
+                    runSpacing: spacing,
+                    children: episodes.map((OnlineEpisodeQuery episode) {
+                      final bool selected = _isSameOnlineEpisode(
+                        activeQuery,
+                        episode,
+                      );
+                      return _OnlineEpisodeTile(
+                        width: itemWidth,
+                        episode: episode,
+                        selected: selected,
+                        onTap: selected
+                            ? null
+                            : () {
+                                Navigator.pop(context);
+                                onSelected(episode);
+                              },
+                      );
+                    }).toList(),
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _OnlineEpisodeTile extends StatelessWidget {
+  final double width;
+  final OnlineEpisodeQuery episode;
+  final bool selected;
+  final VoidCallback? onTap;
+
+  const _OnlineEpisodeTile({
+    required this.width,
+    required this.episode,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final ColorScheme colors = Theme.of(context).colorScheme;
+    final String title = episode.episodeNumber > 0
+        ? '第 ${episode.episodeNumber} 集'
+        : '未命名';
+    final String subtitle = episode.episodeTitle.trim();
+
+    return SizedBox(
+      width: width,
+      child: Material(
+        color: selected
+            ? colors.primaryContainer
+            : colors.surfaceContainerHighest.withValues(alpha: 0.72),
+        borderRadius: BorderRadius.circular(16),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: Container(
+            constraints: const BoxConstraints(minHeight: 82),
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: selected ? colors.primary : colors.outlineVariant,
+                width: selected ? 1.4 : 1,
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Row(
+                  children: <Widget>[
+                    Icon(
+                      selected
+                          ? Icons.play_circle_fill_rounded
+                          : Icons.play_circle_outline_rounded,
+                      size: 18,
+                      color: selected
+                          ? colors.primary
+                          : colors.onSurfaceVariant,
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: selected ? colors.primary : colors.onSurface,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 7),
+                Text(
+                  subtitle.isEmpty ? '点击播放' : subtitle,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: selected ? colors.onPrimaryContainer : Colors.grey,
+                    fontSize: 12,
+                    height: 1.25,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }

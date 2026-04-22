@@ -27,6 +27,9 @@ class BangumiApi {
   static final Map<int, List<dynamic>> _personSubjectsCache = {};
   static final Map<int, List<Map<String, dynamic>>> _subjectEpisodesCache = {};
   static final Map<String, int?> _episodeIdResolveCache = {};
+  static List<dynamic>? _calendarCache;
+  static List<Map<String, dynamic>>? _yearTopCache;
+  static int? _yearTopCacheYear;
 
   static void _trimCache(Map cache, {int maxSize = 50}) {
     if (cache.length > maxSize) {
@@ -359,10 +362,15 @@ class BangumiApi {
   }
 
   static Future<List<dynamic>> getCalendar() async {
+    final List<dynamic>? cached = _calendarCache;
+    if (cached != null) {
+      return cached;
+    }
     try {
       final response = await _dio.get('${_ApiConfig.apiBase}/calendar');
       if (response.statusCode == 200 && response.data is List) {
-        return response.data;
+        _calendarCache = response.data as List<dynamic>;
+        return _calendarCache!;
       }
     } catch (e) {
       debugPrint('[BangumiApi.getCalendar] Exception: $e');
@@ -372,6 +380,10 @@ class BangumiApi {
 
   static Future<List<Map<String, dynamic>>> getYearTop() async {
     final year = DateTime.now().year;
+    final List<Map<String, dynamic>>? cached = _yearTopCache;
+    if (_yearTopCacheYear == year && cached != null) {
+      return cached;
+    }
     try {
       var response = await _dio.get(
         '${_ApiConfig.webBase}/anime/browser/airtime/$year',
@@ -388,7 +400,13 @@ class BangumiApi {
       }
 
       if (response.statusCode == 200) {
-        return _parseBrowserItemList(utf8.decode(response.data), 10);
+        final List<Map<String, dynamic>> results = _parseBrowserItemList(
+          utf8.decode(response.data),
+          10,
+        );
+        _yearTopCache = results;
+        _yearTopCacheYear = year;
+        return results;
       }
     } catch (e) {
       debugPrint('[BangumiApi.getYearTop] Exception: $e');
