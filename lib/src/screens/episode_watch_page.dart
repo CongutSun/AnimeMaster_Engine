@@ -12,6 +12,7 @@ import '../models/online_episode_source.dart';
 import '../models/playable_media.dart';
 import '../services/online_episode_source_service.dart';
 import '../utils/cached_media_playback.dart';
+import '../utils/media_duration_probe.dart';
 import '../utils/task_title_parser.dart';
 import 'video_player_page.dart';
 
@@ -64,6 +65,7 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
       <OnlineEpisodeSourceResult>[];
   Duration _position = Duration.zero;
   Duration _duration = Duration.zero;
+  Duration _durationFallback = Duration.zero;
   Duration? _dragPosition;
   bool _isSearchingOnline = false;
   bool _isPreparingMedia = false;
@@ -73,6 +75,7 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
   bool _showInlineControls = true;
   String _statusText = '正在准备播放...';
   String _dataSourceName = '自动选择';
+  int _durationProbeSerial = 0;
 
   @override
   void initState() {
@@ -112,7 +115,12 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
           if (!mounted) {
             return;
           }
-          setState(() => _duration = value);
+          setState(() {
+            _duration =
+                value <= Duration.zero && _durationFallback > Duration.zero
+                ? _durationFallback
+                : value;
+          });
         }),
       );
     unawaited(_selectEpisode(widget.initialEpisode, preferCache: true));
@@ -145,6 +153,7 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
 
     final OnlineEpisodeQuery query = _buildOnlineEpisodeQuery(episode);
     final int episodeId = _episodeId(episode);
+    _durationProbeSerial += 1;
     if (mounted) {
       setState(() {
         _episode = episode;
@@ -163,6 +172,7 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
         _dataSourceName = '自动选择';
         _position = Duration.zero;
         _duration = Duration.zero;
+        _durationFallback = Duration.zero;
         _dragPosition = null;
         _showInlineControls = true;
       });
@@ -329,16 +339,19 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
     PlayableMedia media, {
     required String sourceName,
   }) async {
+    final int probeSerial = ++_durationProbeSerial;
     if (mounted) {
       setState(() {
         _isPreparingMedia = true;
         _statusText = '正在加载视频...';
         _position = Duration.zero;
         _duration = Duration.zero;
+        _durationFallback = Duration.zero;
         _dragPosition = null;
       });
     }
     await _player.open(Media(media.url, httpHeaders: media.headers));
+    unawaited(_probeDurationForMedia(media, serial: probeSerial));
     if (!mounted) {
       return;
     }
@@ -347,6 +360,32 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
       _dataSourceName = sourceName;
       _isPreparingMedia = false;
       _statusText = '';
+    });
+  }
+
+  Duration get _displayDuration {
+    if (_duration > Duration.zero) {
+      return _duration;
+    }
+    return _durationFallback;
+  }
+
+  Future<void> _probeDurationForMedia(
+    PlayableMedia media, {
+    required int serial,
+  }) async {
+    final Duration? probed = await MediaDurationProbe.probeHttpDuration(
+      media.url,
+      headers: media.headers,
+    );
+    if (!mounted || serial != _durationProbeSerial || probed == null) {
+      return;
+    }
+    setState(() {
+      _durationFallback = probed;
+      if (_duration <= Duration.zero) {
+        _duration = probed;
+      }
     });
   }
 
@@ -640,11 +679,34 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
 
   String _episodeTitle(Map<String, dynamic> episode) {
     final int number = _episodeNumber(episode);
-    final String title = _episodePlainTitle(episode);
+    final String title = _stripRedundantEpisodePrefix(
+      _episodePlainTitle(episode),
+      number,
+    );
     if (title.isEmpty) {
-      return number > 0 ? '第 $number 集' : '未命名剧集';
+      return number > 0 ? '第$number集' : '未命名剧集';
     }
-    return number > 0 ? '$number  $title' : title;
+    return title;
+  }
+
+  String _stripRedundantEpisodePrefix(String title, int episodeNumber) {
+    if (episodeNumber <= 0 || title.isEmpty) {
+      return title;
+    }
+    final String padded = episodeNumber.toString().padLeft(2, '0');
+    final List<RegExp> patterns = <RegExp>[
+      RegExp('^第\\s*0?$episodeNumber\\s*[集话話]\\s*[:：.．、-]?\\s*'),
+      RegExp('^0?$episodeNumber\\s*[:：.．、-]+\\s*'),
+      RegExp('^0?$episodeNumber\\s+(?=\\D)'),
+      RegExp('^$padded\\s*[:：.．、-]?\\s*'),
+    ];
+    for (final RegExp pattern in patterns) {
+      final String stripped = title.replaceFirst(pattern, '').trim();
+      if (stripped != title && stripped.isNotEmpty) {
+        return stripped;
+      }
+    }
+    return title;
   }
 
   String _episodeDescription(Map<String, dynamic> episode) {
@@ -824,7 +886,7 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
             statusText: _statusText,
             isPlaying: _isPlaying,
             position: _dragPosition ?? _position,
-            duration: _duration,
+            duration: _displayDuration,
             showControls: _showInlineControls,
             onToggleControls: _toggleInlineControls,
             onTogglePlay: _togglePlayPause,
@@ -1149,7 +1211,7 @@ class _InlinePlayerBar extends StatelessWidget {
               ),
             ),
             Text(
-              _formatInlineDuration(position),
+              '${_formatInlineDuration(position)} / ${_formatInlineDuration(duration)}',
               style: const TextStyle(color: Colors.white70, fontSize: 11),
             ),
             IconButton(

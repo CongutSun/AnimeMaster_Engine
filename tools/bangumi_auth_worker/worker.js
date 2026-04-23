@@ -11,8 +11,8 @@ const RESOURCE_PROXY_ALLOWED_HOSTS = new Set([
   'share.dmhy.org',
 ]);
 const APP_UPDATE_MANIFEST = {
-  version: '2.2.1',
-  build: 16,
+  version: '2.2.2',
+  build: 17,
   apkUrl: 'https://auth.congutsun.com/download/apk/universal',
   apkUrls: {
     'android-arm64': 'https://auth.congutsun.com/download/apk/android-arm64',
@@ -21,24 +21,23 @@ const APP_UPDATE_MANIFEST = {
     universal: 'https://auth.congutsun.com/download/apk/universal',
   },
   notes: [
-    '优化在线播放搜索策略，优先使用稳定直链源，减少无效站点请求。',
-    '单站内部改为小批量并发解析，并在获得足够可播线路后提前结束搜索。',
-    '提升 OmoFun 直链源优先级，过滤广告片段并降低慢线路自动选择权重。',
-    '提高在线播放播放器缓冲区，降低 HLS 在线源播放时的卡顿和缓冲抖动。',
-    '保留在线播放短期缓存，重复进入同一集时可更快展示已解析线路。',
+    '修复在线播放 HLS 源无法正常拖动进度条的问题，播放器会在必要时解析播放列表时长作为兜底。',
+    '修复在线播放进度条末端不显示总时长的问题，小屏和全屏播放器都会显示当前进度与总时长。',
+    '优化剧集标题显示，去除标题开头重复的集数前缀，避免出现“01 1 标题”这类重复信息。',
+    '修正番剧详情页放送状态展示，不再把总集数误显示为已出集数，连载番剧会显示已出/总集数。',
   ],
-  publishedAt: '2026-04-23T14:15:02+08:00',
+  publishedAt: '2026-04-23T16:33:08+08:00',
   forceUpdate: false,
 };
 const APK_DOWNLOAD_URLS = {
   'android-arm64':
-    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.2.1/app-arm64-v8a-release.apk',
+    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.2.2/app-arm64-v8a-release.apk',
   'android-arm':
-    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.2.1/app-armeabi-v7a-release.apk',
+    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.2.2/app-armeabi-v7a-release.apk',
   'android-x64':
-    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.2.1/app-x86_64-release.apk',
+    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.2.2/app-x86_64-release.apk',
   universal:
-    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.2.1/app-release.apk',
+    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.2.2/app-release.apk',
 };
 
 function json(body, status = 200) {

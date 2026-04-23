@@ -23,6 +23,7 @@ import '../providers/settings_provider.dart';
 import '../services/animeko_danmaku_service.dart';
 import '../services/dandanplay_service.dart';
 import '../services/online_episode_source_service.dart';
+import '../utils/media_duration_probe.dart';
 import '../utils/torrent_stream_server.dart';
 
 enum _GestureAdjustmentKind { brightness, volume }
@@ -68,6 +69,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
 
   Duration _position = Duration.zero;
   Duration _duration = Duration.zero;
+  Duration _durationFallback = Duration.zero;
   Duration? _dragPosition;
   double _rate = 1.0;
   bool _isPlaying = false;
@@ -117,6 +119,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
   String _gestureIndicatorText = '';
   IconData _gestureIndicatorIcon = Icons.touch_app_rounded;
   double? _gestureIndicatorProgress;
+  int _durationProbeSerial = 0;
 
   @override
   void initState() {
@@ -223,6 +226,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
       _openMedia(widget.media);
     } else {
       _activeMedia = widget.media;
+      unawaited(_probeDurationForMedia(widget.media));
       unawaited(_prepareDanmakuForMedia(widget.media));
     }
 
@@ -273,10 +277,12 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
   }
 
   Future<void> _openMedia(PlayableMedia media) async {
+    final int probeSerial = ++_durationProbeSerial;
     if (mounted) {
       setState(() {
         _position = Duration.zero;
         _duration = Duration.zero;
+        _durationFallback = Duration.zero;
         _dragPosition = null;
         _lastManualSeekAt = null;
       });
@@ -284,6 +290,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
     _activeMedia = media;
     widget.onMediaChanged?.call(media);
     await _player.open(Media(media.url, httpHeaders: media.headers));
+    unawaited(_probeDurationForMedia(media, serial: probeSerial));
     await _restorePlaybackProgress(media);
     if (_rate != 1.0) {
       await _player.setRate(_rate);
@@ -587,7 +594,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
     final SharedPreferences prefs = await SharedPreferences.getInstance();
     final String key = _playbackProgressKey(media);
     await prefs.setInt('$key.position', currentPosition.inMilliseconds);
-    await prefs.setInt('$key.duration', _duration.inMilliseconds);
+    await prefs.setInt('$key.duration', _displayDuration.inMilliseconds);
     await prefs.setInt('$key.updatedAt', DateTime.now().millisecondsSinceEpoch);
   }
 
@@ -808,7 +815,9 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
   Future<void> _seekRelative(int seconds) async {
     final Duration base = _dragPosition ?? _position;
     final Duration target = base + Duration(seconds: seconds);
-    final Duration max = _duration > Duration.zero ? _duration : target;
+    final Duration max = _displayDuration > Duration.zero
+        ? _displayDuration
+        : target;
     final Duration clamped = target < Duration.zero
         ? Duration.zero
         : (target > max ? max : target);
@@ -1677,12 +1686,22 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
 
   Duration get _effectivePosition => _dragPosition ?? _position;
 
+  Duration get _displayDuration {
+    if (_duration > Duration.zero) {
+      return _duration;
+    }
+    return _durationFallback;
+  }
+
   bool get _isStreamingPlayback {
     final String url = _activeMedia?.url ?? widget.media.url;
     return _isMagnet || url.startsWith('http://127.0.0.1:');
   }
 
   Duration _normalizeIncomingDuration(Duration value) {
+    if (value <= Duration.zero && _durationFallback > Duration.zero) {
+      return _durationFallback;
+    }
     if (!_isStreamingPlayback || value <= Duration.zero) {
       return value;
     }
@@ -1690,6 +1709,26 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
       return _duration;
     }
     return value;
+  }
+
+  Future<void> _probeDurationForMedia(
+    PlayableMedia media, {
+    int? serial,
+  }) async {
+    final int activeSerial = serial ?? ++_durationProbeSerial;
+    final Duration? probed = await MediaDurationProbe.probeHttpDuration(
+      media.url,
+      headers: media.headers,
+    );
+    if (!mounted || activeSerial != _durationProbeSerial || probed == null) {
+      return;
+    }
+    setState(() {
+      _durationFallback = probed;
+      if (_duration <= Duration.zero) {
+        _duration = probed;
+      }
+    });
   }
 
   Duration _normalizeIncomingPosition(Duration value) {
@@ -2024,15 +2063,15 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
                           ),
                         ),
                         child: Slider(
-                          value: _duration.inMilliseconds <= 0
+                          value: _displayDuration.inMilliseconds <= 0
                               ? 0
                               : _effectivePosition.inMilliseconds
-                                    .clamp(0, _duration.inMilliseconds)
+                                    .clamp(0, _displayDuration.inMilliseconds)
                                     .toDouble(),
                           min: 0,
-                          max: _duration.inMilliseconds <= 0
+                          max: _displayDuration.inMilliseconds <= 0
                               ? 1
-                              : _duration.inMilliseconds.toDouble(),
+                              : _displayDuration.inMilliseconds.toDouble(),
                           activeColor: Colors.blueAccent,
                           inactiveColor: Colors.white30,
                           onChangeStart: (_) => _cancelControlsAutoHide(),
@@ -2074,7 +2113,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
                           ),
                           const Spacer(),
                           Text(
-                            _formatDuration(_duration),
+                            _formatDuration(_displayDuration),
                             style: const TextStyle(color: Colors.white70),
                           ),
                         ],

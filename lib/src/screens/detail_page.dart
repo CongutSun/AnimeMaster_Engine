@@ -215,6 +215,9 @@ class _DetailPageState extends State<DetailPage>
   }
 
   Future<void> _loadSupplementaryData() async {
+    if (!hasRequestedEpisodes && !isEpisodesLoading) {
+      unawaited(_loadEpisodes());
+    }
     unawaited(
       BangumiApi.getSubjectCharacters(widget.animeId).then((
         List<dynamic> data,
@@ -534,6 +537,79 @@ class _DetailPageState extends State<DetailPage>
     );
   }
 
+  String _formatAirDate() {
+    final String date = detailData?['date']?.toString().trim() ?? '';
+    return date.isEmpty ? '未知' : date;
+  }
+
+  String _broadcastStatusText() {
+    final String unit = widget.subjectType == 2 ? '集' : '话';
+    final int total = _subjectEpisodeTotal();
+    final int aired = _airedEpisodeCount();
+    final DateTime today = _today();
+    final DateTime? startDate = _parseDate(detailData?['date']);
+    final bool hasStarted = startDate == null || !startDate.isAfter(today);
+
+    if (!hasStarted) {
+      return total > 0 ? '未开播 · 全$total$unit' : '未开播';
+    }
+
+    if (episodesData.isNotEmpty) {
+      if (total > 0) {
+        if (aired >= total && episodesData.length >= total) {
+          return '已完结 · 全$total$unit';
+        }
+        return aired > 0 ? '连载中 · 已出$aired/$total$unit' : '连载中 · 全$total$unit';
+      }
+      return aired > 0 ? '连载中 · 已出$aired$unit' : '连载中';
+    }
+
+    if (total > 0) {
+      return '连载中 · 全$total$unit';
+    }
+    return '连载中';
+  }
+
+  int _subjectEpisodeTotal() {
+    final dynamic eps = detailData?['eps'] ?? detailData?['eps_count'];
+    if (eps is int) {
+      return eps;
+    }
+    if (eps is num) {
+      return eps.round();
+    }
+    return int.tryParse(eps?.toString() ?? '') ?? 0;
+  }
+
+  int _airedEpisodeCount() {
+    int count = 0;
+    final DateTime today = _today();
+    for (final Map<String, dynamic> episode in episodesData) {
+      final DateTime? airdate = _parseDate(episode['airdate']);
+      if (airdate != null && !airdate.isAfter(today)) {
+        count += 1;
+      }
+    }
+    return count;
+  }
+
+  DateTime _today() {
+    final DateTime now = DateTime.now();
+    return DateTime(now.year, now.month, now.day);
+  }
+
+  DateTime? _parseDate(dynamic value) {
+    final String raw = value?.toString().trim() ?? '';
+    if (raw.isEmpty || raw == '0000-00-00') {
+      return null;
+    }
+    final DateTime? parsed = DateTime.tryParse(raw);
+    if (parsed == null) {
+      return null;
+    }
+    return DateTime(parsed.year, parsed.month, parsed.day);
+  }
+
   @override
   Widget build(BuildContext context) {
     final originalName = detailData?['name']?.toString() ?? widget.initialName;
@@ -647,7 +723,7 @@ class _DetailPageState extends State<DetailPage>
                                     ],
                                   ),
                                   Text(
-                                    '首播: ${detailData?['date'] ?? '未知'}\n状态: 已出 ${detailData?['eps'] ?? '?'} ${widget.subjectType == 2 ? '集' : '卷/话'}',
+                                    '首播: ${_formatAirDate()}\n状态: ${_broadcastStatusText()}',
                                     style: const TextStyle(
                                       fontSize: 11,
                                       color: Colors.grey,
@@ -1036,11 +1112,34 @@ class _DetailPageState extends State<DetailPage>
     final int number = _episodeNumber(episode);
     final String nameCn = episode['name_cn']?.toString().trim() ?? '';
     final String name = episode['name']?.toString().trim() ?? '';
-    final String title = nameCn.isNotEmpty ? nameCn : name;
+    final String title = _stripRedundantEpisodePrefix(
+      nameCn.isNotEmpty ? nameCn : name,
+      number,
+    );
     if (title.isEmpty) {
-      return number > 0 ? '第 $number 集' : '未命名剧集';
+      return number > 0 ? '第$number集' : '未命名剧集';
     }
-    return number > 0 ? '第 $number 集  $title' : title;
+    return title;
+  }
+
+  String _stripRedundantEpisodePrefix(String title, int episodeNumber) {
+    if (episodeNumber <= 0 || title.isEmpty) {
+      return title;
+    }
+    final String padded = episodeNumber.toString().padLeft(2, '0');
+    final List<RegExp> patterns = <RegExp>[
+      RegExp('^第\\s*0?$episodeNumber\\s*[集话話]\\s*[:：.．、-]?\\s*'),
+      RegExp('^0?$episodeNumber\\s*[:：.．、-]+\\s*'),
+      RegExp('^0?$episodeNumber\\s+(?=\\D)'),
+      RegExp('^$padded\\s*[:：.．、-]?\\s*'),
+    ];
+    for (final RegExp pattern in patterns) {
+      final String stripped = title.replaceFirst(pattern, '').trim();
+      if (stripped != title && stripped.isNotEmpty) {
+        return stripped;
+      }
+    }
+    return title;
   }
 
   String _episodeMeta(Map<String, dynamic> episode) {

@@ -38,6 +38,7 @@ example/pubspec.lock
 example/.flutter-plugins-dependencies
 example/android/key.properties
 example/android/keystore/
+release/*.apk
 
 # 排除所有平台产生的日志和缓存
 .flutter-plugins
