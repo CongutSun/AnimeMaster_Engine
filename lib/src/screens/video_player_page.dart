@@ -81,6 +81,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
   Timer? _danmakuTicker;
   Timer? _progressSaveTimer;
   Timer? _gestureIndicatorTimer;
+  Timer? _sliderSeekThrottle;
   PlayableMedia? _activeMedia;
   OnlineEpisodeQuery? _onlineQuery;
   List<OnlineEpisodeQuery> _onlineEpisodes = <OnlineEpisodeQuery>[];
@@ -831,6 +832,38 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
       });
     }
     _resyncDanmakuCursor(clamped);
+    _scheduleControlsAutoHide();
+  }
+
+  void _seekFromSlider(double value) {
+    final Duration target = Duration(milliseconds: value.round());
+    _lastManualSeekAt = DateTime.now();
+    setState(() {
+      _position = target;
+      _dragPosition = target;
+    });
+    _resyncDanmakuCursor(target);
+
+    _sliderSeekThrottle?.cancel();
+    _sliderSeekThrottle = Timer(const Duration(milliseconds: 80), () {
+      unawaited(_player.seek(target));
+    });
+  }
+
+  Future<void> _finishSliderSeek(double value) async {
+    final Duration target = Duration(milliseconds: value.round());
+    _sliderSeekThrottle?.cancel();
+    _sliderSeekThrottle = null;
+    _lastManualSeekAt = DateTime.now();
+    await _player.seek(target);
+    unawaited(_savePlaybackProgress(position: target, force: true));
+    if (mounted) {
+      setState(() {
+        _position = target;
+        _dragPosition = null;
+      });
+    }
+    _resyncDanmakuCursor(target);
     _scheduleControlsAutoHide();
   }
 
@@ -1768,6 +1801,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
     );
     VolumeController.instance.showSystemUI = true;
     _cancelControlsAutoHide();
+    _sliderSeekThrottle?.cancel();
     _cancelDanmakuTicker();
     _gestureIndicatorTimer?.cancel();
     _progressSaveTimer?.cancel();
@@ -2075,34 +2109,8 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
                           activeColor: Colors.blueAccent,
                           inactiveColor: Colors.white30,
                           onChangeStart: (_) => _cancelControlsAutoHide(),
-                          onChanged: (double value) {
-                            setState(() {
-                              _dragPosition = Duration(
-                                milliseconds: value.round(),
-                              );
-                            });
-                          },
-                          onChangeEnd: (double value) async {
-                            final Duration target = Duration(
-                              milliseconds: value.round(),
-                            );
-                            _lastManualSeekAt = DateTime.now();
-                            await _player.seek(target);
-                            unawaited(
-                              _savePlaybackProgress(
-                                position: target,
-                                force: true,
-                              ),
-                            );
-                            if (mounted) {
-                              setState(() {
-                                _position = target;
-                                _dragPosition = null;
-                              });
-                            }
-                            _resyncDanmakuCursor(target);
-                            _scheduleControlsAutoHide();
-                          },
+                          onChanged: _seekFromSlider,
+                          onChangeEnd: _finishSliderSeek,
                         ),
                       ),
                       Row(
