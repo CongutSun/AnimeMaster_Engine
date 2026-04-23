@@ -11,8 +11,8 @@ const RESOURCE_PROXY_ALLOWED_HOSTS = new Set([
   'share.dmhy.org',
 ]);
 const APP_UPDATE_MANIFEST = {
-  version: '2.1.13',
-  build: 15,
+  version: '2.2.1',
+  build: 16,
   apkUrl: 'https://auth.congutsun.com/download/apk/universal',
   apkUrls: {
     'android-arm64': 'https://auth.congutsun.com/download/apk/android-arm64',
@@ -21,29 +21,24 @@ const APP_UPDATE_MANIFEST = {
     universal: 'https://auth.congutsun.com/download/apk/universal',
   },
   notes: [
-    '剧集点击改为进入独立播放详情页，上方非全屏播放，下方展示剧情介绍、本集讨论和剧集列表。',
-    '播放详情页优先播放本地缓存，并支持在缓存与在线播放源之间切换。',
-    '统一小屏与全屏手势：单击只显示或隐藏控制层，双击只负责播放或暂停。',
-    '从剧集小屏进入全屏时保持横屏显示，退出全屏后直接回到竖屏。',
-    '换源面板按站点分组展示多线路，并标注优先、可用、备用源级别。',
-    '在线源搜索改为 10 个大陆网络优先源，单站最长等待调整为 8 秒，并对直链做轻量可播放探测。',
-    '在线播放结果加入短期缓存，返回剧集页或重复切换同一集时可立即展示已解析源。',
-    '修复剧集切换搜索期间上一集继续播放的问题，切集时会先停止当前播放器。',
-    '修复小屏进入全屏后控制栏仍显示“全屏”的状态错误。',
-    '本集讨论回复保留缩进层次但不再显示“楼中楼”文案。',
+    '优化在线播放搜索策略，优先使用稳定直链源，减少无效站点请求。',
+    '单站内部改为小批量并发解析，并在获得足够可播线路后提前结束搜索。',
+    '提升 OmoFun 直链源优先级，过滤广告片段并降低慢线路自动选择权重。',
+    '提高在线播放播放器缓冲区，降低 HLS 在线源播放时的卡顿和缓冲抖动。',
+    '保留在线播放短期缓存，重复进入同一集时可更快展示已解析线路。',
   ],
-  publishedAt: '2026-04-23T00:16:12+08:00',
+  publishedAt: '2026-04-23T14:15:02+08:00',
   forceUpdate: false,
 };
 const APK_DOWNLOAD_URLS = {
   'android-arm64':
-    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.1.13/app-arm64-v8a-release.apk',
+    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.2.1/app-arm64-v8a-release.apk',
   'android-arm':
-    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.1.13/app-armeabi-v7a-release.apk',
+    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.2.1/app-armeabi-v7a-release.apk',
   'android-x64':
-    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.1.13/app-x86_64-release.apk',
+    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.2.1/app-x86_64-release.apk',
   universal:
-    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.1.13/app-release.apk',
+    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.2.1/app-release.apk',
 };
 
 function json(body, status = 200) {

@@ -148,6 +148,17 @@ class _AboutPageState extends State<AboutPage> {
                   ),
                   SizedBox(height: 12),
                   _LogEntry(
+                    version: '2.2.1',
+                    items: <String>[
+                      '优化在线播放搜索策略，优先使用稳定直链源，减少无效站点请求。',
+                      '单站内部改为小批量并发解析，并在获得足够可播线路后提前结束搜索。',
+                      '提升 OmoFun 直链源优先级，过滤广告片段并降低慢线路自动选择权重。',
+                      '提高在线播放播放器缓冲区，降低 HLS 在线源播放时的卡顿和缓冲抖动。',
+                      '保留在线播放短期缓存，重复进入同一集时可更快展示已解析线路。',
+                    ],
+                  ),
+                  SizedBox(height: 14),
+                  _LogEntry(
                     version: '2.1.13',
                     items: <String>[
                       '番剧详情页的剧集面板新增本地缓存播放入口，可按条目与集数匹配已缓存任务。',

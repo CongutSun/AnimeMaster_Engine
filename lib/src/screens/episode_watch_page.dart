@@ -77,7 +77,9 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
   @override
   void initState() {
     super.initState();
-    _player = Player();
+    _player = Player(
+      configuration: const PlayerConfiguration(bufferSize: 96 * 1024 * 1024),
+    );
     _controller = VideoController(_player);
     _tabController = TabController(length: 2, vsync: this);
     _playerSubscriptions

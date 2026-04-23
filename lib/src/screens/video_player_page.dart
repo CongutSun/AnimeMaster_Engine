@@ -127,7 +127,13 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
     unawaited(_loadGestureAdjustmentState());
 
     _ownsPlayer = widget.externalPlayer == null;
-    _player = widget.externalPlayer ?? Player();
+    _player =
+        widget.externalPlayer ??
+        Player(
+          configuration: const PlayerConfiguration(
+            bufferSize: 96 * 1024 * 1024,
+          ),
+        );
     _controller = widget.externalController ?? VideoController(_player);
     _isMagnet = widget.media.url.toLowerCase().startsWith('magnet:');
     _initializeOnlinePlaybackContext(widget.media);

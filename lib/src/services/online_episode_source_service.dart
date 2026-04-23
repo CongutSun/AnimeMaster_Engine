@@ -17,8 +17,10 @@ class OnlineEpisodeSourceService {
 
   static const int maxResults = 30;
   static const int _adapterConcurrency = 5;
-  static const Duration _adapterTimeout = Duration(seconds: 8);
-  static const Duration _searchDeadline = Duration(seconds: 18);
+  static const int _earlyCloseResultCount = 10;
+  static const int _earlyCloseVerifiedCount = 5;
+  static const Duration _adapterTimeout = Duration(seconds: 14);
+  static const Duration _searchDeadline = Duration(seconds: 20);
   static const Duration _resultCacheTtl = Duration(minutes: 30);
   static final Map<String, List<OnlineEpisodeSourceResult>> _resultCache =
       <String, List<OnlineEpisodeSourceResult>>{};
@@ -71,6 +73,38 @@ class OnlineEpisodeSourceService {
       controller.add(results);
     }
 
+    void closeWithCurrentResults() {
+      if (cancelled || controller.isClosed) {
+        return;
+      }
+      cancelled = true;
+      deadlineTimer?.cancel();
+      if (deduplicated.isEmpty) {
+        controller.add(const <OnlineEpisodeSourceResult>[]);
+      } else {
+        _writeCachedResults(cacheKey, _sortedResults(deduplicated));
+      }
+      unawaited(controller.close());
+    }
+
+    bool hasEnoughResultsForPlayback() {
+      final List<OnlineEpisodeSourceResult> results = _sortedResults(
+        deduplicated,
+      );
+      if (results.length >= _earlyCloseResultCount) {
+        return true;
+      }
+      final Iterable<OnlineEpisodeSourceResult> verified = results.where(
+        (OnlineEpisodeSourceResult result) => result.verified,
+      );
+      final int verifiedCount = verified.length;
+      final int sourceCount = verified
+          .map((OnlineEpisodeSourceResult result) => result.sourceName)
+          .toSet()
+          .length;
+      return verifiedCount >= _earlyCloseVerifiedCount && sourceCount >= 2;
+    }
+
     void maybeClose() {
       if (completedAdapters < adapters.length ||
           cancelled ||
@@ -103,6 +137,9 @@ class OnlineEpisodeSourceService {
                 }
                 if (changed) {
                   emit();
+                  if (hasEnoughResultsForPlayback()) {
+                    closeWithCurrentResults();
+                  }
                 }
               })
               .whenComplete(() {
@@ -127,16 +164,7 @@ class OnlineEpisodeSourceService {
           controller.add(_sortedResults(deduplicated));
         }
         deadlineTimer = Timer(_searchDeadline, () {
-          if (cancelled || controller.isClosed) {
-            return;
-          }
-          cancelled = true;
-          if (deduplicated.isEmpty) {
-            controller.add(const <OnlineEpisodeSourceResult>[]);
-          } else {
-            _writeCachedResults(cacheKey, _sortedResults(deduplicated));
-          }
-          unawaited(controller.close());
+          closeWithCurrentResults();
         });
         launchNextAdapters();
       },
@@ -287,7 +315,9 @@ class _DirectSiteAdapter implements _OnlineSourceAdapter {
   static const String _browserUserAgent =
       'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
       '(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
-  static const int _maxResultsPerSite = 6;
+  static const int _maxResultsPerSite = 4;
+  static const int _episodeResolveConcurrency = 3;
+  static const Duration _mediaResolveTimeout = Duration(seconds: 6);
 
   @override
   final String name;
@@ -314,15 +344,6 @@ class _DirectSiteAdapter implements _OnlineSourceAdapter {
 
   static final List<_OnlineSourceAdapter> defaults = <_OnlineSourceAdapter>[
     _DirectSiteAdapter(
-      name: 'AGE 动漫',
-      baseUrl: 'https://www.agedm.io',
-      searchPathBuilder: (String keyword) => '/search?query=$keyword',
-      subjectSelector: 'a[href*="/detail/"]',
-      subjectHrefPattern: RegExp(r'/detail/\d+'),
-      episodeSelector: 'a.video_detail_spisode_link[href*="/play/"]',
-      episodeHrefPattern: RegExp(r'/play/\d+/\d+/\d+'),
-    ),
-    _DirectSiteAdapter(
       name: 'OmoFun',
       baseUrl: 'https://omofun04.top',
       searchPathBuilder: (String keyword) => '/vod/search.html?wd=$keyword',
@@ -330,6 +351,15 @@ class _DirectSiteAdapter implements _OnlineSourceAdapter {
       subjectHrefPattern: RegExp(r'/vod/detail/id/\d+\.html'),
       episodeSelector: 'a[href*="/vod/play/id/"], [data-link*="/vod/play/id/"]',
       episodeHrefPattern: RegExp(r'/vod/play/id/\d+/sid/\d+/nid/\d+\.html'),
+    ),
+    _DirectSiteAdapter(
+      name: 'AGE 动漫',
+      baseUrl: 'https://www.agedm.io',
+      searchPathBuilder: (String keyword) => '/search?query=$keyword',
+      subjectSelector: 'a[href*="/detail/"]',
+      subjectHrefPattern: RegExp(r'/detail/\d+'),
+      episodeSelector: 'a.video_detail_spisode_link[href*="/play/"]',
+      episodeHrefPattern: RegExp(r'/play/\d+/\d+/\d+'),
     ),
     _DirectSiteAdapter(
       name: '橘子动漫',
@@ -362,15 +392,7 @@ class _DirectSiteAdapter implements _OnlineSourceAdapter {
         r'/vod/play/id/\d+/sid/\d+/nid/\d+\.html|/play/\d+',
       ),
     ),
-    _DirectSiteAdapter.macCms(name: '风铃动漫', baseUrl: 'https://www.aafun.cc'),
-    _DirectSiteAdapter.macCms(name: '稀饭动漫', baseUrl: 'https://dm.xifanacg.com'),
-    _DirectSiteAdapter.macCms(name: '去看吧', baseUrl: 'https://www.qkan8.com'),
-    _DirectSiteAdapter.macCms(name: 'NT 动漫', baseUrl: 'https://www.ntdm9.com'),
     _DirectSiteAdapter.macCms(name: '嗷呜动漫', baseUrl: 'https://www.aowu.tv'),
-    _DirectSiteAdapter.macCms(
-      name: 'Mutefun',
-      baseUrl: 'https://www.91mute.com',
-    ),
   ];
 
   static final List<_OnlineSourceAdapter>
@@ -594,7 +616,9 @@ class _DirectSiteAdapter implements _OnlineSourceAdapter {
       searchPathBuilder: (String keyword) => '/vod/search.html?wd=$keyword',
       fallbackSearchPathBuilders: <String Function(String keyword)>[
         (String keyword) => '/index.php/vod/search/wd/$keyword.html',
+        (String keyword) => '/vodsearch/-------------.html?wd=$keyword',
         (String keyword) => '/search/$keyword-------------/',
+        (String keyword) => '/search?query=$keyword',
       ],
       pathKeyword: true,
       subjectSelector:
@@ -612,11 +636,11 @@ class _DirectSiteAdapter implements _OnlineSourceAdapter {
 
   static int sourcePriorityFor(String sourceName) {
     final String normalized = sourceName.toLowerCase();
+    if (normalized.contains('omofun')) {
+      return 60;
+    }
     if (normalized.contains('age')) {
       return 50;
-    }
-    if (normalized.contains('omofun')) {
-      return 46;
     }
     if (normalized.contains('橘子')) {
       return 42;
@@ -691,39 +715,60 @@ class _DirectSiteAdapter implements _OnlineSourceAdapter {
               query,
             );
 
-            for (final _EpisodeHit episode in episodes) {
-              final _ResolvedMedia? media = await _resolveMedia(
-                dio,
-                episode.url,
-                referer: subject.url,
-              );
-              if (media == null) {
-                continue;
-              }
-
-              final String key = _normalizeUrl(media.url);
-              final int score =
-                  subject.score +
-                  episode.score +
-                  media.score +
-                  sourcePriorityFor(name) +
-                  80;
-              final OnlineEpisodeSourceResult result =
-                  OnlineEpisodeSourceResult(
-                    title: '${subject.title} ${episode.title}'.trim(),
-                    pageUrl: episode.url,
-                    mediaUrl: key,
-                    sourceName: name,
-                    snippet: media.verified
-                        ? '已验证直连视频流，${query.episodeLabel}'
-                        : '已解析直连视频流，待播放器确认，${query.episodeLabel}',
-                    headers: media.headers,
-                    score: score,
-                    verified: media.verified,
+            for (
+              int start = 0;
+              start < episodes.length && results.length < _maxResultsPerSite;
+              start += _episodeResolveConcurrency
+            ) {
+              final List<_EpisodeHit> batch = episodes
+                  .skip(start)
+                  .take(_episodeResolveConcurrency)
+                  .toList();
+              final List<OnlineEpisodeSourceResult?> resolved =
+                  await Future.wait(
+                    batch.map((_EpisodeHit episode) async {
+                      try {
+                        final _ResolvedMedia? media = await _resolveMedia(
+                          dio,
+                          episode.url,
+                          referer: subject.url,
+                        ).timeout(_mediaResolveTimeout);
+                        if (media == null) {
+                          return null;
+                        }
+                        final String key = _normalizeUrl(media.url);
+                        final int score =
+                            subject.score +
+                            episode.score +
+                            media.score +
+                            sourcePriorityFor(name) +
+                            80;
+                        return OnlineEpisodeSourceResult(
+                          title: '${subject.title} ${episode.title}'.trim(),
+                          pageUrl: episode.url,
+                          mediaUrl: key,
+                          sourceName: name,
+                          snippet: media.verified
+                              ? '已验证直连视频流，${query.episodeLabel}'
+                              : '已解析直连视频流，待播放器确认，${query.episodeLabel}',
+                          headers: media.headers,
+                          score: score,
+                          verified: media.verified,
+                        );
+                      } catch (_) {
+                        return null;
+                      }
+                    }),
                   );
-              final OnlineEpisodeSourceResult? existing = results[key];
-              if (existing == null || result.score > existing.score) {
-                results[key] = result;
+              for (final OnlineEpisodeSourceResult? result in resolved) {
+                if (result == null) {
+                  continue;
+                }
+                final OnlineEpisodeSourceResult? existing =
+                    results[result.mediaUrl];
+                if (existing == null || result.score > existing.score) {
+                  results[result.mediaUrl] = result;
+                }
               }
             }
             if (results.length >= _maxResultsPerSite) {
@@ -768,8 +813,8 @@ class _DirectSiteAdapter implements _OnlineSourceAdapter {
       options: Options(
         responseType: ResponseType.plain,
         followRedirects: true,
-        sendTimeout: const Duration(seconds: 4),
-        receiveTimeout: const Duration(seconds: 4),
+        sendTimeout: const Duration(seconds: 8),
+        receiveTimeout: const Duration(seconds: 8),
         headers: headers,
       ),
     );
@@ -846,7 +891,7 @@ class _DirectSiteAdapter implements _OnlineSourceAdapter {
     }
     final List<_EpisodeHit> sorted = hits.values.toList()
       ..sort((_EpisodeHit a, _EpisodeHit b) => b.score.compareTo(a.score));
-    return sorted.take(8).toList();
+    return sorted.take(_maxResultsPerSite + 1).toList();
   }
 
   Future<_ResolvedMedia?> _resolveMedia(
@@ -942,7 +987,7 @@ class _DirectSiteAdapter implements _OnlineSourceAdapter {
     return _ResolvedMedia(
       url: url,
       headers: headers,
-      score: score + (reachable ? 10 : -8),
+      score: score + (reachable ? 10 : -8) + _mediaQualityScore(url),
       verified: reachable,
     );
   }
@@ -959,8 +1004,8 @@ class _DirectSiteAdapter implements _OnlineSourceAdapter {
         options: Options(
           responseType: isPlaylist ? ResponseType.plain : ResponseType.bytes,
           followRedirects: true,
-          sendTimeout: const Duration(seconds: 3),
-          receiveTimeout: const Duration(seconds: 3),
+          sendTimeout: const Duration(seconds: 2),
+          receiveTimeout: const Duration(seconds: 2),
           headers: <String, String>{
             ...headers,
             if (!isPlaylist) 'Range': 'bytes=0-2047',
@@ -1101,6 +1146,9 @@ class _DirectSiteAdapter implements _OnlineSourceAdapter {
     if (!lower.contains('.m3u8') && !lower.contains('.mp4')) {
       return null;
     }
+    if (lower.contains('adposter') || lower.contains('/poster')) {
+      return null;
+    }
     return uri.replace(fragment: '').toString();
   }
 
@@ -1118,6 +1166,7 @@ class _DirectSiteAdapter implements _OnlineSourceAdapter {
 
   Map<String, String> _mediaHeaders({required String referer}) {
     final Map<String, String> headers = <String, String>{
+      'Accept': '*/*',
       'User-Agent': _browserUserAgent,
       'Referer': referer,
     };
@@ -1128,6 +1177,35 @@ class _DirectSiteAdapter implements _OnlineSourceAdapter {
       headers['Origin'] = '${refererUri.scheme}://${refererUri.host}';
     }
     return headers;
+  }
+
+  int _mediaQualityScore(String url) {
+    final String lower = url.toLowerCase();
+    if (lower.contains('adposter') || lower.contains('/poster')) {
+      return -100;
+    }
+    if (lower.contains('modujx')) {
+      return 20;
+    }
+    if (lower.contains('bfvvs')) {
+      return 18;
+    }
+    if (lower.contains('wlcdn')) {
+      return 14;
+    }
+    if (lower.contains('lzcdn')) {
+      return 10;
+    }
+    if (lower.contains('ppqrrs')) {
+      return 8;
+    }
+    if (lower.contains('yuglf') || lower.contains('ffzy')) {
+      return -6;
+    }
+    if (lower.contains('dytt') || lower.contains('175.178.')) {
+      return -16;
+    }
+    return 0;
   }
 
   int _scoreSubject(String title, List<String> subjectNames) {
