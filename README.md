@@ -1,287 +1,133 @@
 # AnimeMaster Engine
 
-AnimeMaster 是一个基于 Flutter 的动漫内容检索、收藏同步、缓存下载与本地播放项目。仓库同时包含：
+<p align="center">
+  <img src="assets/icon.png" alt="AnimeMaster" width="128" />
+</p>
 
-- Flutter 插件与业务代码
-- 可直接运行的示例应用
-- Android 正式签名与打包脚本
-- Bangumi 安全 OAuth 授权网关示例
+AnimeMaster Engine 是一个面向动漫追番、资料检索、资源缓存和本地播放的 Flutter 项目。它把 Bangumi 作品资料、收藏进度、RSS/磁力资源、本地缓存、播放器和弹幕体验放在同一个客户端里，目标是让用户从“发现一部番”到“看完一集”的路径尽量顺手。
 
-## 主要功能
+这个仓库既包含可直接运行的 AnimeMaster 示例应用，也保留了 Flutter 插件层、Native FFI 代码、多平台工程和可选的 Bangumi OAuth 网关示例，适合继续开发成完整客户端，或作为动漫内容应用的工程基础。
 
-- 首页 Bangumi 新番放送与年度排行展示
-- Bangumi 搜索、详情、角色、Staff、关联作品浏览
-- Bangumi 收藏同步、进度更新、短评查看
-- RSS 磁力检索、下载任务管理、缓存中心
-- 本地播放器，支持选集、倍速、全屏、弹幕
-- 弹弹play 第一版接入：自动匹配、手动搜索剧集、顶层滚动弹幕渲染
-- 应用内检查更新与 APK 分发
+## 你可以用它做什么
 
-## 目录说明
+| 场景 | 体验 |
+| --- | --- |
+| 找番 | 浏览 Bangumi 新番放送、年度排行，通过关键词搜索作品 |
+| 看资料 | 查看作品详情、角色、Staff、关联作品和短评 |
+| 管收藏 | 登录 Bangumi 后同步收藏、查看进度、更新观看状态 |
+| 找资源 | 通过 RSS/磁力源检索资源，并管理下载任务 |
+| 做缓存 | 将下载内容沉淀到缓存中心，方便后续播放 |
+| 看视频 | 使用内置播放器播放本地媒体，支持选集、倍速、全屏和弹幕 |
+| 查更新 | 通过应用内更新清单发现新版 APK，并引导下载安装 |
 
-- `lib/`: Flutter 业务代码
-- `src/`: Native FFI 代码
-- `example/`: 真正用于安装、调试、打包的示例应用
-- `tools/bangumi_auth_worker/`: Cloudflare Workers 版 Bangumi OAuth 网关
-- `tools/bangumi_auth_gateway/`: Node.js 版 Bangumi OAuth 网关
+## 核心功能
 
-## 环境要求
+- **Bangumi 内容中心**：首页新番、排行、搜索、详情、角色、Staff、关联条目和收藏信息。
+- **收藏与进度同步**：支持 Bangumi OAuth 登录，读取用户收藏并更新观看进度。
+- **资源检索与下载**：内置 RSS/磁力检索、任务管理、缓存中心和基础资源解析能力。
+- **本地播放体验**：基于 Flutter 播放页面整合选集、播放控制、亮度/音量、倍速、全屏等常用能力。
+- **弹幕接入**：已接入弹弹play 的第一版弹幕链路，支持自动匹配和手动搜索剧集。
+- **应用更新**：支持“检查更新 + 下载 APK”的侧载更新流程，适合个人分发或小范围测试。
 
-- Flutter 3.x
-- Dart 3.x
-- Android SDK
-- JDK 17
-- Node.js 18+，仅在部署 Bangumi 授权网关时需要
+## 适合谁
 
-## 本地运行
+- 想要一个自用追番、资源管理和本地播放客户端的用户。
+- 想基于 Flutter 开发动漫内容应用的开发者。
+- 想研究 Bangumi API、移动端 OAuth、安全网关、FFI 与播放器整合的项目维护者。
 
-示例应用不在仓库根目录启动，而是在 `example` 目录下启动。
+## 当前状态
+
+AnimeMaster Engine 仍处在持续迭代阶段，功能已经能串起主要使用流程，但不是一个完全打磨完成的商店级应用。
+
+- Android 是当前最主要的运行和打包目标。
+- 仓库包含 iOS、Windows 等平台工程，实际运行效果取决于本地 Flutter 与平台依赖环境。
+- Bangumi 安全登录需要配合授权网关，客户端不会保存 `App Secret`。
+- 弹弹play 弹幕需要用户自行申请并填写 `AppId / AppSecret`。
+- 项目中仍有少量历史中文文案编码问题，后续可以继续清理。
+
+## 快速体验
+
+示例应用位于 `example/` 目录。第一次运行前请确保本机已经安装 Flutter、Dart、目标平台 SDK 和对应设备环境。
 
 ```powershell
-cd F:\AnimeMaster_Engine\AnimeMaster_Engine\example
+git clone https://github.com/CongutSun/AnimeMaster_Engine.git
+cd AnimeMaster_Engine\example
 flutter pub get
+flutter run
+```
+
+如果你有多个设备，可以先查看设备列表，再指定目标设备：
+
+```powershell
 flutter devices
 flutter run -d <deviceId>
 ```
 
-如果设备没有识别：
+## 功能入口
 
-```powershell
-adb kill-server
-adb start-server
-adb devices
-flutter doctor
-```
+| 页面/模块 | 说明 |
+| --- | --- |
+| 首页 | 展示新番放送、年度排行和内容入口 |
+| 搜索 | 检索 Bangumi 条目并进入详情 |
+| 详情页 | 查看作品信息、角色、Staff、关联作品和可用资源 |
+| 收藏页 | 展示用户收藏与观看进度 |
+| 下载中心 | 管理资源下载与缓存任务 |
+| 播放器 | 播放本地视频，加载弹幕和常用播放控制 |
+| 设置页 | 配置 Bangumi 登录、弹幕密钥、更新地址等应用选项 |
 
-## 打包 APK
+## 可选配置
 
-```powershell
-cd F:\AnimeMaster_Engine\AnimeMaster_Engine\example
-flutter build apk --release
-```
+普通体验不一定需要一次性配置所有服务。按你的使用场景逐步打开即可。
 
-生成物路径：
+- **Bangumi 登录**：用于同步收藏、进度和用户信息。正式链路通过 HTTPS 授权网关完成，避免在客户端保存密钥。
+- **弹弹play 弹幕**：在设置页填写弹弹play 的 `AppId` 和 `AppSecret` 后，播放器可以尝试自动匹配弹幕。
+- **更新检查**：在设置页填写更新清单 URL 后，应用可以检查新版 APK 并跳转下载安装。
+- **RSS/磁力源**：用于资源检索和下载任务管理，具体可用性取决于你配置的源和网络环境。
 
-```text
-F:\AnimeMaster_Engine\AnimeMaster_Engine\example\build\app\outputs\flutter-apk\app-release.apk
-```
+## 技术组成
 
-覆盖安装：
+- Flutter + Dart：主要界面、业务流程和跨平台应用层。
+- Provider：应用设置、下载状态等轻量状态管理。
+- Dio / html / dart_rss：网络请求、页面解析和 RSS 解析。
+- media_kit：本地媒体播放能力。
+- FFI + Native C/C++：保留底层原生扩展能力。
+- Cloudflare Workers 或 Node.js：可选的 Bangumi OAuth 授权网关示例。
 
-```powershell
-adb install -r F:\AnimeMaster_Engine\AnimeMaster_Engine\example\build\app\outputs\flutter-apk\app-release.apk
-```
-
-## Bangumi 安全登录
-
-### 设计原则
-
-客户端不再保存 `App Secret`。安全链路如下：
-
-1. App 向授权网关请求登录入口
-2. 网关生成 Bangumi 授权地址
-3. App 打开系统浏览器进入 Bangumi 授权页
-4. Bangumi 回调到你的 HTTPS 网关
-5. 网关用 `client_id + client_secret + code` 换取 token
-6. 网关保存 `refresh_token`
-7. 网关把短期 `access_token` 和用户资料返回给 App
-8. App 后续通过网关刷新 access token
-
-### Flutter 端配置
-
-正式版 App 已内置默认 Bangumi 授权网关地址，普通用户不需要填写网关信息。
-
-App 自身的回调 Scheme 固定为：
+## 仓库结构
 
 ```text
-animemasteroauth://callback
+lib/                         Flutter 业务代码与应用页面
+src/                         Native FFI 代码
+example/                     可运行、调试和打包的示例应用
+example/RELEASE.md           Android 发版与更新清单说明
+tools/bangumi_auth_worker/   Cloudflare Workers 版 Bangumi OAuth 网关
+tools/bangumi_auth_gateway/  Node.js 版 Bangumi OAuth 网关
+assets/                      应用图标等静态资源
+release/                     更新清单示例
 ```
 
-这个 Scheme 由 App 用来接收网关最终跳回，不需要在 Bangumi 开发者后台登记。Bangumi 后台需要登记的是你自己的 HTTPS 网关回调地址。
+## 开发者入口
 
-### 推荐部署：Cloudflare Workers + KV
-
-这是没有传统服务器时最省事的方案。Cloudflare 提供公网 HTTPS，Workers 运行授权逻辑，KV 保存 `state`、`session` 和 `refresh_token`。
-
-Worker 版本位置：
-
-```text
-F:\AnimeMaster_Engine\AnimeMaster_Engine\tools\bangumi_auth_worker\worker.js
-```
-
-部署流程：
-
-1. 安装 Wrangler：
+根目录用于插件和共享代码，实际应用运行入口在 `example/`。
 
 ```powershell
-npm install -g wrangler
-```
-
-2. 登录 Cloudflare：
-
-```powershell
-wrangler login
-```
-
-3. 进入 Worker 目录：
-
-```powershell
-cd F:\AnimeMaster_Engine\AnimeMaster_Engine\tools\bangumi_auth_worker
-```
-
-4. 复制配置模板：
-
-```powershell
-Copy-Item .\wrangler.toml.example .\wrangler.toml
-```
-
-5. 创建 KV Namespace：
-
-```powershell
-wrangler kv namespace create BANGUMI_AUTH_KV
-```
-
-把命令输出里的 `id` 填到 `wrangler.toml` 的 `id = "..."`。
-
-6. 写入 Secret：
-
-```powershell
-wrangler secret put BANGUMI_CLIENT_ID
-wrangler secret put BANGUMI_CLIENT_SECRET
-```
-
-7. 先部署一次，得到 Workers 域名：
-
-```powershell
-wrangler deploy
-```
-
-部署完成后会得到一个地址，例如：
-
-```text
-https://animemaster-bangumi-auth.<你的账号>.workers.dev
-```
-
-8. 设置 Bangumi 回调地址 Secret：
-
-```powershell
-wrangler secret put BANGUMI_CALLBACK_URL
-```
-
-输入内容应为：
-
-```text
-https://animemaster-bangumi-auth.<你的账号>.workers.dev/auth/bangumi/callback
-```
-
-9. 再部署一次：
-
-```powershell
-wrangler deploy
-```
-
-10. 打开 Bangumi 开发者后台，把 OAuth 回调地址设置为：
-
-```text
-https://animemaster-bangumi-auth.<你的账号>.workers.dev/auth/bangumi/callback
-```
-
-11. 如果你更换了 Worker 域名，请把新网关地址写入 `lib/src/config/embedded_credentials.dart` 的 `bangumiAuthGatewayUrl` 后重新打包。
-
-12. 打开 App 设置页，点击“网页登录”。
-
-### 备选部署：Node.js 网关
-
-仓库内置了一个零依赖 Node.js 版本的最小网关：
-
-```text
-F:\AnimeMaster_Engine\AnimeMaster_Engine\tools\bangumi_auth_gateway\server.mjs
-```
-
-启动前需要配置环境变量：
-
-- `BANGUMI_CLIENT_ID`
-- `BANGUMI_CLIENT_SECRET`
-- `BANGUMI_CALLBACK_URL`
-- `PORT`，可选，默认 `8787`
-- `APP_CALLBACK_SCHEME`，可选，默认 `animemasteroauth`
-
-示例：
-
-```powershell
-$env:BANGUMI_CLIENT_ID="你的 Bangumi Client ID"
-$env:BANGUMI_CLIENT_SECRET="你的 Bangumi Client Secret"
-$env:BANGUMI_CALLBACK_URL="https://auth.example.com/auth/bangumi/callback"
-$env:PORT="8787"
-node F:\AnimeMaster_Engine\AnimeMaster_Engine\tools\bangumi_auth_gateway\server.mjs
-```
-
-网关提供的接口：
-
-- `GET /health`
-- `GET /auth/bangumi/mobile/start?callback_scheme=animemasteroauth`
-- `GET /auth/bangumi/callback`
-- `GET /auth/bangumi/mobile/session?session_id=...`
-- `POST /auth/bangumi/mobile/refresh`
-- `POST /auth/bangumi/mobile/logout`
-
-### 部署建议
-
-- 使用自己的域名和 HTTPS
-- `BANGUMI_CALLBACK_URL` 必须与 Bangumi 开发者后台登记的回调地址完全一致
-- 如果本地调试需要公网地址，可用反向代理或隧道工具把本地端口暴露出去
-- `tools/bangumi_auth_gateway/data/store.json` 为运行时会话文件，已经加入忽略
-
-## 弹弹play 弹幕
-
-播放器已经实现第一版弹幕链路：
-
-1. 优先按本地文件匹配节目
-2. 匹配失败时允许手动搜索剧集
-3. 选择目标剧集后拉取弹幕
-4. 在播放器顶层滚动渲染
-
-在应用设置页填写：
-
-- `弹弹play AppId`
-- `弹弹play AppSecret`
-
-## 发布更新
-
-更新不是静默推送，而是“检查更新 + 引导下载安装”。你需要：
-
-1. 打包新的 APK
-2. 上传 APK
-3. 更新 `app_update.json`
-4. 在应用设置页填写更新清单地址
-
-可用脚本：
-
-```powershell
-cd F:\AnimeMaster_Engine\AnimeMaster_Engine\example
-.\tool\build_release.ps1
-.\tool\write_update_manifest.ps1
-```
-
-## 常用开发命令
-
-根目录分析：
-
-```powershell
-cd F:\AnimeMaster_Engine\AnimeMaster_Engine
+cd AnimeMaster_Engine
 flutter pub get
-```
 
-示例应用分析：
-
-```powershell
-cd F:\AnimeMaster_Engine\AnimeMaster_Engine\example
+cd example
+flutter pub get
 flutter analyze
 ```
 
-## 当前注意事项
+构建 Android APK：
 
-- Bangumi 安全登录依赖你自己部署的授权网关
-- 弹弹play 仍需你申请自己的 `AppId / AppSecret`
-- 播放器的弹幕匹配已经有手动兜底，但还没有做更复杂的本地缓存策略
-- 项目里仍有部分历史中文文案编码问题，功能已可用，但源码文案还需要持续清理
+```powershell
+cd example
+flutter build apk --release
+```
+
+更完整的 Android 发版流程请看 `example/RELEASE.md`。Bangumi OAuth 网关代码位于 `tools/` 目录，适合维护者按自己的域名、Secret 和部署平台进行配置。
+
+## 说明
+
+AnimeMaster Engine 更偏向个人使用和持续演进中的客户端工程，而不是一个只需部署即可上线的服务端项目。README 的重点是帮助用户理解它能解决什么问题；具体网关部署、签名打包和更新分发可以在需要维护发布版本时再进入对应目录查看。
