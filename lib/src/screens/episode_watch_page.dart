@@ -13,6 +13,7 @@ import '../models/playable_media.dart';
 import '../services/online_episode_source_service.dart';
 import '../utils/cached_media_playback.dart';
 import '../utils/media_duration_probe.dart';
+import '../utils/playback_progress_store.dart';
 import '../utils/task_title_parser.dart';
 import 'video_player_page.dart';
 
@@ -67,6 +68,7 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
   Duration _duration = Duration.zero;
   Duration _durationFallback = Duration.zero;
   Duration? _dragPosition;
+  Timer? _progressSaveTimer;
   bool _isSearchingOnline = false;
   bool _isPreparingMedia = false;
   bool _isPlaying = false;
@@ -76,6 +78,7 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
   String _statusText = '正在准备播放...';
   String _dataSourceName = '自动选择';
   int _durationProbeSerial = 0;
+  DateTime _lastProgressSavedAt = DateTime.fromMillisecondsSinceEpoch(0);
 
   @override
   void initState() {
@@ -108,6 +111,7 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
             return;
           }
           setState(() => _position = value);
+          _savePlaybackProgressThrottled();
         }),
       )
       ..add(
@@ -123,13 +127,18 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
           });
         }),
       );
+    _progressSaveTimer = Timer.periodic(const Duration(seconds: 10), (_) {
+      unawaited(_savePlaybackProgress(force: true));
+    });
     unawaited(_selectEpisode(widget.initialEpisode, preferCache: true));
   }
 
   @override
   void dispose() {
+    unawaited(_savePlaybackProgress(force: true));
     unawaited(_onlineSubscription?.cancel());
     _cachedSession?.streamServer?.stop();
+    _progressSaveTimer?.cancel();
     for (final StreamSubscription<dynamic> subscription
         in _playerSubscriptions) {
       subscription.cancel();
@@ -145,6 +154,7 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
     Map<String, dynamic> episode, {
     required bool preferCache,
   }) async {
+    await _savePlaybackProgress(force: true);
     await _onlineSubscription?.cancel();
     _cachedSession?.streamServer?.stop();
     _cachedSession = null;
@@ -286,6 +296,7 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
     if (query == null || source.mediaUrl.trim().isEmpty) {
       return;
     }
+    await _savePlaybackProgress(force: true);
     _cachedSession?.streamServer?.stop();
     _cachedSession = null;
     _activeTask = null;
@@ -350,8 +361,10 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
         _dragPosition = null;
       });
     }
+    _activeMedia = media;
     await _player.open(Media(media.url, httpHeaders: media.headers));
     unawaited(_probeDurationForMedia(media, serial: probeSerial));
+    await _restorePlaybackProgress(media);
     if (!mounted) {
       return;
     }
@@ -368,6 +381,49 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
       return _duration;
     }
     return _durationFallback;
+  }
+
+  void _savePlaybackProgressThrottled() {
+    final DateTime now = DateTime.now();
+    if (now.difference(_lastProgressSavedAt) < const Duration(seconds: 5)) {
+      return;
+    }
+    _lastProgressSavedAt = now;
+    unawaited(_savePlaybackProgress());
+  }
+
+  Future<void> _savePlaybackProgress({
+    Duration? position,
+    bool force = false,
+  }) async {
+    final PlayableMedia? media = _activeMedia;
+    if (media == null) {
+      return;
+    }
+    await PlaybackProgressStore.save(
+      media,
+      position: position ?? _dragPosition ?? _position,
+      duration: _displayDuration,
+      force: force,
+    );
+  }
+
+  Future<void> _restorePlaybackProgress(PlayableMedia media) async {
+    final PlaybackProgressSnapshot? progress = await PlaybackProgressStore.load(
+      media,
+    );
+    if (progress == null) {
+      return;
+    }
+    await Future<void>.delayed(const Duration(milliseconds: 250));
+    await _player.seek(progress.position);
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _position = progress.position;
+      _dragPosition = null;
+    });
   }
 
   Future<void> _probeDurationForMedia(
@@ -894,6 +950,7 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
             onSeek: (Duration value) async {
               setState(() => _dragPosition = value);
               await _player.seek(value);
+              unawaited(_savePlaybackProgress(position: value, force: true));
               if (mounted) {
                 setState(() {
                   _position = value;

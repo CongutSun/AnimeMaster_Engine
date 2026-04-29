@@ -31,6 +31,7 @@ class _SettingsPageState extends State<SettingsPage> {
   String themeMode = 'Light';
   int selectedRssIndex = -1;
   bool autoCheckUpdates = true;
+  bool enablePictureInPicture = false;
   bool isSaving = false;
   bool isAuthorizingBangumi = false;
   bool isCheckingUpdate = false;
@@ -62,6 +63,7 @@ class _SettingsPageState extends State<SettingsPage> {
       setState(() {
         themeMode = provider.themeMode;
         autoCheckUpdates = provider.autoCheckUpdates;
+        enablePictureInPicture = provider.enablePictureInPicture;
       });
     }
   }
@@ -119,6 +121,9 @@ class _SettingsPageState extends State<SettingsPage> {
       bgController.text,
     );
     await provider.updateDistribution(autoCheckUpdates);
+    await provider.updatePlaybackOptions(
+      enablePictureInPicture: enablePictureInPicture,
+    );
 
     if (!mounted) {
       return;
@@ -300,6 +305,8 @@ class _SettingsPageState extends State<SettingsPage> {
           _buildBangumiCard(provider),
           const SizedBox(height: 12),
           _buildAppearanceCard(),
+          const SizedBox(height: 12),
+          _buildPlaybackCard(),
           const SizedBox(height: 12),
           _buildDandanplayCard(provider),
           const SizedBox(height: 12),
@@ -575,6 +582,35 @@ class _SettingsPageState extends State<SettingsPage> {
                         style: TextStyle(color: Colors.white),
                       ),
                     ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPlaybackCard() {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            const Text(
+              '播放体验',
+              style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 12),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('离开播放页自动小窗'),
+              subtitle: const Text('开启后，在 Android 支持的设备上按主页键会进入画中画播放。'),
+              value: enablePictureInPicture,
+              onChanged: (bool value) {
+                setState(() {
+                  enablePictureInPicture = value;
+                });
+              },
             ),
           ],
         ),

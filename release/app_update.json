@@ -1,6 +1,6 @@
 {
-  "version": "2.2.3",
-  "build": 18,
+  "version": "2.2.4",
+  "build": 19,
   "apkUrl": "https://auth.congutsun.com/download/apk/universal",
   "apkUrls": {
     "android-arm64": "https://auth.congutsun.com/download/apk/android-arm64",
@@ -9,12 +9,12 @@
     "universal": "https://auth.congutsun.com/download/apk/universal"
   },
   "notes": [
-    "加固 Bangumi 登录链路，授权回调改为一次性交换，降低会话泄露后的风险。",
-    "修复 release 构建签名校验，避免误发 debug 签名包导致后续无法覆盖升级。",
-    "收紧 Android 明文流量策略，仅保留本地播放流和必要 HTTP 资源站、Tracker 白名单。",
-    "修复原生目录扫描修改时间戳恒为 0 的问题，本地文件排序和缓存判断更准确。",
-    "清理 Wrangler 本地缓存入库，避免部署账号信息出现在仓库中。"
+    "修复在线播放从小屏进入全屏后进度条可能无法拖动的问题。",
+    "扩大在线播放源搜索范围，启用已内置的更多资源站点，并优化早停策略减少只返回少数源的情况。",
+    "小屏在线播放也会记忆上次播放进度，换源、切集、退出后可继续播放。",
+    "新增 Android 小窗播放能力，可在设置中开启离开播放页自动画中画。",
+    "优化全屏播放控制台，进度条移到按钮上方，并避免控制台展开时双击播放/暂停浮层重叠。"
   ],
-  "publishedAt": "2026-04-29T23:00:00+08:00",
+  "publishedAt": "2026-04-29T23:51:00+08:00",
   "forceUpdate": false
 }

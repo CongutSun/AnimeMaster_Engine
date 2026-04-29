@@ -36,6 +36,7 @@ class SettingsProvider with ChangeNotifier {
   String _customBgPath = '';
   String _appUpdateFeedUrl = '';
   bool _autoCheckUpdates = true;
+  bool _enablePictureInPicture = false;
 
   final FlutterSecureStorage _secureStorage = const FlutterSecureStorage();
 
@@ -89,6 +90,7 @@ class SettingsProvider with ChangeNotifier {
   String get coreEngineVersion => EngineBridge().engineVersion;
   String get appUpdateFeedUrl => _appUpdateFeedUrl;
   bool get autoCheckUpdates => _autoCheckUpdates;
+  bool get enablePictureInPicture => _enablePictureInPicture;
 
   SettingsProvider() {
     EngineBridge().wakeUpEngine();
@@ -108,6 +110,8 @@ class SettingsProvider with ChangeNotifier {
       await prefs.setString('app_update_feed_url', _appUpdateFeedUrl);
     }
     _autoCheckUpdates = prefs.getBool('app_auto_check_updates') ?? true;
+    _enablePictureInPicture =
+        prefs.getBool('playback_enable_picture_in_picture') ?? false;
     _bgmNickname = prefs.getString('bgm_nickname') ?? '';
     _bgmAvatarUrl = prefs.getString('bgm_avatar_url') ?? '';
     _bgmBio = prefs.getString('bgm_bio') ?? '';
@@ -321,6 +325,20 @@ class SettingsProvider with ChangeNotifier {
     final SharedPreferences prefs = await SharedPreferences.getInstance();
     await prefs.setString('app_update_feed_url', _appUpdateFeedUrl);
     await prefs.setBool('app_auto_check_updates', _autoCheckUpdates);
+
+    notifyListeners();
+  }
+
+  Future<void> updatePlaybackOptions({
+    required bool enablePictureInPicture,
+  }) async {
+    _enablePictureInPicture = enablePictureInPicture;
+
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(
+      'playback_enable_picture_in_picture',
+      _enablePictureInPicture,
+    );
 
     notifyListeners();
   }

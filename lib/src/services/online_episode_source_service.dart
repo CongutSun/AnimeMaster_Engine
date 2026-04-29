@@ -16,11 +16,13 @@ class OnlineEpisodeSourceService {
   OnlineEpisodeSourceService({Dio? dio}) : _dio = dio ?? DioClient().dio;
 
   static const int maxResults = 30;
-  static const int _adapterConcurrency = 5;
-  static const int _earlyCloseResultCount = 10;
-  static const int _earlyCloseVerifiedCount = 5;
-  static const Duration _adapterTimeout = Duration(seconds: 14);
-  static const Duration _searchDeadline = Duration(seconds: 20);
+  static const int _adapterConcurrency = 8;
+  static const int _minimumAdaptersBeforeEarlyClose = 14;
+  static const int _earlyCloseResultCount = 18;
+  static const int _earlyCloseVerifiedCount = 8;
+  static const int _earlyCloseSourceCount = 4;
+  static const Duration _adapterTimeout = Duration(seconds: 8);
+  static const Duration _searchDeadline = Duration(seconds: 18);
   static const Duration _resultCacheTtl = Duration(minutes: 30);
   static final Map<String, List<OnlineEpisodeSourceResult>> _resultCache =
       <String, List<OnlineEpisodeSourceResult>>{};
@@ -46,7 +48,8 @@ class OnlineEpisodeSourceService {
     final Map<String, OnlineEpisodeSourceResult> deduplicated =
         <String, OnlineEpisodeSourceResult>{};
     final List<String> subjectNames = _buildSubjectNames(query);
-    final List<_OnlineSourceAdapter> adapters = _DirectSiteAdapter.defaults;
+    final List<_OnlineSourceAdapter> adapters =
+        _DirectSiteAdapter.allKnownDefaults;
     final String cacheKey = _queryCacheKey(query);
     final List<OnlineEpisodeSourceResult>? cachedResults = _readCachedResults(
       cacheKey,
@@ -87,13 +90,19 @@ class OnlineEpisodeSourceService {
       unawaited(controller.close());
     }
 
-    bool hasEnoughResultsForPlayback() {
+    bool hasEnoughResultsForPlayback({bool includeCurrentAdapter = false}) {
+      final int effectiveCompletedAdapters =
+          completedAdapters + (includeCurrentAdapter ? 1 : 0);
+      final int minimumAdapters =
+          adapters.length < _minimumAdaptersBeforeEarlyClose
+          ? adapters.length
+          : _minimumAdaptersBeforeEarlyClose;
+      if (effectiveCompletedAdapters < minimumAdapters) {
+        return false;
+      }
       final List<OnlineEpisodeSourceResult> results = _sortedResults(
         deduplicated,
       );
-      if (results.length >= _earlyCloseResultCount) {
-        return true;
-      }
       final Iterable<OnlineEpisodeSourceResult> verified = results.where(
         (OnlineEpisodeSourceResult result) => result.verified,
       );
@@ -102,7 +111,12 @@ class OnlineEpisodeSourceService {
           .map((OnlineEpisodeSourceResult result) => result.sourceName)
           .toSet()
           .length;
-      return verifiedCount >= _earlyCloseVerifiedCount && sourceCount >= 2;
+      if (results.length >= _earlyCloseResultCount &&
+          sourceCount >= _earlyCloseSourceCount) {
+        return true;
+      }
+      return verifiedCount >= _earlyCloseVerifiedCount &&
+          sourceCount >= _earlyCloseSourceCount;
     }
 
     void maybeClose() {
@@ -137,7 +151,9 @@ class OnlineEpisodeSourceService {
                 }
                 if (changed) {
                   emit();
-                  if (hasEnoughResultsForPlayback()) {
+                  if (hasEnoughResultsForPlayback(
+                    includeCurrentAdapter: true,
+                  )) {
                     closeWithCurrentResults();
                   }
                 }

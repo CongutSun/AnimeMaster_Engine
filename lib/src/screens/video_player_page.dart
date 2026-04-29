@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
 
@@ -23,7 +22,9 @@ import '../providers/settings_provider.dart';
 import '../services/animeko_danmaku_service.dart';
 import '../services/dandanplay_service.dart';
 import '../services/online_episode_source_service.dart';
+import '../services/picture_in_picture_service.dart';
 import '../utils/media_duration_probe.dart';
+import '../utils/playback_progress_store.dart';
 import '../utils/torrent_stream_server.dart';
 
 enum _GestureAdjustmentKind { brightness, volume }
@@ -139,8 +140,19 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
           ),
         );
     _controller = widget.externalController ?? VideoController(_player);
+    final playerState = _player.state;
+    _position = _normalizeIncomingPosition(playerState.position);
+    _duration = _normalizeIncomingDuration(playerState.duration);
+    _rate = playerState.rate;
+    _isPlaying = playerState.playing;
+    _isBuffering = playerState.buffering;
     _isMagnet = widget.media.url.toLowerCase().startsWith('magnet:');
     _initializeOnlinePlaybackContext(widget.media);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        unawaited(_syncPictureInPictureSetting());
+      }
+    });
 
     _subscriptions.add(
       _player.stream.position.listen((Duration value) {
@@ -234,6 +246,23 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
     _progressSaveTimer = Timer.periodic(const Duration(seconds: 10), (_) {
       unawaited(_savePlaybackProgress(force: true));
     });
+  }
+
+  Future<void> _syncPictureInPictureSetting() async {
+    final bool enabled = context
+        .read<SettingsProvider>()
+        .enablePictureInPicture;
+    await PictureInPictureService.setAutoEnter(enabled);
+  }
+
+  Future<void> _enterPictureInPicture() async {
+    final bool entered = await PictureInPictureService.enter();
+    if (entered || !mounted) {
+      return;
+    }
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('当前设备或系统版本不支持小窗播放。')));
   }
 
   Future<void> _enterPlayerMode() async {
@@ -543,20 +572,14 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
   }
 
   Future<void> _restorePlaybackProgress(PlayableMedia media) async {
-    final SharedPreferences prefs = await SharedPreferences.getInstance();
-    final String key = _playbackProgressKey(media);
-    final int savedPositionMs = prefs.getInt('$key.position') ?? 0;
-    final int savedDurationMs = prefs.getInt('$key.duration') ?? 0;
-    if (savedPositionMs < const Duration(seconds: 10).inMilliseconds) {
-      return;
-    }
-    if (savedDurationMs > 0 &&
-        savedPositionMs >
-            savedDurationMs - const Duration(seconds: 20).inMilliseconds) {
+    final PlaybackProgressSnapshot? progress = await PlaybackProgressStore.load(
+      media,
+    );
+    if (progress == null) {
       return;
     }
 
-    final Duration restored = Duration(milliseconds: savedPositionMs);
+    final Duration restored = progress.position;
     await Future<void>.delayed(const Duration(milliseconds: 250));
     await _player.seek(restored);
     if (!mounted) {
@@ -592,25 +615,12 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
       return;
     }
 
-    final SharedPreferences prefs = await SharedPreferences.getInstance();
-    final String key = _playbackProgressKey(media);
-    await prefs.setInt('$key.position', currentPosition.inMilliseconds);
-    await prefs.setInt('$key.duration', _displayDuration.inMilliseconds);
-    await prefs.setInt('$key.updatedAt', DateTime.now().millisecondsSinceEpoch);
-  }
-
-  String _playbackProgressKey(PlayableMedia media) {
-    final String identity = media.bangumiEpisodeId > 0
-        ? 'bgm_ep:${media.bangumiEpisodeId}'
-        : [
-            media.localFilePath,
-            media.url,
-            media.subjectTitle,
-            media.episodeLabel,
-            media.title,
-          ].where((String value) => value.trim().isNotEmpty).join('|');
-    final String encoded = base64Url.encode(utf8.encode(identity));
-    return 'playback_progress.$encoded';
+    await PlaybackProgressStore.save(
+      media,
+      position: currentPosition,
+      duration: _displayDuration,
+      force: force,
+    );
   }
 
   Future<void> _loadDanmakuStyle() async {
@@ -671,8 +681,9 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
   }
 
   void _handlePlayerDoubleTap() {
+    final bool controlsWereVisible = _showControls;
     final bool willPlay = !_isPlaying;
-    if (_isPlaying) {
+    if (_isPlaying && !controlsWereVisible) {
       _suppressControlsOnNextPause = true;
       _cancelControlsAutoHide();
       if (mounted) {
@@ -682,6 +693,16 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
       }
     }
     unawaited(_togglePlayPause());
+    if (controlsWereVisible) {
+      _gestureIndicatorTimer?.cancel();
+      if (mounted && _gestureIndicatorText.isNotEmpty) {
+        setState(() {
+          _gestureIndicatorText = '';
+          _gestureIndicatorProgress = null;
+        });
+      }
+      return;
+    }
     _showGestureIndicator(
       icon: willPlay ? Icons.play_arrow_rounded : Icons.pause_rounded,
       text: willPlay ? '播放' : '暂停',
@@ -1732,10 +1753,16 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
   }
 
   Duration _normalizeIncomingDuration(Duration value) {
-    if (value <= Duration.zero && _durationFallback > Duration.zero) {
-      return _durationFallback;
+    if (value <= Duration.zero) {
+      if (_durationFallback > Duration.zero) {
+        return _durationFallback;
+      }
+      if (_duration > Duration.zero) {
+        return _duration;
+      }
+      return value;
     }
-    if (!_isStreamingPlayback || value <= Duration.zero) {
+    if (!_isStreamingPlayback) {
       return value;
     }
     if (_duration > Duration.zero && value < _duration) {
@@ -1795,6 +1822,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
   @override
   void dispose() {
     unawaited(_savePlaybackProgress(force: true));
+    unawaited(PictureInPictureService.setAutoEnter(false));
     unawaited(_onlineSourceSubscription?.cancel());
     unawaited(
       ScreenBrightnessPlatform.instance.resetApplicationScreenBrightness(),
@@ -1954,6 +1982,30 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
                             ),
                           ),
                         ),
+                      if (isLandscape) ...<Widget>[
+                        _buildTopAction(
+                          icon: Icons.picture_in_picture_alt_rounded,
+                          tooltip: '小窗播放',
+                          onPressed: _enterPictureInPicture,
+                        ),
+                        if (_hasOnlineContext) ...<Widget>[
+                          _buildTopAction(
+                            icon: Icons.playlist_play_rounded,
+                            tooltip: '选集',
+                            onPressed: _showOnlineEpisodeSheet,
+                          ),
+                          _buildTopAction(
+                            icon: Icons.hub_rounded,
+                            tooltip: '换源',
+                            onPressed: _showOnlineSourceSheet,
+                          ),
+                        ],
+                        _buildTopAction(
+                          icon: Icons.tune_rounded,
+                          tooltip: '弹幕样式',
+                          onPressed: _showDanmakuStyleSheet,
+                        ),
+                      ],
                     ],
                   ),
                 ),
@@ -2000,6 +2052,51 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: <Widget>[
+                      Row(
+                        children: <Widget>[
+                          Text(
+                            _formatDuration(_effectivePosition),
+                            style: const TextStyle(color: Colors.white70),
+                          ),
+                          const Spacer(),
+                          Text(
+                            _formatDuration(_displayDuration),
+                            style: const TextStyle(color: Colors.white70),
+                          ),
+                        ],
+                      ),
+                      SliderTheme(
+                        data: SliderTheme.of(context).copyWith(
+                          trackHeight: 3,
+                          thumbShape: const RoundSliderThumbShape(
+                            enabledThumbRadius: 6,
+                          ),
+                          overlayShape: const RoundSliderOverlayShape(
+                            overlayRadius: 12,
+                          ),
+                        ),
+                        child: Slider(
+                          value: _displayDuration.inMilliseconds <= 0
+                              ? 0
+                              : _effectivePosition.inMilliseconds
+                                    .clamp(0, _displayDuration.inMilliseconds)
+                                    .toDouble(),
+                          min: 0,
+                          max: _displayDuration.inMilliseconds <= 0
+                              ? 1
+                              : _displayDuration.inMilliseconds.toDouble(),
+                          activeColor: Colors.blueAccent,
+                          inactiveColor: Colors.white30,
+                          onChangeStart: (_) => _cancelControlsAutoHide(),
+                          onChanged: _displayDuration.inMilliseconds <= 0
+                              ? null
+                              : _seekFromSlider,
+                          onChangeEnd: _displayDuration.inMilliseconds <= 0
+                              ? null
+                              : _finishSliderSeek,
+                        ),
+                      ),
+                      SizedBox(height: isLandscape ? 6 : 4),
                       Wrap(
                         spacing: isLandscape ? 8 : 4,
                         runSpacing: isLandscape ? 4 : 2,
@@ -2045,6 +2142,12 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
                             label: '弹幕样式',
                             onPressed: _showDanmakuStyleSheet,
                           ),
+                          if (!isLandscape)
+                            _buildBottomAction(
+                              icon: Icons.picture_in_picture_alt_rounded,
+                              label: '小窗',
+                              onPressed: _enterPictureInPicture,
+                            ),
                           _buildBottomAction(
                             icon: _isFullscreenLocked
                                 ? Icons.fullscreen_exit_rounded
@@ -2086,46 +2189,6 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
                           ],
                         ),
                       ],
-                      SliderTheme(
-                        data: SliderTheme.of(context).copyWith(
-                          trackHeight: 3,
-                          thumbShape: const RoundSliderThumbShape(
-                            enabledThumbRadius: 6,
-                          ),
-                          overlayShape: const RoundSliderOverlayShape(
-                            overlayRadius: 12,
-                          ),
-                        ),
-                        child: Slider(
-                          value: _displayDuration.inMilliseconds <= 0
-                              ? 0
-                              : _effectivePosition.inMilliseconds
-                                    .clamp(0, _displayDuration.inMilliseconds)
-                                    .toDouble(),
-                          min: 0,
-                          max: _displayDuration.inMilliseconds <= 0
-                              ? 1
-                              : _displayDuration.inMilliseconds.toDouble(),
-                          activeColor: Colors.blueAccent,
-                          inactiveColor: Colors.white30,
-                          onChangeStart: (_) => _cancelControlsAutoHide(),
-                          onChanged: _seekFromSlider,
-                          onChangeEnd: _finishSliderSeek,
-                        ),
-                      ),
-                      Row(
-                        children: <Widget>[
-                          Text(
-                            _formatDuration(_effectivePosition),
-                            style: const TextStyle(color: Colors.white70),
-                          ),
-                          const Spacer(),
-                          Text(
-                            _formatDuration(_displayDuration),
-                            style: const TextStyle(color: Colors.white70),
-                          ),
-                        ],
-                      ),
                     ],
                   ),
                 ),
@@ -2180,6 +2243,22 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildTopAction({
+    required IconData icon,
+    required String tooltip,
+    required VoidCallback onPressed,
+  }) {
+    return IconButton(
+      tooltip: tooltip,
+      icon: Icon(icon, color: Colors.white),
+      onPressed: onPressed,
+      visualDensity: VisualDensity.compact,
+      style: IconButton.styleFrom(
+        backgroundColor: Colors.black.withValues(alpha: 0.20),
       ),
     );
   }
