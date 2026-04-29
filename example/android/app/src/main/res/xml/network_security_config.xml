@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false" />
+
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">127.0.0.1</domain>
+        <domain includeSubdomains="false">localhost</domain>
+    </domain-config>
+
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">m.dodoge.me</domain>
+        <domain includeSubdomains="false">tracker.openbittorrent.com</domain>
+        <domain includeSubdomains="false">tracker.dler.org</domain>
+        <domain includeSubdomains="false">t.nyaatracker.com</domain>
+        <domain includeSubdomains="false">tracker.nyanya.uk</domain>
+        <domain includeSubdomains="false">tracker.gbitt.info</domain>
+        <domain includeSubdomains="false">tracker.ipv6tracker.org</domain>
+    </domain-config>
+</network-security-config>

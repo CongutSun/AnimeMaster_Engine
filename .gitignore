@@ -43,3 +43,4 @@ release/*.apk
 # 排除所有平台产生的日志和缓存
 .flutter-plugins
 .packages
+**/.wrangler/

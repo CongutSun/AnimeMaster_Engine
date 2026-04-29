@@ -1,6 +1,6 @@
 {
-  "version": "2.2.2",
-  "build": 17,
+  "version": "2.2.3",
+  "build": 18,
   "apkUrl": "https://auth.congutsun.com/download/apk/universal",
   "apkUrls": {
     "android-arm64": "https://auth.congutsun.com/download/apk/android-arm64",
@@ -9,11 +9,12 @@
     "universal": "https://auth.congutsun.com/download/apk/universal"
   },
   "notes": [
-    "修复在线播放 HLS 源无法正常拖动进度条的问题，播放器会在必要时解析播放列表时长作为兜底。",
-    "修复在线播放进度条末端不显示总时长的问题，小屏和全屏播放器都会显示当前进度与总时长。",
-    "优化剧集标题显示，去除标题开头重复的集数前缀，避免出现“01 1 标题”这类重复信息。",
-    "修正番剧详情页放送状态展示，不再把总集数误显示为已出集数，连载番剧会显示已出/总集数。"
+    "加固 Bangumi 登录链路，授权回调改为一次性交换，降低会话泄露后的风险。",
+    "修复 release 构建签名校验，避免误发 debug 签名包导致后续无法覆盖升级。",
+    "收紧 Android 明文流量策略，仅保留本地播放流和必要 HTTP 资源站、Tracker 白名单。",
+    "修复原生目录扫描修改时间戳恒为 0 的问题，本地文件排序和缓存判断更准确。",
+    "清理 Wrangler 本地缓存入库，避免部署账号信息出现在仓库中。"
   ],
-  "publishedAt": "2026-04-23T16:33:08+08:00",
+  "publishedAt": "2026-04-29T23:00:00+08:00",
   "forceUpdate": false
 }

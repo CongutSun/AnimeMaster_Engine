@@ -1,5 +1,6 @@
 const DEFAULT_CALLBACK_SCHEME = 'animemasteroauth';
 const PENDING_TTL_SECONDS = 600;
+const SESSION_EXCHANGE_TTL_SECONDS = 600;
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 60;
 const BANGUMI_API_USER_AGENT =
   'animemaster-19277/AnimeMaster/1.0.0 (Cloudflare Workers; https://animemaster-bangumi-auth.animemaster-19277.workers.dev)';
@@ -10,9 +11,10 @@ const RESOURCE_PROXY_ALLOWED_HOSTS = new Set([
   'mikanime.tv',
   'share.dmhy.org',
 ]);
+const ALLOWED_BROWSER_ORIGINS = new Set(['https://auth.congutsun.com']);
 const APP_UPDATE_MANIFEST = {
-  version: '2.2.2',
-  build: 17,
+  version: '2.2.3',
+  build: 18,
   apkUrl: 'https://auth.congutsun.com/download/apk/universal',
   apkUrls: {
     'android-arm64': 'https://auth.congutsun.com/download/apk/android-arm64',
@@ -21,35 +23,49 @@ const APP_UPDATE_MANIFEST = {
     universal: 'https://auth.congutsun.com/download/apk/universal',
   },
   notes: [
-    '修复在线播放 HLS 源无法正常拖动进度条的问题，播放器会在必要时解析播放列表时长作为兜底。',
-    '修复在线播放进度条末端不显示总时长的问题，小屏和全屏播放器都会显示当前进度与总时长。',
-    '优化剧集标题显示，去除标题开头重复的集数前缀，避免出现“01 1 标题”这类重复信息。',
-    '修正番剧详情页放送状态展示，不再把总集数误显示为已出集数，连载番剧会显示已出/总集数。',
+    '加固 Bangumi 登录链路，授权回调改为一次性交换，降低会话泄露后的风险。',
+    '修复 release 构建签名校验，避免误发 debug 签名包导致后续无法覆盖升级。',
+    '收紧 Android 明文流量策略，仅保留本地播放流和必要 HTTP 资源站、Tracker 白名单。',
+    '修复原生目录扫描修改时间戳恒为 0 的问题，本地文件排序和缓存判断更准确。',
+    '清理 Wrangler 本地缓存入库，避免部署账号信息出现在仓库中。',
   ],
-  publishedAt: '2026-04-23T16:33:08+08:00',
+  publishedAt: '2026-04-29T23:00:00+08:00',
   forceUpdate: false,
 };
 const APK_DOWNLOAD_URLS = {
   'android-arm64':
-    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.2.2/app-arm64-v8a-release.apk',
+    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.2.3/app-arm64-v8a-release.apk',
   'android-arm':
-    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.2.2/app-armeabi-v7a-release.apk',
+    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.2.3/app-armeabi-v7a-release.apk',
   'android-x64':
-    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.2.2/app-x86_64-release.apk',
+    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.2.3/app-x86_64-release.apk',
   universal:
-    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.2.2/app-release.apk',
+    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.2.3/app-release.apk',
 };
 
-function json(body, status = 200) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: {
+function applyCors(headers, request, methods = 'GET,POST,OPTIONS') {
+  const origin = request?.headers?.get('origin') || '';
+  if (!ALLOWED_BROWSER_ORIGINS.has(origin)) {
+    return headers;
+  }
+  headers.set('access-control-allow-origin', origin);
+  headers.set('access-control-allow-methods', methods);
+  headers.set('access-control-allow-headers', 'content-type');
+  headers.set('vary', 'Origin');
+  return headers;
+}
+
+function json(body, status = 200, request = null) {
+  const headers = applyCors(
+    new Headers({
       'content-type': 'application/json; charset=utf-8',
       'cache-control': 'no-store',
-      'access-control-allow-origin': '*',
-      'access-control-allow-methods': 'GET,POST,OPTIONS',
-      'access-control-allow-headers': 'content-type',
-    },
+    }),
+    request,
+  );
+  return new Response(JSON.stringify(body), {
+    status,
+    headers,
   });
 }
 
@@ -63,7 +79,7 @@ function redirect(location) {
   });
 }
 
-function proxyResponseHeaders(response, mode) {
+function proxyResponseHeaders(response, mode, request) {
   const headers = new Headers();
   headers.set(
     'content-type',
@@ -76,10 +92,7 @@ function proxyResponseHeaders(response, mode) {
     'cache-control',
     mode === 'torrent' ? 'public, max-age=86400' : 'public, max-age=300',
   );
-  headers.set('access-control-allow-origin', '*');
-  headers.set('access-control-allow-methods', 'GET,OPTIONS');
-  headers.set('access-control-allow-headers', 'content-type');
-  return headers;
+  return applyCors(headers, request, 'GET,OPTIONS');
 }
 
 function validateProxyTarget(rawTarget, mode) {
@@ -139,7 +152,7 @@ async function handleResourceProxy(request, mode) {
 
   return new Response(response.body, {
     status: 200,
-    headers: proxyResponseHeaders(response, mode),
+    headers: proxyResponseHeaders(response, mode, request),
   });
 }
 
@@ -166,7 +179,7 @@ async function handleApkDownload(request) {
       'application/vnd.android.package-archive',
   );
   headers.set('cache-control', 'public, max-age=300');
-  headers.set('access-control-allow-origin', '*');
+  applyCors(headers, request, 'GET,HEAD,OPTIONS');
   const contentLength = upstream.headers.get('content-length');
   if (contentLength) {
     headers.set('content-length', contentLength);
@@ -285,6 +298,16 @@ function sessionPayload(sessionId, session) {
   };
 }
 
+async function createDurableSession(env, session) {
+  const durableSessionId = randomId(20);
+  await env.BANGUMI_AUTH_KV.put(
+    `session:${durableSessionId}`,
+    JSON.stringify(session),
+    { expirationTtl: SESSION_TTL_SECONDS },
+  );
+  return durableSessionId;
+}
+
 async function readJson(request) {
   const text = await request.text();
   if (!text.trim()) {
@@ -333,7 +356,7 @@ async function handleCallback(request, env) {
 
   const token = await exchangeCode(env, code);
   const profile = await fetchProfile(token.access_token);
-  const sessionId = randomId(20);
+  const exchangeId = randomId(20);
   const session = {
     accessToken: token.access_token,
     refreshToken: token.refresh_token || '',
@@ -344,14 +367,14 @@ async function handleCallback(request, env) {
   };
 
   await env.BANGUMI_AUTH_KV.put(
-    `session:${sessionId}`,
+    `session_exchange:${exchangeId}`,
     JSON.stringify(session),
-    { expirationTtl: SESSION_TTL_SECONDS },
+    { expirationTtl: SESSION_EXCHANGE_TTL_SECONDS },
   );
 
   const callbackScheme = sanitizeCallbackScheme(pending.callbackScheme);
   return redirect(
-    `${callbackScheme}://callback?session_id=${encodeURIComponent(sessionId)}&request_id=${encodeURIComponent(pending.requestId || '')}`,
+    `${callbackScheme}://callback?session_id=${encodeURIComponent(exchangeId)}&request_id=${encodeURIComponent(pending.requestId || '')}`,
   );
 }
 
@@ -362,11 +385,16 @@ async function handleSession(request, env) {
     return json({ error: 'Missing session_id.' }, 400);
   }
 
-  const sessionRaw = await env.BANGUMI_AUTH_KV.get(`session:${sessionId}`);
-  if (!sessionRaw) {
-    return json({ error: 'Session not found.' }, 404);
+  const exchangeKey = `session_exchange:${sessionId}`;
+  const exchangeRaw = await env.BANGUMI_AUTH_KV.get(exchangeKey);
+  if (!exchangeRaw) {
+    return json({ error: 'Session exchange not found.' }, 404);
   }
-  return json(sessionPayload(sessionId, JSON.parse(sessionRaw)));
+  await env.BANGUMI_AUTH_KV.delete(exchangeKey);
+
+  const session = JSON.parse(exchangeRaw);
+  const durableSessionId = await createDurableSession(env, session);
+  return json(sessionPayload(durableSessionId, session));
 }
 
 async function handleRefresh(request, env) {
@@ -419,7 +447,10 @@ export default {
   async fetch(request, env) {
     try {
       if (request.method === 'OPTIONS') {
-        return json({}, 204);
+        return new Response(null, {
+          status: 204,
+          headers: applyCors(new Headers(), request),
+        });
       }
 
       const url = new URL(request.url);

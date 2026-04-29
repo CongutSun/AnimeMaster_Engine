@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <chrono>
 #include <cstdlib>
 #include <filesystem>
 #include <sstream>
@@ -406,9 +407,14 @@ FFI_PLUGIN_EXPORT const char* ScanLocalDirectory(const char* path) {
         }
 
         long long modified_at_epoch_ms = 0;
-        entry.last_write_time(ec);
+        const auto modified_time = entry.last_write_time(ec);
         if (ec) {
             ec.clear();
+        } else {
+            const auto system_time = std::chrono::time_point_cast<std::chrono::milliseconds>(
+                modified_time - fs::file_time_type::clock::now() + std::chrono::system_clock::now()
+            );
+            modified_at_epoch_ms = system_time.time_since_epoch().count();
         }
 
         if (!first) {

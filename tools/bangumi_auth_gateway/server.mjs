@@ -15,6 +15,12 @@ const CLIENT_SECRET = process.env.BANGUMI_CLIENT_SECRET ?? '';
 const CALLBACK_URL = process.env.BANGUMI_CALLBACK_URL ?? '';
 const DEFAULT_CALLBACK_SCHEME =
   process.env.APP_CALLBACK_SCHEME ?? 'animemasteroauth';
+const ALLOWED_BROWSER_ORIGINS = new Set(
+  (process.env.AUTH_ALLOWED_ORIGINS ?? '')
+    .split(',')
+    .map((value) => value.trim())
+    .filter(Boolean),
+);
 const BANGUMI_API_USER_AGENT =
   process.env.BANGUMI_API_USER_AGENT ??
   'animemaster-19277/AnimeMaster/1.0.0 (Node.js Gateway)';
@@ -33,10 +39,11 @@ async function loadStore() {
     const parsed = JSON.parse(raw);
     return {
       pending: parsed.pending ?? {},
+      exchanges: parsed.exchanges ?? {},
       sessions: parsed.sessions ?? {},
     };
   } catch {
-    return { pending: {}, sessions: {} };
+    return { pending: {}, exchanges: {}, sessions: {} };
   }
 }
 
@@ -44,14 +51,25 @@ async function saveStore(store) {
   await writeFile(storeFile, JSON.stringify(store, null, 2), 'utf8');
 }
 
-function json(res, status, body) {
-  res.writeHead(status, {
-    'Content-Type': 'application/json; charset=utf-8',
-    'Access-Control-Allow-Origin': '*',
+function applyCors(headers, req) {
+  const origin = req?.headers?.origin ?? '';
+  if (!ALLOWED_BROWSER_ORIGINS.has(origin)) {
+    return headers;
+  }
+  return {
+    ...headers,
+    'Access-Control-Allow-Origin': origin,
     'Access-Control-Allow-Headers': 'Content-Type',
     'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
+    Vary: 'Origin',
+  };
+}
+
+function json(res, status, body, req) {
+  res.writeHead(status, applyCors({
+    'Content-Type': 'application/json; charset=utf-8',
     'Cache-Control': 'no-store',
-  });
+  }, req));
   res.end(JSON.stringify(body));
 }
 
@@ -165,11 +183,22 @@ function buildSessionPayload(sessionId, session) {
   };
 }
 
+async function createDurableSession(store, session) {
+  const sessionId = randomId(20);
+  store.sessions[sessionId] = session;
+  return sessionId;
+}
+
 function pruneStore(store) {
   const now = Date.now();
   for (const [requestId, value] of Object.entries(store.pending)) {
     if (!value?.createdAt || now - Date.parse(value.createdAt) > 10 * 60_000) {
       delete store.pending[requestId];
+    }
+  }
+  for (const [exchangeId, value] of Object.entries(store.exchanges ?? {})) {
+    if (!value?.createdAt || now - Date.parse(value.createdAt) > 10 * 60_000) {
+      delete store.exchanges[exchangeId];
     }
   }
   return store;
@@ -178,7 +207,8 @@ function pruneStore(store) {
 const server = createServer(async (req, res) => {
   try {
     if (req.method === 'OPTIONS') {
-      json(res, 204, {});
+      res.writeHead(204, applyCors({}, req));
+      res.end();
       return;
     }
 
@@ -187,7 +217,7 @@ const server = createServer(async (req, res) => {
     let store = pruneStore(await loadStore());
 
     if (req.method === 'GET' && pathname === '/health') {
-      json(res, 200, { ok: true });
+      json(res, 200, { ok: true }, req);
       return;
     }
 
@@ -206,7 +236,7 @@ const server = createServer(async (req, res) => {
       json(res, 200, {
         request_id: requestId,
         authorization_url: buildBangumiAuthorizeUrl(state),
-      });
+      }, req);
       return;
     }
 
@@ -214,7 +244,7 @@ const server = createServer(async (req, res) => {
       const code = url.searchParams.get('code') ?? '';
       const state = url.searchParams.get('state') ?? '';
       if (!code || !state) {
-        json(res, 400, { error: 'Missing code or state.' });
+        json(res, 400, { error: 'Missing code or state.' }, req);
         return;
       }
 
@@ -222,20 +252,20 @@ const server = createServer(async (req, res) => {
         ([, value]) => value?.state === state,
       );
       if (!pendingEntry) {
-        json(res, 400, { error: 'Invalid or expired state.' });
+        json(res, 400, { error: 'Invalid or expired state.' }, req);
         return;
       }
 
       const [requestId, pending] = pendingEntry;
       const token = await exchangeCode(code);
       const profile = await fetchProfile(token.access_token);
-      const sessionId = randomId(20);
+      const exchangeId = randomId(20);
       const now = new Date();
       const expiresAt = new Date(
         now.getTime() + (Number(token.expires_in ?? 0) || 0) * 1000,
       ).toISOString();
 
-      store.sessions[sessionId] = {
+      store.exchanges[exchangeId] = {
         accessToken: token.access_token,
         refreshToken: token.refresh_token ?? '',
         expiresAt,
@@ -248,19 +278,22 @@ const server = createServer(async (req, res) => {
 
       redirect(
         res,
-        `${pending.callbackScheme}://callback?session_id=${encodeURIComponent(sessionId)}&request_id=${encodeURIComponent(requestId)}`,
+        `${pending.callbackScheme}://callback?session_id=${encodeURIComponent(exchangeId)}&request_id=${encodeURIComponent(requestId)}`,
       );
       return;
     }
 
     if (req.method === 'GET' && pathname === '/auth/bangumi/mobile/session') {
       const sessionId = url.searchParams.get('session_id') ?? '';
-      const session = store.sessions[sessionId];
+      const session = store.exchanges?.[sessionId];
       if (!session) {
-        json(res, 404, { error: 'Session not found.' });
+        json(res, 404, { error: 'Session exchange not found.' }, req);
         return;
       }
-      json(res, 200, buildSessionPayload(sessionId, session));
+      delete store.exchanges[sessionId];
+      const durableSessionId = await createDurableSession(store, session);
+      await saveStore(store);
+      json(res, 200, buildSessionPayload(durableSessionId, session), req);
       return;
     }
 
@@ -269,11 +302,11 @@ const server = createServer(async (req, res) => {
       const sessionId = body.session_id?.toString().trim() ?? '';
       const session = store.sessions[sessionId];
       if (!session) {
-        json(res, 404, { error: 'Session not found.' });
+        json(res, 404, { error: 'Session not found.' }, req);
         return;
       }
       if (!session.refreshToken) {
-        json(res, 400, { error: 'Session has no refresh token.' });
+        json(res, 400, { error: 'Session has no refresh token.' }, req);
         return;
       }
 
@@ -291,7 +324,7 @@ const server = createServer(async (req, res) => {
         updatedAt: now.toISOString(),
       };
       await saveStore(store);
-      json(res, 200, buildSessionPayload(sessionId, store.sessions[sessionId]));
+      json(res, 200, buildSessionPayload(sessionId, store.sessions[sessionId]), req);
       return;
     }
 
@@ -302,15 +335,15 @@ const server = createServer(async (req, res) => {
         delete store.sessions[sessionId];
         await saveStore(store);
       }
-      json(res, 200, { ok: true });
+      json(res, 200, { ok: true }, req);
       return;
     }
 
-    json(res, 404, { error: 'Not found.' });
+    json(res, 404, { error: 'Not found.' }, req);
   } catch (error) {
     json(res, 500, {
       error: error instanceof Error ? error.message : 'Unknown server error.',
-    });
+    }, req);
   }
 });
 
