@@ -78,6 +78,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
   bool _showControls = false;
   bool _isFullscreenLocked = false;
   bool _suppressControlsOnNextPause = false;
+  bool _isOpeningMedia = false;
   Timer? _controlsTimer;
   Timer? _danmakuTicker;
   Timer? _progressSaveTimer;
@@ -140,13 +141,13 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
           ),
         );
     _controller = widget.externalController ?? VideoController(_player);
+    _isMagnet = widget.media.url.toLowerCase().startsWith('magnet:');
     final playerState = _player.state;
     _position = _normalizeIncomingPosition(playerState.position);
     _duration = _normalizeIncomingDuration(playerState.duration);
     _rate = playerState.rate;
     _isPlaying = playerState.playing;
     _isBuffering = playerState.buffering;
-    _isMagnet = widget.media.url.toLowerCase().startsWith('magnet:');
     _initializeOnlinePlaybackContext(widget.media);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
@@ -156,7 +157,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
 
     _subscriptions.add(
       _player.stream.position.listen((Duration value) {
-        if (!mounted) {
+        if (!mounted || _isOpeningMedia) {
           return;
         }
         final Duration normalized = _normalizeIncomingPosition(value);
@@ -310,6 +311,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
     final int probeSerial = ++_durationProbeSerial;
     if (mounted) {
       setState(() {
+        _isOpeningMedia = true;
         _position = Duration.zero;
         _duration = Duration.zero;
         _durationFallback = Duration.zero;
@@ -321,13 +323,22 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
     widget.onMediaChanged?.call(media);
     await _player.open(Media(media.url, httpHeaders: media.headers));
     unawaited(_probeDurationForMedia(media, serial: probeSerial));
-    await _restorePlaybackProgress(media);
+    final Duration? restoredPosition = await _restorePlaybackProgress(media);
     if (_rate != 1.0) {
       await _player.setRate(_rate);
     }
     await _prepareDanmakuForMedia(media);
     if (mounted) {
+      final Duration currentPosition = _normalizeIncomingPosition(
+        _player.state.position,
+      );
+      final Duration currentDuration = _normalizeIncomingDuration(
+        _player.state.duration,
+      );
       setState(() {
+        _isOpeningMedia = false;
+        _position = restoredPosition ?? currentPosition;
+        _duration = currentDuration;
         _showControls = false;
       });
     }
@@ -571,25 +582,26 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
     _scheduleControlsAutoHide();
   }
 
-  Future<void> _restorePlaybackProgress(PlayableMedia media) async {
+  Future<Duration?> _restorePlaybackProgress(PlayableMedia media) async {
     final PlaybackProgressSnapshot? progress = await PlaybackProgressStore.load(
       media,
     );
     if (progress == null) {
-      return;
+      return null;
     }
 
     final Duration restored = progress.position;
     await Future<void>.delayed(const Duration(milliseconds: 250));
     await _player.seek(restored);
     if (!mounted) {
-      return;
+      return restored;
     }
     setState(() {
       _position = restored;
       _dragPosition = null;
     });
     _resyncDanmakuCursor(restored);
+    return restored;
   }
 
   void _savePlaybackProgressThrottled() {
@@ -606,7 +618,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
     bool force = false,
   }) async {
     final PlayableMedia? media = _activeMedia;
-    if (media == null) {
+    if (media == null || _isOpeningMedia) {
       return;
     }
 

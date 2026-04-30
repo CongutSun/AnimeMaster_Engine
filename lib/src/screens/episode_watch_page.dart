@@ -75,6 +75,7 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
   bool _isBuffering = false;
   bool _isFullscreenRouteOpen = false;
   bool _showInlineControls = true;
+  bool _isOpeningMedia = false;
   String _statusText = '正在准备播放...';
   String _dataSourceName = '自动选择';
   int _durationProbeSerial = 0;
@@ -107,7 +108,7 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
       )
       ..add(
         _player.stream.position.listen((Duration value) {
-          if (!mounted || _dragPosition != null) {
+          if (!mounted || _isOpeningMedia || _dragPosition != null) {
             return;
           }
           setState(() => _position = value);
@@ -353,6 +354,8 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
     final int probeSerial = ++_durationProbeSerial;
     if (mounted) {
       setState(() {
+        _isOpeningMedia = true;
+        _activeMedia = null;
         _isPreparingMedia = true;
         _statusText = '正在加载视频...';
         _position = Duration.zero;
@@ -361,15 +364,21 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
         _dragPosition = null;
       });
     }
-    _activeMedia = media;
     await _player.open(Media(media.url, httpHeaders: media.headers));
     unawaited(_probeDurationForMedia(media, serial: probeSerial));
-    await _restorePlaybackProgress(media);
+    final Duration? restoredPosition = await _restorePlaybackProgress(media);
     if (!mounted) {
       return;
     }
+    final Duration currentPosition = _player.state.position;
+    final Duration currentDuration = _player.state.duration;
     setState(() {
+      _isOpeningMedia = false;
       _activeMedia = media;
+      _position = restoredPosition ?? currentPosition;
+      if (currentDuration > Duration.zero) {
+        _duration = currentDuration;
+      }
       _dataSourceName = sourceName;
       _isPreparingMedia = false;
       _statusText = '';
@@ -397,7 +406,7 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
     bool force = false,
   }) async {
     final PlayableMedia? media = _activeMedia;
-    if (media == null) {
+    if (media == null || _isOpeningMedia) {
       return;
     }
     await PlaybackProgressStore.save(
@@ -408,22 +417,23 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
     );
   }
 
-  Future<void> _restorePlaybackProgress(PlayableMedia media) async {
+  Future<Duration?> _restorePlaybackProgress(PlayableMedia media) async {
     final PlaybackProgressSnapshot? progress = await PlaybackProgressStore.load(
       media,
     );
     if (progress == null) {
-      return;
+      return null;
     }
     await Future<void>.delayed(const Duration(milliseconds: 250));
     await _player.seek(progress.position);
     if (!mounted) {
-      return;
+      return progress.position;
     }
     setState(() {
       _position = progress.position;
       _dragPosition = null;
     });
+    return progress.position;
   }
 
   Future<void> _probeDurationForMedia(

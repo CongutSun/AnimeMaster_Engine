@@ -148,6 +148,14 @@ class _AboutPageState extends State<AboutPage> {
                   ),
                   SizedBox(height: 12),
                   _LogEntry(
+                    version: '2.2.5',
+                    items: <String>[
+                      '修复从播放页切到全屏时可能出现白屏的问题。',
+                      '修复刚进入视频播放页时进度条在初始位置、旧位置和恢复进度之间来回跳动的问题。',
+                    ],
+                  ),
+                  SizedBox(height: 14),
+                  _LogEntry(
                     version: '2.2.4',
                     items: <String>[
                       '修复在线播放从小屏进入全屏后进度条可能无法拖动的问题。',
