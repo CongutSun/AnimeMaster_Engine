@@ -13,8 +13,8 @@ const RESOURCE_PROXY_ALLOWED_HOSTS = new Set([
 ]);
 const ALLOWED_BROWSER_ORIGINS = new Set(['https://auth.congutsun.com']);
 const APP_UPDATE_MANIFEST = {
-  version: '2.2.6',
-  build: 21,
+  version: '2.2.7',
+  build: 22,
   apkUrl: 'https://auth.congutsun.com/download/apk/universal',
   apkUrls: {
     'android-arm64': 'https://auth.congutsun.com/download/apk/android-arm64',
@@ -23,23 +23,22 @@ const APP_UPDATE_MANIFEST = {
     universal: 'https://auth.congutsun.com/download/apk/universal',
   },
   notes: [
-    '精简全屏播放控制台，减少选集、换源和弹幕样式入口重复。',
-    '修复开启自动小窗后从播放页回到桌面不会自动进入画中画的问题。',
-    '修复恢复历史播放进度时 UI 显示正确但播放器实际从头播放的问题。',
-    '修复手动进入小窗瞬间可能压缩显示全屏控制台的问题。',
+    '修复剧集页“本集讨论”可能一直显示为空的问题，评论抓取会自动换用备用域名且不再缓存临时空结果。',
+    '修复全屏播放回到桌面时自动小窗仍可能不触发的问题。',
+    '优化历史进度恢复，黑屏加载阶段不再提前显示上次进度。',
   ],
-  publishedAt: '2026-05-01T13:24:13+08:00',
+  publishedAt: '2026-05-01T13:51:29+08:00',
   forceUpdate: false,
 };
 const APK_DOWNLOAD_URLS = {
   'android-arm64':
-    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.2.6/app-arm64-v8a-release.apk',
+    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.2.7/app-arm64-v8a-release.apk',
   'android-arm':
-    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.2.6/app-armeabi-v7a-release.apk',
+    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.2.7/app-armeabi-v7a-release.apk',
   'android-x64':
-    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.2.6/app-x86_64-release.apk',
+    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.2.7/app-x86_64-release.apk',
   universal:
-    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.2.6/app-release.apk',
+    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.2.7/app-release.apk',
 };
 
 function applyCors(headers, request, methods = 'GET,POST,OPTIONS') {

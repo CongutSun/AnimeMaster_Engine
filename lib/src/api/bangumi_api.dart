@@ -195,6 +195,16 @@ class BangumiApi {
         .trim();
   }
 
+  static String _decodeHtmlResponse(dynamic data) {
+    if (data is String) {
+      return data;
+    }
+    if (data is List<int>) {
+      return utf8.decode(data, allowMalformed: true);
+    }
+    return data?.toString() ?? '';
+  }
+
   static List<Map<String, String>> _dedupeEpisodeComments(
     List<Map<String, String>> comments,
   ) {
@@ -812,20 +822,44 @@ class BangumiApi {
 
     final List<Map<String, String>> comments = <Map<String, String>>[];
     try {
-      final Response<dynamic> response = await _dio.get(
+      final List<String> urls = <String>[
         '${_ApiConfig.chiiBase}/ep/$episodeId',
-        options: Options(responseType: ResponseType.bytes),
-      );
-      if (response.statusCode == 200) {
-        final dom.Document document = parser.parse(utf8.decode(response.data));
-        comments.addAll(_parseEpisodeCommentsDocument(document));
+        '${_ApiConfig.webBase}/ep/$episodeId',
+      ];
+      for (final String url in urls) {
+        final Response<dynamic> response = await _dio.get(
+          url,
+          options: Options(
+            responseType: ResponseType.bytes,
+            headers: <String, String>{
+              'Accept':
+                  'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+              'Referer': _ApiConfig.webBase,
+            },
+          ),
+        );
+        if (response.statusCode != 200) {
+          continue;
+        }
+        final dom.Document document = parser.parse(
+          _decodeHtmlResponse(response.data),
+        );
+        final List<Map<String, String>> parsed = _parseEpisodeCommentsDocument(
+          document,
+        );
+        if (parsed.isNotEmpty) {
+          comments.addAll(parsed);
+          break;
+        }
       }
     } catch (e) {
       debugPrint('[BangumiApi.getEpisodeComments] Exception: $e');
     }
 
-    _episodeCommentsCache[episodeId] = comments;
-    _trimCache(_episodeCommentsCache, maxSize: 120);
+    if (comments.isNotEmpty) {
+      _episodeCommentsCache[episodeId] = comments;
+      _trimCache(_episodeCommentsCache, maxSize: 120);
+    }
     return comments;
   }
 

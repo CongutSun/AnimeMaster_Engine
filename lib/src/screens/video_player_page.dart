@@ -154,6 +154,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
     _rate = playerState.rate;
     _isPlaying = playerState.playing;
     _isBuffering = playerState.buffering;
+    unawaited(PictureInPictureService.setPlaybackActive(_isPlaying));
     _initializeOnlinePlaybackContext(widget.media);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
@@ -202,6 +203,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
         if (!mounted) {
           return;
         }
+        unawaited(PictureInPictureService.setPlaybackActive(value));
         setState(() {
           _isPlaying = value;
           if (!value && !_suppressControlsOnNextPause) {
@@ -651,10 +653,12 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
     if (!mounted) {
       return restored;
     }
-    setState(() {
-      _position = restored;
-      _dragPosition = null;
-    });
+    if (!_isOpeningMedia) {
+      setState(() {
+        _position = restored;
+        _dragPosition = null;
+      });
+    }
     _resyncDanmakuCursor(restored);
     return restored;
   }
@@ -691,7 +695,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
     if (current.inMilliseconds + 2000 < target.inMilliseconds) {
       await _player.seek(target);
       _protectRestoredPosition(target);
-      if (mounted) {
+      if (mounted && !_isOpeningMedia) {
         setState(() {
           _position = target;
           _dragPosition = null;
@@ -1931,6 +1935,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     unawaited(_savePlaybackProgress(force: true));
+    unawaited(PictureInPictureService.setPlaybackActive(false));
     unawaited(PictureInPictureService.setAutoEnter(false));
     unawaited(_onlineSourceSubscription?.cancel());
     unawaited(

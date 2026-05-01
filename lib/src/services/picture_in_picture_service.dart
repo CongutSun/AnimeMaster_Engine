@@ -38,4 +38,16 @@ class PictureInPictureService {
       return;
     }
   }
+
+  static Future<void> setPlaybackActive(bool active) async {
+    try {
+      await _channel.invokeMethod<void>('setPlaybackActive', <String, bool>{
+        'active': active,
+      });
+    } on MissingPluginException {
+      return;
+    } on PlatformException {
+      return;
+    }
+  }
 }

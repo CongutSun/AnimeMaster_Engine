@@ -103,6 +103,7 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
           if (!mounted) {
             return;
           }
+          unawaited(PictureInPictureService.setPlaybackActive(value));
           setState(() => _isPlaying = value);
         }),
       )
@@ -154,6 +155,7 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     unawaited(_savePlaybackProgress(force: true));
+    unawaited(PictureInPictureService.setPlaybackActive(false));
     unawaited(PictureInPictureService.setAutoEnter(false));
     unawaited(_onlineSubscription?.cancel());
     _cachedSession?.streamServer?.stop();
@@ -222,7 +224,6 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
     await _player.stop();
 
     final OnlineEpisodeQuery query = _buildOnlineEpisodeQuery(episode);
-    final int episodeId = _episodeId(episode);
     _durationProbeSerial += 1;
     if (mounted) {
       setState(() {
@@ -232,9 +233,7 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
         _activeTask = null;
         _onlineSources = <OnlineEpisodeSourceResult>[];
         _onlineSourcesNotifier.value = <OnlineEpisodeSourceResult>[];
-        _commentsFuture = episodeId > 0
-            ? BangumiApi.getEpisodeComments(episodeId)
-            : Future<List<Map<String, String>>>.value(<Map<String, String>>[]);
+        _commentsFuture = _loadEpisodeComments(episode);
         _isPreparingMedia = true;
         _isSearchingOnline = false;
         _onlineSourceSearchingNotifier.value = false;
@@ -492,10 +491,12 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
     if (!mounted) {
       return progress.position;
     }
-    setState(() {
-      _position = progress.position;
-      _dragPosition = null;
-    });
+    if (!_isOpeningMedia) {
+      setState(() {
+        _position = progress.position;
+        _dragPosition = null;
+      });
+    }
     return progress.position;
   }
 
@@ -530,7 +531,7 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
     if (current.inMilliseconds + 2000 < target.inMilliseconds) {
       await _player.seek(target);
       _protectRestoredPosition(target);
-      if (mounted) {
+      if (mounted && !_isOpeningMedia) {
         setState(() {
           _position = target;
           _dragPosition = null;
@@ -611,12 +612,29 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
       _dataSourceName = sourceName;
       if (matchedEpisode != null && !_isCurrentEpisode(matchedEpisode)) {
         _episode = matchedEpisode;
-        final int episodeId = _episodeId(matchedEpisode);
-        _commentsFuture = episodeId > 0
-            ? BangumiApi.getEpisodeComments(episodeId)
-            : Future<List<Map<String, String>>>.value(<Map<String, String>>[]);
+        _commentsFuture = _loadEpisodeComments(matchedEpisode);
       }
     });
+  }
+
+  Future<List<Map<String, String>>> _loadEpisodeComments(
+    Map<String, dynamic> episode,
+  ) async {
+    int episodeId = _episodeId(episode);
+    if (episodeId <= 0) {
+      episodeId =
+          await BangumiApi.resolveEpisodeId(
+            subjectId: widget.animeId,
+            episodeLabel: '第${_episodeNumber(episode)}集',
+            displayTitle: _episodePlainTitle(episode),
+            subjectTitle: _subjectDisplayName(),
+          ) ??
+          0;
+    }
+    if (episodeId <= 0) {
+      return <Map<String, String>>[];
+    }
+    return BangumiApi.getEpisodeComments(episodeId);
   }
 
   Map<String, dynamic>? _findEpisodeForQuery(OnlineEpisodeQuery? query) {

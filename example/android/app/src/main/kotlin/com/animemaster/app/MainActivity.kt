@@ -12,6 +12,7 @@ class MainActivity : FlutterActivity() {
     private val backgroundChannel = "com.animemaster.app/background_download"
     private val pictureInPictureChannel = "com.animemaster.app/picture_in_picture"
     private var autoEnterPictureInPicture = false
+    private var pictureInPicturePlaybackActive = false
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -40,6 +41,11 @@ class MainActivity : FlutterActivity() {
                         updatePictureInPictureParams()
                         result.success(null)
                     }
+                    "setPlaybackActive" -> {
+                        pictureInPicturePlaybackActive = call.argument<Boolean>("active") == true
+                        updatePictureInPictureParams()
+                        result.success(null)
+                    }
                     "enter" -> {
                         result.success(enterPictureInPictureIfPossible())
                     }
@@ -50,10 +56,18 @@ class MainActivity : FlutterActivity() {
 
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
-        if (autoEnterPictureInPicture) {
+        if (shouldAutoEnterPictureInPicture()) {
             updatePictureInPictureParams()
             enterPictureInPictureIfPossible()
         }
+    }
+
+    override fun onPause() {
+        if (shouldAutoEnterPictureInPicture() && !isChangingConfigurations) {
+            updatePictureInPictureParams()
+            enterPictureInPictureIfPossible()
+        }
+        super.onPause()
     }
 
     private fun startBackgroundDownloadService() {
@@ -84,9 +98,13 @@ class MainActivity : FlutterActivity() {
         val builder = PictureInPictureParams.Builder()
             .setAspectRatio(Rational(16, 9))
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            builder.setAutoEnterEnabled(autoEnterPictureInPicture)
+            builder.setAutoEnterEnabled(shouldAutoEnterPictureInPicture())
         }
         return builder.build()
+    }
+
+    private fun shouldAutoEnterPictureInPicture(): Boolean {
+        return autoEnterPictureInPicture && pictureInPicturePlaybackActive
     }
 
     private fun updatePictureInPictureParams(params: PictureInPictureParams? = null) {
