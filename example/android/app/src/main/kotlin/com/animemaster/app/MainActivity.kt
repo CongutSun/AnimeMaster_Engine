@@ -62,14 +62,6 @@ class MainActivity : FlutterActivity() {
         super.onUserLeaveHint()
     }
 
-    override fun onPause() {
-        if (shouldAutoEnterPictureInPicture() && !isChangingConfigurations) {
-            updatePictureInPictureParams()
-            enterPictureInPictureIfPossible()
-        }
-        super.onPause()
-    }
-
     private fun startBackgroundDownloadService() {
         val intent = Intent(this, BackgroundDownloadService::class.java)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {

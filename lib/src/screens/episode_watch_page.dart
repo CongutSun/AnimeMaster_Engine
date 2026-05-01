@@ -79,8 +79,6 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
   bool _isFullscreenRouteOpen = false;
   bool _showInlineControls = true;
   bool _isOpeningMedia = false;
-  bool _autoPictureInPictureEnabled = false;
-  bool _pictureInPictureRequestInFlight = false;
   String _statusText = '正在准备播放...';
   String _dataSourceName = '自动选择';
   int _durationProbeSerial = 0;
@@ -186,33 +184,8 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
     final bool enabled = context
         .read<SettingsProvider>()
         .enablePictureInPicture;
-    if (mounted) {
-      setState(() {
-        _autoPictureInPictureEnabled = enabled;
-      });
-    } else {
-      _autoPictureInPictureEnabled = enabled;
-    }
     await PictureInPictureService.setAutoEnter(enabled);
     _syncPictureInPicturePlaybackState();
-  }
-
-  Future<void> _enterPictureInPictureFromLifecycle() async {
-    if (!_autoPictureInPictureEnabled ||
-        _activeMedia == null ||
-        (!_isPlaying && !_isBuffering && !_isOpeningMedia) ||
-        _isFullscreenRouteOpen ||
-        _pictureInPictureRequestInFlight) {
-      return;
-    }
-    _pictureInPictureRequestInFlight = true;
-    if (mounted) {
-      setState(() {
-        _showInlineControls = false;
-      });
-    }
-    await PictureInPictureService.enter();
-    _pictureInPictureRequestInFlight = false;
   }
 
   void _syncPictureInPicturePlaybackState() {
@@ -223,9 +196,8 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.inactive ||
-        state == AppLifecycleState.paused) {
-      unawaited(_enterPictureInPictureFromLifecycle());
+    if (state == AppLifecycleState.resumed) {
+      unawaited(_syncPictureInPictureSetting());
     }
   }
 

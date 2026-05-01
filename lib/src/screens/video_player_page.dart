@@ -80,7 +80,6 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
   bool _isFullscreenLocked = false;
   bool _suppressControlsOnNextPause = false;
   bool _isOpeningMedia = false;
-  bool _autoPictureInPictureEnabled = false;
   bool _pictureInPictureRequestInFlight = false;
   Timer? _controlsTimer;
   Timer? _danmakuTicker;
@@ -276,13 +275,6 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
     final bool enabled = context
         .read<SettingsProvider>()
         .enablePictureInPicture;
-    if (mounted) {
-      setState(() {
-        _autoPictureInPictureEnabled = enabled;
-      });
-    } else {
-      _autoPictureInPictureEnabled = enabled;
-    }
     await PictureInPictureService.setAutoEnter(enabled);
     _syncPictureInPicturePlaybackState();
   }
@@ -319,15 +311,6 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
     });
   }
 
-  Future<void> _enterPictureInPictureFromLifecycle() async {
-    if (!_autoPictureInPictureEnabled ||
-        _activeMedia == null ||
-        (!_isPlaying && !_isBuffering && !_isOpeningMedia)) {
-      return;
-    }
-    await _enterPictureInPicture(silent: true);
-  }
-
   void _syncPictureInPicturePlaybackState() {
     final bool active =
         _activeMedia != null && (_isPlaying || _isBuffering || _isOpeningMedia);
@@ -336,9 +319,8 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.inactive ||
-        state == AppLifecycleState.paused) {
-      unawaited(_enterPictureInPictureFromLifecycle());
+    if (state == AppLifecycleState.resumed) {
+      unawaited(_syncPictureInPictureSetting());
     }
   }
 
@@ -2144,18 +2126,26 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
                             ),
                           ),
                         ),
-                      if (isLandscape) ...<Widget>[
+                      _buildTopAction(
+                        icon: Icons.playlist_play_rounded,
+                        tooltip: _hasOnlineContext ? '选集' : '缓存列表',
+                        onPressed: _hasOnlineContext
+                            ? _showOnlineEpisodeSheet
+                            : _showCacheSelectionSheet,
+                      ),
+                      _buildTopAction(
+                        icon: Icons.picture_in_picture_alt_rounded,
+                        tooltip: '小窗播放',
+                        onPressed: () => _enterPictureInPicture(),
+                      ),
+                      if (!widget.preferLandscapeOnOpen)
                         _buildTopAction(
-                          icon: Icons.picture_in_picture_alt_rounded,
-                          tooltip: '小窗播放',
-                          onPressed: () => _enterPictureInPicture(),
+                          icon: _isFullscreenLocked
+                              ? Icons.fullscreen_exit_rounded
+                              : Icons.fullscreen_rounded,
+                          tooltip: _isFullscreenLocked ? '退出全屏' : '全屏',
+                          onPressed: _toggleFullscreenLock,
                         ),
-                        _buildTopAction(
-                          icon: Icons.tune_rounded,
-                          tooltip: '弹幕样式',
-                          onPressed: _showDanmakuStyleSheet,
-                        ),
-                      ],
                     ],
                   ),
                 ),
@@ -2252,32 +2242,6 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
                         runSpacing: isLandscape ? 4 : 2,
                         crossAxisAlignment: WrapCrossAlignment.center,
                         children: <Widget>[
-                          if (_hasOnlineContext) ...<Widget>[
-                            _buildBottomAction(
-                              icon: Icons.playlist_play_rounded,
-                              label: '选集 (${_onlineEpisodes.length})',
-                              onPressed: _showOnlineEpisodeSheet,
-                            ),
-                            _buildBottomAction(
-                              icon: Icons.hub_rounded,
-                              label: _isOnlineSourceSearching
-                                  ? '找源中 (${_onlineSources.length})'
-                                  : '换源 (${_onlineSources.length})',
-                              onPressed: _showOnlineSourceSheet,
-                            ),
-                          ] else
-                            _buildBottomAction(
-                              icon: Icons.video_library_rounded,
-                              label:
-                                  '选集 (${DownloadManager().allTasks.length})',
-                              onPressed: _showCacheSelectionSheet,
-                            ),
-                          _buildBottomAction(
-                            icon: Icons.speed_rounded,
-                            label:
-                                '倍速 ${_rate.toStringAsFixed(_rate == 1.0 ? 1 : 2)}x',
-                            onPressed: _showRateSheet,
-                          ),
                           _buildBottomAction(
                             icon: _danmakuEnabled
                                 ? Icons.subtitles_rounded
@@ -2287,26 +2251,28 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
                                 : (_danmakuEnabled ? '弹幕' : '弹幕关'),
                             onPressed: _toggleDanmaku,
                           ),
-                          if (!isLandscape)
-                            _buildBottomAction(
-                              icon: Icons.tune_rounded,
-                              label: '弹幕样式',
-                              onPressed: _showDanmakuStyleSheet,
-                            ),
-                          if (!isLandscape)
-                            _buildBottomAction(
-                              icon: Icons.picture_in_picture_alt_rounded,
-                              label: '小窗',
-                              onPressed: () => _enterPictureInPicture(),
-                            ),
-                          if (!widget.preferLandscapeOnOpen)
-                            _buildBottomAction(
-                              icon: _isFullscreenLocked
-                                  ? Icons.fullscreen_exit_rounded
-                                  : Icons.fullscreen_rounded,
-                              label: _isFullscreenLocked ? '退出全屏' : '全屏',
-                              onPressed: _toggleFullscreenLock,
-                            ),
+                          _buildBottomAction(
+                            icon: Icons.tune_rounded,
+                            label: '弹幕设置',
+                            onPressed: _showDanmakuStyleSheet,
+                          ),
+                          _buildBottomAction(
+                            icon: Icons.speed_rounded,
+                            label:
+                                '倍速 ${_rate.toStringAsFixed(_rate == 1.0 ? 1 : 2)}x',
+                            onPressed: _showRateSheet,
+                          ),
+                          _buildBottomAction(
+                            icon: Icons.hd_rounded,
+                            label: _hasOnlineContext
+                                ? (_isOnlineSourceSearching
+                                      ? '线路搜索'
+                                      : '线路 (${_onlineSources.length})')
+                                : '片源',
+                            onPressed: _hasOnlineContext
+                                ? _showOnlineSourceSheet
+                                : _showCacheSelectionSheet,
+                          ),
                         ],
                       ),
                       if (_danmakuStatusText.trim().isNotEmpty) ...<Widget>[
