@@ -93,6 +93,10 @@ class _DetailPageState extends State<DetailPage>
   int currentEp = 0;
   int currentVol = 0;
 
+  bool get _hasEpisodeTab => widget.subjectType == 2;
+  int get _progressTabIndex => _hasEpisodeTab ? 2 : 1;
+  int get _commentsTabIndex => _hasEpisodeTab ? 3 : 2;
+
   final TextEditingController commentController = TextEditingController();
   final Map<String, int> statusToInt = {
     '想看': 1,
@@ -125,7 +129,7 @@ class _DetailPageState extends State<DetailPage>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 4, vsync: this);
+    _tabController = TabController(length: _hasEpisodeTab ? 4 : 3, vsync: this);
     _tabController.addListener(() {
       if (!_tabController.indexIsChanging) {
         _loadTabDataIfNeeded(_tabController.index);
@@ -206,16 +210,21 @@ class _DetailPageState extends State<DetailPage>
   }
 
   void _loadTabDataIfNeeded(int index) {
-    if (index == 1 && !hasRequestedEpisodes && !isEpisodesLoading) {
+    if (_hasEpisodeTab &&
+        index == 1 &&
+        !hasRequestedEpisodes &&
+        !isEpisodesLoading) {
       unawaited(_loadEpisodes());
     }
-    if (index == 3 && !hasRequestedComments && !isCommentsLoading) {
+    if (index == _commentsTabIndex &&
+        !hasRequestedComments &&
+        !isCommentsLoading) {
       unawaited(_loadComments());
     }
   }
 
   Future<void> _loadSupplementaryData() async {
-    if (!hasRequestedEpisodes && !isEpisodesLoading) {
+    if (_hasEpisodeTab && !hasRequestedEpisodes && !isEpisodesLoading) {
       unawaited(_loadEpisodes());
     }
     unawaited(
@@ -817,11 +826,11 @@ class _DetailPageState extends State<DetailPage>
                       indicatorColor: theme.brightness == Brightness.dark
                           ? Colors.white
                           : Colors.black87,
-                      tabs: const [
-                        Tab(text: '详情'),
-                        Tab(text: '剧集'),
-                        Tab(text: '进度'),
-                        Tab(text: '吐槽'),
+                      tabs: <Widget>[
+                        const Tab(text: '详情'),
+                        if (_hasEpisodeTab) const Tab(text: '剧集'),
+                        const Tab(text: '进度'),
+                        const Tab(text: '吐槽'),
                       ],
                     ),
                   ),
@@ -885,18 +894,20 @@ class _DetailPageState extends State<DetailPage>
   }
 
   Widget _buildActiveTabSliver(Color highlightBlue, Color highlightOrange) {
-    switch (_tabController.index) {
-      case 0:
-        return _buildDetailsSliver();
-      case 1:
-        return _buildEpisodesSliver(highlightBlue);
-      case 2:
-        return _buildProgressSliver(highlightBlue, highlightOrange);
-      case 3:
-        return _buildCommentsSliver(highlightOrange);
-      default:
-        return const SliverToBoxAdapter(child: SizedBox.shrink());
+    final int index = _tabController.index;
+    if (index == 0) {
+      return _buildDetailsSliver();
     }
+    if (_hasEpisodeTab && index == 1) {
+      return _buildEpisodesSliver(highlightBlue);
+    }
+    if (index == _progressTabIndex) {
+      return _buildProgressSliver(highlightBlue, highlightOrange);
+    }
+    if (index == _commentsTabIndex) {
+      return _buildCommentsSliver(highlightOrange);
+    }
+    return const SliverToBoxAdapter(child: SizedBox.shrink());
   }
 
   Widget _buildDetailsSliver() {

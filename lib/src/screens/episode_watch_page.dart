@@ -87,6 +87,7 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
   Duration? _restoreProtectedPosition;
   DateTime? _restoreProtectionUntil;
   DateTime _lastProgressSavedAt = DateTime.fromMillisecondsSinceEpoch(0);
+  bool _deferRestoredPositionDisplay = false;
 
   @override
   void initState() {
@@ -103,8 +104,11 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
           if (!mounted) {
             return;
           }
-          unawaited(PictureInPictureService.setPlaybackActive(value));
           setState(() => _isPlaying = value);
+          _syncPictureInPicturePlaybackState();
+          if (value && !_isBuffering) {
+            _releaseRestoredPositionForDisplay();
+          }
         }),
       )
       ..add(
@@ -113,6 +117,10 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
             return;
           }
           setState(() => _isBuffering = value);
+          _syncPictureInPicturePlaybackState();
+          if (!value && _isPlaying) {
+            _releaseRestoredPositionForDisplay();
+          }
         }),
       )
       ..add(
@@ -121,6 +129,9 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
             return;
           }
           if (_shouldHoldRestoredPosition(value)) {
+            return;
+          }
+          if (_deferRestoredPositionDisplay) {
             return;
           }
           setState(() => _position = value);
@@ -183,12 +194,13 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
       _autoPictureInPictureEnabled = enabled;
     }
     await PictureInPictureService.setAutoEnter(enabled);
+    _syncPictureInPicturePlaybackState();
   }
 
   Future<void> _enterPictureInPictureFromLifecycle() async {
     if (!_autoPictureInPictureEnabled ||
-        !_isPlaying ||
         _activeMedia == null ||
+        (!_isPlaying && !_isBuffering && !_isOpeningMedia) ||
         _isFullscreenRouteOpen ||
         _pictureInPictureRequestInFlight) {
       return;
@@ -199,9 +211,14 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
         _showInlineControls = false;
       });
     }
-    await Future<void>.delayed(const Duration(milliseconds: 120));
     await PictureInPictureService.enter();
     _pictureInPictureRequestInFlight = false;
+  }
+
+  void _syncPictureInPicturePlaybackState() {
+    final bool active =
+        _activeMedia != null && (_isPlaying || _isBuffering || _isOpeningMedia);
+    unawaited(PictureInPictureService.setPlaybackActive(active));
   }
 
   @override
@@ -244,7 +261,9 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
         _durationFallback = Duration.zero;
         _dragPosition = null;
         _showInlineControls = true;
+        _deferRestoredPositionDisplay = false;
       });
+      _syncPictureInPicturePlaybackState();
     }
 
     final List<DownloadTaskInfo> cachedTasks = _findCachedEpisodeTasks(episode);
@@ -413,7 +432,7 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
     if (mounted) {
       setState(() {
         _isOpeningMedia = true;
-        _activeMedia = null;
+        _activeMedia = media;
         _isPreparingMedia = true;
         _statusText = '正在加载视频...';
         _position = Duration.zero;
@@ -422,8 +441,10 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
         _dragPosition = null;
         _restoreProtectedPosition = null;
         _restoreProtectionUntil = null;
+        _deferRestoredPositionDisplay = false;
       });
     }
+    _syncPictureInPicturePlaybackState();
     await _player.open(Media(media.url, httpHeaders: media.headers));
     unawaited(_probeDurationForMedia(media, serial: probeSerial));
     final Duration? restoredPosition = await _restorePlaybackProgress(media);
@@ -435,7 +456,7 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
     setState(() {
       _isOpeningMedia = false;
       _activeMedia = media;
-      _position = restoredPosition ?? currentPosition;
+      _position = restoredPosition == null ? currentPosition : Duration.zero;
       if (currentDuration > Duration.zero) {
         _duration = currentDuration;
       }
@@ -443,6 +464,8 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
       _isPreparingMedia = false;
       _statusText = '';
     });
+    _syncPictureInPicturePlaybackState();
+    _releaseRestoredPositionForDisplay();
   }
 
   Duration get _displayDuration {
@@ -466,7 +489,7 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
     bool force = false,
   }) async {
     final PlayableMedia? media = _activeMedia;
-    if (media == null || _isOpeningMedia) {
+    if (media == null || _isOpeningMedia || _deferRestoredPositionDisplay) {
       return;
     }
     await PlaybackProgressStore.save(
@@ -487,11 +510,12 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
     await Future<void>.delayed(const Duration(milliseconds: 250));
     await _player.seek(progress.position);
     _protectRestoredPosition(progress.position);
+    _deferRestoredPositionDisplay = true;
     unawaited(_confirmRestoredPosition(progress.position));
     if (!mounted) {
       return progress.position;
     }
-    if (!_isOpeningMedia) {
+    if (!_isOpeningMedia && !_deferRestoredPositionDisplay) {
       setState(() {
         _position = progress.position;
         _dragPosition = null;
@@ -503,6 +527,24 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
   void _protectRestoredPosition(Duration target) {
     _restoreProtectedPosition = target;
     _restoreProtectionUntil = DateTime.now().add(const Duration(seconds: 4));
+  }
+
+  void _releaseRestoredPositionForDisplay() {
+    if (!_deferRestoredPositionDisplay ||
+        _isOpeningMedia ||
+        _isPreparingMedia ||
+        _isBuffering ||
+        !_isPlaying) {
+      return;
+    }
+    _deferRestoredPositionDisplay = false;
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _position = _player.state.position;
+      _dragPosition = null;
+    });
   }
 
   bool _shouldHoldRestoredPosition(Duration value) {
@@ -531,7 +573,7 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
     if (current.inMilliseconds + 2000 < target.inMilliseconds) {
       await _player.seek(target);
       _protectRestoredPosition(target);
-      if (mounted && !_isOpeningMedia) {
+      if (mounted && !_isOpeningMedia && !_deferRestoredPositionDisplay) {
         setState(() {
           _position = target;
           _dragPosition = null;
@@ -1080,7 +1122,10 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
             onTogglePlay: _togglePlayPause,
             onDoubleTap: _handleInlineDoubleTap,
             onSeek: (Duration value) async {
-              setState(() => _dragPosition = value);
+              setState(() {
+                _deferRestoredPositionDisplay = false;
+                _dragPosition = value;
+              });
               await _player.seek(value);
               unawaited(_savePlaybackProgress(position: value, force: true));
               if (mounted) {

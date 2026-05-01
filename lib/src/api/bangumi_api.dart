@@ -10,6 +10,7 @@ class _ApiConfig {
   static const String apiBase = 'https://api.bgm.tv';
   static const String webBase = 'https://bgm.tv';
   static const String chiiBase = 'https://chii.in';
+  static const List<String> htmlBases = <String>[chiiBase, webBase];
 }
 
 class BangumiApi {
@@ -45,13 +46,22 @@ class BangumiApi {
   ) {
     final List<Map<String, String>> comments = <Map<String, String>>[];
     final Iterable<dom.Element> items = document.querySelectorAll(
-      '#comment_box .item, #comment_list .item',
+      '#comment_box .item, .comment_box .item, #comment_list .item',
     );
 
     for (final dom.Element item in items) {
-      final String author =
-          item.querySelector('.text a')?.text.trim() ?? '网络用户';
-      final String content = item.querySelector('p')?.text.trim() ?? '';
+      final String author = _firstText(item, <String>[
+        '.text a.l',
+        '.text > a',
+        '.userInfo a.l',
+        'a.l',
+      ]);
+      final String content = _firstText(item, <String>[
+        'p.comment',
+        '.text p',
+        '.comment',
+        'p',
+      ]);
       String rate = '未评级';
 
       final dom.Element? starSpan = item.querySelector('.text span.starlight');
@@ -66,7 +76,7 @@ class BangumiApi {
 
       if (content.isNotEmpty) {
         comments.add(<String, String>{
-          'author': author,
+          'author': author.isEmpty ? '网络用户' : author,
           'rate': rate,
           'content': content,
         });
@@ -203,6 +213,36 @@ class BangumiApi {
       return utf8.decode(data, allowMalformed: true);
     }
     return data?.toString() ?? '';
+  }
+
+  static Options _htmlRequestOptions({String referer = _ApiConfig.webBase}) {
+    return Options(
+      responseType: ResponseType.bytes,
+      headers: <String, String>{
+        'Accept':
+            'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Referer': referer,
+      },
+    );
+  }
+
+  static Future<dom.Document?> _getHtmlDocument(
+    String url, {
+    String referer = _ApiConfig.webBase,
+  }) async {
+    final Response<dynamic> response = await _dio.get(
+      url,
+      options: _htmlRequestOptions(referer: referer),
+    );
+    final int statusCode = response.statusCode ?? 0;
+    if (statusCode < 200 || statusCode >= 300) {
+      return null;
+    }
+    final String html = _decodeHtmlResponse(response.data);
+    if (html.trim().isEmpty) {
+      return null;
+    }
+    return parser.parse(html);
   }
 
   static List<Map<String, String>> _dedupeEpisodeComments(
@@ -759,48 +799,49 @@ class BangumiApi {
     if (_commentsCache.containsKey(id)) return _commentsCache[id]!;
     final List<Map<String, String>> comments = <Map<String, String>>[];
 
-    try {
-      for (int page = 1; page <= 3; page++) {
-        final String url = page == 1
-            ? '${_ApiConfig.chiiBase}/subject/$id/comments'
-            : '${_ApiConfig.chiiBase}/subject/$id/comments?page=$page';
-        final Response<dynamic> response = await _dio.get(
-          url,
-          options: Options(responseType: ResponseType.bytes),
-        );
-
-        if (response.statusCode != 200) {
-          break;
-        }
-
-        final dom.Document document = parser.parse(utf8.decode(response.data));
-        final List<Map<String, String>> pageComments =
-            _parseSubjectCommentsDocument(document);
-
-        if (pageComments.isEmpty) {
-          break;
-        }
-
-        comments.addAll(pageComments);
-        if (pageComments.length < 20) {
-          break;
-        }
-      }
-
-      if (comments.isEmpty) {
-        final Response<dynamic> fallbackResponse = await _dio.get(
-          '${_ApiConfig.chiiBase}/subject/$id',
-          options: Options(responseType: ResponseType.bytes),
-        );
-        if (fallbackResponse.statusCode == 200) {
-          final dom.Document document = parser.parse(
-            utf8.decode(fallbackResponse.data),
+    for (final String base in _ApiConfig.htmlBases) {
+      try {
+        for (int page = 1; page <= 3; page++) {
+          final String url = page == 1
+              ? '$base/subject/$id/comments'
+              : '$base/subject/$id/comments?page=$page';
+          final dom.Document? document = await _getHtmlDocument(
+            url,
+            referer: '$base/subject/$id',
           );
-          comments.addAll(_parseSubjectCommentsDocument(document));
+          if (document == null) {
+            break;
+          }
+
+          final List<Map<String, String>> pageComments =
+              _parseSubjectCommentsDocument(document);
+
+          if (pageComments.isEmpty) {
+            break;
+          }
+
+          comments.addAll(pageComments);
+          if (pageComments.length < 20) {
+            break;
+          }
         }
+
+        if (comments.isEmpty) {
+          final dom.Document? document = await _getHtmlDocument(
+            '$base/subject/$id',
+            referer: base,
+          );
+          if (document != null) {
+            comments.addAll(_parseSubjectCommentsDocument(document));
+          }
+        }
+
+        if (comments.isNotEmpty) {
+          break;
+        }
+      } catch (e) {
+        debugPrint('[BangumiApi.getSubjectComments] $base failed: $e');
       }
-    } catch (e) {
-      debugPrint('[BangumiApi.getSubjectComments] Exception: $e');
     }
 
     if (comments.isNotEmpty) {
@@ -821,29 +862,15 @@ class BangumiApi {
     }
 
     final List<Map<String, String>> comments = <Map<String, String>>[];
-    try {
-      final List<String> urls = <String>[
-        '${_ApiConfig.chiiBase}/ep/$episodeId',
-        '${_ApiConfig.webBase}/ep/$episodeId',
-      ];
-      for (final String url in urls) {
-        final Response<dynamic> response = await _dio.get(
-          url,
-          options: Options(
-            responseType: ResponseType.bytes,
-            headers: <String, String>{
-              'Accept':
-                  'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-              'Referer': _ApiConfig.webBase,
-            },
-          ),
+    for (final String base in _ApiConfig.htmlBases) {
+      try {
+        final dom.Document? document = await _getHtmlDocument(
+          '$base/ep/$episodeId',
+          referer: base,
         );
-        if (response.statusCode != 200) {
+        if (document == null) {
           continue;
         }
-        final dom.Document document = parser.parse(
-          _decodeHtmlResponse(response.data),
-        );
         final List<Map<String, String>> parsed = _parseEpisodeCommentsDocument(
           document,
         );
@@ -851,9 +878,9 @@ class BangumiApi {
           comments.addAll(parsed);
           break;
         }
+      } catch (e) {
+        debugPrint('[BangumiApi.getEpisodeComments] $base failed: $e');
       }
-    } catch (e) {
-      debugPrint('[BangumiApi.getEpisodeComments] Exception: $e');
     }
 
     if (comments.isNotEmpty) {

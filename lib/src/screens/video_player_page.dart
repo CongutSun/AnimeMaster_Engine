@@ -105,6 +105,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
   Duration? _restoreProtectedPosition;
   DateTime? _restoreProtectionUntil;
   DateTime _lastProgressSavedAt = DateTime.fromMillisecondsSinceEpoch(0);
+  bool _deferRestoredPositionDisplay = false;
   List<DandanplayComment> _danmakuComments = <DandanplayComment>[];
   List<_ActiveDanmakuItem> _activeDanmaku = <_ActiveDanmakuItem>[];
   String _danmakuStatusText = '';
@@ -154,7 +155,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
     _rate = playerState.rate;
     _isPlaying = playerState.playing;
     _isBuffering = playerState.buffering;
-    unawaited(PictureInPictureService.setPlaybackActive(_isPlaying));
+    _syncPictureInPicturePlaybackState();
     _initializeOnlinePlaybackContext(widget.media);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
@@ -168,6 +169,9 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
           return;
         }
         if (_shouldHoldRestoredPosition(value)) {
+          return;
+        }
+        if (_deferRestoredPositionDisplay) {
           return;
         }
         final Duration normalized = _normalizeIncomingPosition(value);
@@ -203,7 +207,6 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
         if (!mounted) {
           return;
         }
-        unawaited(PictureInPictureService.setPlaybackActive(value));
         setState(() {
           _isPlaying = value;
           if (!value && !_suppressControlsOnNextPause) {
@@ -213,6 +216,10 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
             _suppressControlsOnNextPause = false;
           }
         });
+        _syncPictureInPicturePlaybackState();
+        if (value && !_isBuffering) {
+          _releaseRestoredPositionForDisplay();
+        }
         if (value) {
           _scheduleControlsAutoHide();
         } else {
@@ -231,6 +238,10 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
             _showControls = true;
           }
         });
+        _syncPictureInPicturePlaybackState();
+        if (!value && _isPlaying) {
+          _releaseRestoredPositionForDisplay();
+        }
         if (value) {
           _cancelControlsAutoHide();
         } else if (_isPlaying) {
@@ -251,6 +262,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
       _openMedia(widget.media);
     } else {
       _activeMedia = widget.media;
+      _syncPictureInPicturePlaybackState();
       unawaited(_probeDurationForMedia(widget.media));
       unawaited(_prepareDanmakuForMedia(widget.media));
     }
@@ -272,6 +284,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
       _autoPictureInPictureEnabled = enabled;
     }
     await PictureInPictureService.setAutoEnter(enabled);
+    _syncPictureInPicturePlaybackState();
   }
 
   Future<void> _enterPictureInPicture({bool silent = false}) async {
@@ -280,7 +293,9 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
     }
     _pictureInPictureRequestInFlight = true;
     _hideControlsForPictureInPicture();
-    await Future<void>.delayed(const Duration(milliseconds: 120));
+    if (!silent) {
+      await Future<void>.delayed(const Duration(milliseconds: 120));
+    }
     final bool entered = await PictureInPictureService.enter();
     _pictureInPictureRequestInFlight = false;
     if (entered || !mounted || silent) {
@@ -305,10 +320,18 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
   }
 
   Future<void> _enterPictureInPictureFromLifecycle() async {
-    if (!_autoPictureInPictureEnabled || !_isPlaying) {
+    if (!_autoPictureInPictureEnabled ||
+        _activeMedia == null ||
+        (!_isPlaying && !_isBuffering && !_isOpeningMedia)) {
       return;
     }
     await _enterPictureInPicture(silent: true);
+  }
+
+  void _syncPictureInPicturePlaybackState() {
+    final bool active =
+        _activeMedia != null && (_isPlaying || _isBuffering || _isOpeningMedia);
+    unawaited(PictureInPictureService.setPlaybackActive(active));
   }
 
   @override
@@ -372,9 +395,11 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
         _lastManualSeekAt = null;
         _restoreProtectedPosition = null;
         _restoreProtectionUntil = null;
+        _deferRestoredPositionDisplay = false;
       });
     }
     _activeMedia = media;
+    _syncPictureInPicturePlaybackState();
     widget.onMediaChanged?.call(media);
     await _player.open(Media(media.url, httpHeaders: media.headers));
     unawaited(_probeDurationForMedia(media, serial: probeSerial));
@@ -392,10 +417,12 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
       );
       setState(() {
         _isOpeningMedia = false;
-        _position = restoredPosition ?? currentPosition;
+        _position = restoredPosition == null ? currentPosition : Duration.zero;
         _duration = currentDuration;
         _showControls = false;
       });
+      _syncPictureInPicturePlaybackState();
+      _releaseRestoredPositionForDisplay();
     }
   }
 
@@ -649,11 +676,12 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
     await Future<void>.delayed(const Duration(milliseconds: 250));
     await _player.seek(restored);
     _protectRestoredPosition(restored);
+    _deferRestoredPositionDisplay = true;
     unawaited(_confirmRestoredPosition(restored));
     if (!mounted) {
       return restored;
     }
-    if (!_isOpeningMedia) {
+    if (!_isOpeningMedia && !_deferRestoredPositionDisplay) {
       setState(() {
         _position = restored;
         _dragPosition = null;
@@ -667,6 +695,23 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
     _restoreProtectedPosition = target;
     _restoreProtectionUntil = DateTime.now().add(const Duration(seconds: 4));
     _lastManualSeekAt = DateTime.now();
+  }
+
+  void _releaseRestoredPositionForDisplay() {
+    if (!_deferRestoredPositionDisplay ||
+        _isOpeningMedia ||
+        _isBuffering ||
+        !_isPlaying) {
+      return;
+    }
+    _deferRestoredPositionDisplay = false;
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _position = _normalizeIncomingPosition(_player.state.position);
+      _dragPosition = null;
+    });
   }
 
   bool _shouldHoldRestoredPosition(Duration value) {
@@ -695,7 +740,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
     if (current.inMilliseconds + 2000 < target.inMilliseconds) {
       await _player.seek(target);
       _protectRestoredPosition(target);
-      if (mounted && !_isOpeningMedia) {
+      if (mounted && !_isOpeningMedia && !_deferRestoredPositionDisplay) {
         setState(() {
           _position = target;
           _dragPosition = null;
@@ -718,7 +763,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
     bool force = false,
   }) async {
     final PlayableMedia? media = _activeMedia;
-    if (media == null || _isOpeningMedia) {
+    if (media == null || _isOpeningMedia || _deferRestoredPositionDisplay) {
       return;
     }
 
@@ -956,6 +1001,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
         ? Duration.zero
         : (target > max ? max : target);
     _lastManualSeekAt = DateTime.now();
+    _deferRestoredPositionDisplay = false;
     await _player.seek(clamped);
     unawaited(_savePlaybackProgress(position: clamped, force: true));
     if (mounted) {
@@ -972,6 +1018,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
     final Duration target = Duration(milliseconds: value.round());
     _lastManualSeekAt = DateTime.now();
     setState(() {
+      _deferRestoredPositionDisplay = false;
       _position = target;
       _dragPosition = target;
     });
@@ -988,6 +1035,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
     _sliderSeekThrottle?.cancel();
     _sliderSeekThrottle = null;
     _lastManualSeekAt = DateTime.now();
+    _deferRestoredPositionDisplay = false;
     await _player.seek(target);
     unawaited(_savePlaybackProgress(position: target, force: true));
     if (mounted) {

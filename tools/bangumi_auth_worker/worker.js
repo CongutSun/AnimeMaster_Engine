@@ -14,7 +14,7 @@ const RESOURCE_PROXY_ALLOWED_HOSTS = new Set([
 const ALLOWED_BROWSER_ORIGINS = new Set(['https://auth.congutsun.com']);
 const APP_UPDATE_MANIFEST = {
   version: '2.2.7',
-  build: 22,
+  build: 23,
   apkUrl: 'https://auth.congutsun.com/download/apk/universal',
   apkUrls: {
     'android-arm64': 'https://auth.congutsun.com/download/apk/android-arm64',
@@ -23,11 +23,12 @@ const APP_UPDATE_MANIFEST = {
     universal: 'https://auth.congutsun.com/download/apk/universal',
   },
   notes: [
-    '修复剧集页“本集讨论”可能一直显示为空的问题，评论抓取会自动换用备用域名且不再缓存临时空结果。',
-    '修复全屏播放回到桌面时自动小窗仍可能不触发的问题。',
-    '优化历史进度恢复，黑屏加载阶段不再提前显示上次进度。',
+    '修复番剧、书籍详情页“吐槽”和剧集播放页“本集讨论”无法正常加载的问题，Bangumi HTML 抓取统一使用浏览器请求头并自动在 chii.in / bgm.tv 间兜底。',
+    '书籍详情页不再显示不需要的“剧集”分支。',
+    '优化 Android 自动小窗：设置开关即时保存，播放页和全屏播放页会在退到桌面时按当前播放活跃状态进入画中画。',
+    '优化历史进度恢复，黑屏加载和缓冲阶段不再提前显示上次进度，也不会在恢复完成前覆盖已有历史。',
   ],
-  publishedAt: '2026-05-01T13:51:29+08:00',
+  publishedAt: '2026-05-01T15:11:32+08:00',
   forceUpdate: false,
 };
 const APK_DOWNLOAD_URLS = {

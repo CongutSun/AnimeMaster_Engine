@@ -55,11 +55,11 @@ class MainActivity : FlutterActivity() {
     }
 
     override fun onUserLeaveHint() {
-        super.onUserLeaveHint()
         if (shouldAutoEnterPictureInPicture()) {
             updatePictureInPictureParams()
             enterPictureInPictureIfPossible()
         }
+        super.onUserLeaveHint()
     }
 
     override fun onPause() {

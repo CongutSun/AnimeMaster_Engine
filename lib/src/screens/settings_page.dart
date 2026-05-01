@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:dio/dio.dart';
@@ -610,6 +611,11 @@ class _SettingsPageState extends State<SettingsPage> {
                 setState(() {
                   enablePictureInPicture = value;
                 });
+                unawaited(
+                  context.read<SettingsProvider>().updatePlaybackOptions(
+                    enablePictureInPicture: value,
+                  ),
+                );
               },
             ),
           ],
