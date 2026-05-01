@@ -51,7 +51,8 @@ class VideoPlayerPage extends StatefulWidget {
   State<VideoPlayerPage> createState() => _VideoPlayerPageState();
 }
 
-class _VideoPlayerPageState extends State<VideoPlayerPage> {
+class _VideoPlayerPageState extends State<VideoPlayerPage>
+    with WidgetsBindingObserver {
   static const List<double> _supportedRates = <double>[
     0.75,
     1.0,
@@ -79,6 +80,8 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
   bool _isFullscreenLocked = false;
   bool _suppressControlsOnNextPause = false;
   bool _isOpeningMedia = false;
+  bool _autoPictureInPictureEnabled = false;
+  bool _pictureInPictureRequestInFlight = false;
   Timer? _controlsTimer;
   Timer? _danmakuTicker;
   Timer? _progressSaveTimer;
@@ -99,6 +102,8 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
       ValueNotifier<bool>(false);
   bool _isOnlineSourceSearching = false;
   DateTime? _lastManualSeekAt;
+  Duration? _restoreProtectedPosition;
+  DateTime? _restoreProtectionUntil;
   DateTime _lastProgressSavedAt = DateTime.fromMillisecondsSinceEpoch(0);
   List<DandanplayComment> _danmakuComments = <DandanplayComment>[];
   List<_ActiveDanmakuItem> _activeDanmaku = <_ActiveDanmakuItem>[];
@@ -127,6 +132,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _isFullscreenLocked = widget.preferLandscapeOnOpen;
     _enterPlayerMode();
     unawaited(_loadDanmakuStyle());
@@ -158,6 +164,9 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
     _subscriptions.add(
       _player.stream.position.listen((Duration value) {
         if (!mounted || _isOpeningMedia) {
+          return;
+        }
+        if (_shouldHoldRestoredPosition(value)) {
           return;
         }
         final Duration normalized = _normalizeIncomingPosition(value);
@@ -253,17 +262,59 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
     final bool enabled = context
         .read<SettingsProvider>()
         .enablePictureInPicture;
+    if (mounted) {
+      setState(() {
+        _autoPictureInPictureEnabled = enabled;
+      });
+    } else {
+      _autoPictureInPictureEnabled = enabled;
+    }
     await PictureInPictureService.setAutoEnter(enabled);
   }
 
-  Future<void> _enterPictureInPicture() async {
+  Future<void> _enterPictureInPicture({bool silent = false}) async {
+    if (_pictureInPictureRequestInFlight) {
+      return;
+    }
+    _pictureInPictureRequestInFlight = true;
+    _hideControlsForPictureInPicture();
+    await Future<void>.delayed(const Duration(milliseconds: 120));
     final bool entered = await PictureInPictureService.enter();
-    if (entered || !mounted) {
+    _pictureInPictureRequestInFlight = false;
+    if (entered || !mounted || silent) {
       return;
     }
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(const SnackBar(content: Text('当前设备或系统版本不支持小窗播放。')));
+  }
+
+  void _hideControlsForPictureInPicture() {
+    _cancelControlsAutoHide();
+    _gestureIndicatorTimer?.cancel();
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _showControls = false;
+      _gestureIndicatorText = '';
+      _gestureIndicatorProgress = null;
+    });
+  }
+
+  Future<void> _enterPictureInPictureFromLifecycle() async {
+    if (!_autoPictureInPictureEnabled || !_isPlaying) {
+      return;
+    }
+    await _enterPictureInPicture(silent: true);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused) {
+      unawaited(_enterPictureInPictureFromLifecycle());
+    }
   }
 
   Future<void> _enterPlayerMode() async {
@@ -317,6 +368,8 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
         _durationFallback = Duration.zero;
         _dragPosition = null;
         _lastManualSeekAt = null;
+        _restoreProtectedPosition = null;
+        _restoreProtectionUntil = null;
       });
     }
     _activeMedia = media;
@@ -593,6 +646,8 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
     final Duration restored = progress.position;
     await Future<void>.delayed(const Duration(milliseconds: 250));
     await _player.seek(restored);
+    _protectRestoredPosition(restored);
+    unawaited(_confirmRestoredPosition(restored));
     if (!mounted) {
       return restored;
     }
@@ -602,6 +657,47 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
     });
     _resyncDanmakuCursor(restored);
     return restored;
+  }
+
+  void _protectRestoredPosition(Duration target) {
+    _restoreProtectedPosition = target;
+    _restoreProtectionUntil = DateTime.now().add(const Duration(seconds: 4));
+    _lastManualSeekAt = DateTime.now();
+  }
+
+  bool _shouldHoldRestoredPosition(Duration value) {
+    final Duration? target = _restoreProtectedPosition;
+    final DateTime? until = _restoreProtectionUntil;
+    if (target == null || until == null) {
+      return false;
+    }
+    final DateTime now = DateTime.now();
+    if (now.isAfter(until) ||
+        value.inMilliseconds + 2000 >= target.inMilliseconds) {
+      _restoreProtectedPosition = null;
+      _restoreProtectionUntil = null;
+      return false;
+    }
+    unawaited(_player.seek(target));
+    return true;
+  }
+
+  Future<void> _confirmRestoredPosition(Duration target) async {
+    await Future<void>.delayed(const Duration(milliseconds: 700));
+    if (!mounted) {
+      return;
+    }
+    final Duration current = _player.state.position;
+    if (current.inMilliseconds + 2000 < target.inMilliseconds) {
+      await _player.seek(target);
+      _protectRestoredPosition(target);
+      if (mounted) {
+        setState(() {
+          _position = target;
+          _dragPosition = null;
+        });
+      }
+    }
   }
 
   void _savePlaybackProgressThrottled() {
@@ -1833,6 +1929,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     unawaited(_savePlaybackProgress(force: true));
     unawaited(PictureInPictureService.setAutoEnter(false));
     unawaited(_onlineSourceSubscription?.cancel());
@@ -1998,20 +2095,8 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
                         _buildTopAction(
                           icon: Icons.picture_in_picture_alt_rounded,
                           tooltip: '小窗播放',
-                          onPressed: _enterPictureInPicture,
+                          onPressed: () => _enterPictureInPicture(),
                         ),
-                        if (_hasOnlineContext) ...<Widget>[
-                          _buildTopAction(
-                            icon: Icons.playlist_play_rounded,
-                            tooltip: '选集',
-                            onPressed: _showOnlineEpisodeSheet,
-                          ),
-                          _buildTopAction(
-                            icon: Icons.hub_rounded,
-                            tooltip: '换源',
-                            onPressed: _showOnlineSourceSheet,
-                          ),
-                        ],
                         _buildTopAction(
                           icon: Icons.tune_rounded,
                           tooltip: '弹幕样式',
@@ -2149,24 +2234,26 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
                                 : (_danmakuEnabled ? '弹幕' : '弹幕关'),
                             onPressed: _toggleDanmaku,
                           ),
-                          _buildBottomAction(
-                            icon: Icons.tune_rounded,
-                            label: '弹幕样式',
-                            onPressed: _showDanmakuStyleSheet,
-                          ),
+                          if (!isLandscape)
+                            _buildBottomAction(
+                              icon: Icons.tune_rounded,
+                              label: '弹幕样式',
+                              onPressed: _showDanmakuStyleSheet,
+                            ),
                           if (!isLandscape)
                             _buildBottomAction(
                               icon: Icons.picture_in_picture_alt_rounded,
                               label: '小窗',
-                              onPressed: _enterPictureInPicture,
+                              onPressed: () => _enterPictureInPicture(),
                             ),
-                          _buildBottomAction(
-                            icon: _isFullscreenLocked
-                                ? Icons.fullscreen_exit_rounded
-                                : Icons.fullscreen_rounded,
-                            label: _isFullscreenLocked ? '退出全屏' : '全屏',
-                            onPressed: _toggleFullscreenLock,
-                          ),
+                          if (!widget.preferLandscapeOnOpen)
+                            _buildBottomAction(
+                              icon: _isFullscreenLocked
+                                  ? Icons.fullscreen_exit_rounded
+                                  : Icons.fullscreen_rounded,
+                              label: _isFullscreenLocked ? '退出全屏' : '全屏',
+                              onPressed: _toggleFullscreenLock,
+                            ),
                         ],
                       ),
                       if (_danmakuStatusText.trim().isNotEmpty) ...<Widget>[

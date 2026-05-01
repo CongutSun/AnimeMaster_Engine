@@ -37,6 +37,7 @@ class MainActivity : FlutterActivity() {
                     }
                     "setAutoEnter" -> {
                         autoEnterPictureInPicture = call.argument<Boolean>("enabled") == true
+                        updatePictureInPictureParams()
                         result.success(null)
                     }
                     "enter" -> {
@@ -50,6 +51,7 @@ class MainActivity : FlutterActivity() {
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
         if (autoEnterPictureInPicture) {
+            updatePictureInPictureParams()
             enterPictureInPictureIfPossible()
         }
     }
@@ -67,17 +69,34 @@ class MainActivity : FlutterActivity() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O || isInPictureInPictureMode) {
             return false
         }
+        val params = buildPictureInPictureParams()
+        updatePictureInPictureParams(params)
+        return try {
+            enterPictureInPictureMode(params)
+        } catch (_: IllegalStateException) {
+            false
+        } catch (_: IllegalArgumentException) {
+            false
+        }
+    }
+
+    private fun buildPictureInPictureParams(): PictureInPictureParams {
         val builder = PictureInPictureParams.Builder()
             .setAspectRatio(Rational(16, 9))
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             builder.setAutoEnterEnabled(autoEnterPictureInPicture)
         }
-        return try {
-            enterPictureInPictureMode(builder.build())
+        return builder.build()
+    }
+
+    private fun updatePictureInPictureParams(params: PictureInPictureParams? = null) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+            return
+        }
+        try {
+            setPictureInPictureParams(params ?: buildPictureInPictureParams())
         } catch (_: IllegalStateException) {
-            false
         } catch (_: IllegalArgumentException) {
-            false
         }
     }
 }

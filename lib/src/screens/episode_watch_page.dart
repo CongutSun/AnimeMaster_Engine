@@ -4,13 +4,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
+import 'package:provider/provider.dart';
 
 import '../api/bangumi_api.dart';
 import '../managers/download_manager.dart';
 import '../models/download_task_info.dart';
 import '../models/online_episode_source.dart';
 import '../models/playable_media.dart';
+import '../providers/settings_provider.dart';
 import '../services/online_episode_source_service.dart';
+import '../services/picture_in_picture_service.dart';
 import '../utils/cached_media_playback.dart';
 import '../utils/media_duration_probe.dart';
 import '../utils/playback_progress_store.dart';
@@ -42,7 +45,7 @@ class EpisodeWatchPage extends StatefulWidget {
 }
 
 class _EpisodeWatchPageState extends State<EpisodeWatchPage>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   late final Player _player;
   late final VideoController _controller;
   late final TabController _tabController;
@@ -76,14 +79,19 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
   bool _isFullscreenRouteOpen = false;
   bool _showInlineControls = true;
   bool _isOpeningMedia = false;
+  bool _autoPictureInPictureEnabled = false;
+  bool _pictureInPictureRequestInFlight = false;
   String _statusText = '正在准备播放...';
   String _dataSourceName = '自动选择';
   int _durationProbeSerial = 0;
+  Duration? _restoreProtectedPosition;
+  DateTime? _restoreProtectionUntil;
   DateTime _lastProgressSavedAt = DateTime.fromMillisecondsSinceEpoch(0);
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _player = Player(
       configuration: const PlayerConfiguration(bufferSize: 96 * 1024 * 1024),
     );
@@ -111,6 +119,9 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
           if (!mounted || _isOpeningMedia || _dragPosition != null) {
             return;
           }
+          if (_shouldHoldRestoredPosition(value)) {
+            return;
+          }
           setState(() => _position = value);
           _savePlaybackProgressThrottled();
         }),
@@ -131,12 +142,19 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
     _progressSaveTimer = Timer.periodic(const Duration(seconds: 10), (_) {
       unawaited(_savePlaybackProgress(force: true));
     });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        unawaited(_syncPictureInPictureSetting());
+      }
+    });
     unawaited(_selectEpisode(widget.initialEpisode, preferCache: true));
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     unawaited(_savePlaybackProgress(force: true));
+    unawaited(PictureInPictureService.setAutoEnter(false));
     unawaited(_onlineSubscription?.cancel());
     _cachedSession?.streamServer?.stop();
     _progressSaveTimer?.cancel();
@@ -149,6 +167,47 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
     _tabController.dispose();
     _player.dispose();
     super.dispose();
+  }
+
+  Future<void> _syncPictureInPictureSetting() async {
+    final bool enabled = context
+        .read<SettingsProvider>()
+        .enablePictureInPicture;
+    if (mounted) {
+      setState(() {
+        _autoPictureInPictureEnabled = enabled;
+      });
+    } else {
+      _autoPictureInPictureEnabled = enabled;
+    }
+    await PictureInPictureService.setAutoEnter(enabled);
+  }
+
+  Future<void> _enterPictureInPictureFromLifecycle() async {
+    if (!_autoPictureInPictureEnabled ||
+        !_isPlaying ||
+        _activeMedia == null ||
+        _isFullscreenRouteOpen ||
+        _pictureInPictureRequestInFlight) {
+      return;
+    }
+    _pictureInPictureRequestInFlight = true;
+    if (mounted) {
+      setState(() {
+        _showInlineControls = false;
+      });
+    }
+    await Future<void>.delayed(const Duration(milliseconds: 120));
+    await PictureInPictureService.enter();
+    _pictureInPictureRequestInFlight = false;
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused) {
+      unawaited(_enterPictureInPictureFromLifecycle());
+    }
   }
 
   Future<void> _selectEpisode(
@@ -362,6 +421,8 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
         _duration = Duration.zero;
         _durationFallback = Duration.zero;
         _dragPosition = null;
+        _restoreProtectedPosition = null;
+        _restoreProtectionUntil = null;
       });
     }
     await _player.open(Media(media.url, httpHeaders: media.headers));
@@ -426,6 +487,8 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
     }
     await Future<void>.delayed(const Duration(milliseconds: 250));
     await _player.seek(progress.position);
+    _protectRestoredPosition(progress.position);
+    unawaited(_confirmRestoredPosition(progress.position));
     if (!mounted) {
       return progress.position;
     }
@@ -434,6 +497,46 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
       _dragPosition = null;
     });
     return progress.position;
+  }
+
+  void _protectRestoredPosition(Duration target) {
+    _restoreProtectedPosition = target;
+    _restoreProtectionUntil = DateTime.now().add(const Duration(seconds: 4));
+  }
+
+  bool _shouldHoldRestoredPosition(Duration value) {
+    final Duration? target = _restoreProtectedPosition;
+    final DateTime? until = _restoreProtectionUntil;
+    if (target == null || until == null) {
+      return false;
+    }
+    final DateTime now = DateTime.now();
+    if (now.isAfter(until) ||
+        value.inMilliseconds + 2000 >= target.inMilliseconds) {
+      _restoreProtectedPosition = null;
+      _restoreProtectionUntil = null;
+      return false;
+    }
+    unawaited(_player.seek(target));
+    return true;
+  }
+
+  Future<void> _confirmRestoredPosition(Duration target) async {
+    await Future<void>.delayed(const Duration(milliseconds: 700));
+    if (!mounted) {
+      return;
+    }
+    final Duration current = _player.state.position;
+    if (current.inMilliseconds + 2000 < target.inMilliseconds) {
+      await _player.seek(target);
+      _protectRestoredPosition(target);
+      if (mounted) {
+        setState(() {
+          _position = target;
+          _dragPosition = null;
+        });
+      }
+    }
   }
 
   Future<void> _probeDurationForMedia(
@@ -485,6 +588,7 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
       return;
     }
     setState(() => _isFullscreenRouteOpen = false);
+    unawaited(_syncPictureInPictureSetting());
   }
 
   void _applyFullscreenMediaUpdate(PlayableMedia media) {

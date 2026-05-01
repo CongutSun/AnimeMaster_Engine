@@ -148,6 +148,16 @@ class _AboutPageState extends State<AboutPage> {
                   ),
                   SizedBox(height: 12),
                   _LogEntry(
+                    version: '2.2.6',
+                    items: <String>[
+                      '精简全屏播放控制台，减少选集、换源和弹幕样式入口重复。',
+                      '修复开启自动小窗后从播放页回到桌面不会自动进入画中画的问题。',
+                      '修复恢复历史播放进度时 UI 显示正确但播放器实际从头播放的问题。',
+                      '修复手动进入小窗瞬间可能压缩显示全屏控制台的问题。',
+                    ],
+                  ),
+                  SizedBox(height: 14),
+                  _LogEntry(
                     version: '2.2.5',
                     items: <String>[
                       '修复从播放页切到全屏时可能出现白屏的问题。',
