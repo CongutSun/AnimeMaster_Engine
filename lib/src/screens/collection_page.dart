@@ -162,6 +162,7 @@ class _CollectionPageState extends State<CollectionPage> {
   Widget build(BuildContext context) {
     final provider = Provider.of<SettingsProvider>(context);
     final theme = Theme.of(context);
+    final colors = theme.colorScheme;
 
     return Theme(
       data: theme.copyWith(
@@ -174,29 +175,31 @@ class _CollectionPageState extends State<CollectionPage> {
         appBar: AppBar(
           title: const Text(
             '我的二次元库',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-              fontFamily: 'Microsoft YaHei',
-            ),
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
           ),
-          elevation: 1,
           centerTitle: false,
           actions: [
             Padding(
               padding: const EdgeInsets.only(right: 16.0),
-              child: ToggleButtons(
-                constraints: const BoxConstraints(minHeight: 32, minWidth: 60),
-                borderRadius: BorderRadius.circular(8),
-                isSelected: [currentSubjectType == 2, currentSubjectType == 1],
-                onPressed: (index) {
-                  setState(() => currentSubjectType = index == 0 ? 2 : 1);
+              child: SegmentedButton<int>(
+                showSelectedIcon: false,
+                segments: const <ButtonSegment<int>>[
+                  ButtonSegment<int>(
+                    value: 2,
+                    icon: Icon(Icons.tv_rounded, size: 16),
+                    label: Text('番剧'),
+                  ),
+                  ButtonSegment<int>(
+                    value: 1,
+                    icon: Icon(Icons.menu_book_rounded, size: 16),
+                    label: Text('书籍'),
+                  ),
+                ],
+                selected: <int>{currentSubjectType},
+                onSelectionChanged: (Set<int> value) {
+                  setState(() => currentSubjectType = value.first);
                   _loadCollection();
                 },
-                children: const [
-                  Text('📺 番剧', style: TextStyle(fontSize: 12)),
-                  Text('📚 书籍', style: TextStyle(fontSize: 12)),
-                ],
               ),
             ),
           ],
@@ -205,10 +208,15 @@ class _CollectionPageState extends State<CollectionPage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Container(
-              color: theme.cardColor,
               padding: const EdgeInsets.symmetric(
                 horizontal: 16.0,
                 vertical: 12.0,
+              ),
+              decoration: BoxDecoration(
+                color: colors.surface,
+                border: Border(
+                  bottom: BorderSide(color: colors.outlineVariant),
+                ),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -224,11 +232,12 @@ class _CollectionPageState extends State<CollectionPage> {
                       ),
                       const Spacer(),
                       Container(
-                        height: 32,
-                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        height: 38,
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
                         decoration: BoxDecoration(
-                          border: Border.all(color: theme.dividerColor),
-                          borderRadius: BorderRadius.circular(4),
+                          color: colors.surfaceContainerHighest,
+                          border: Border.all(color: colors.outlineVariant),
+                          borderRadius: BorderRadius.circular(13),
                         ),
                         child: DropdownButtonHideUnderline(
                           child: DropdownButton<int>(
@@ -238,10 +247,7 @@ class _CollectionPageState extends State<CollectionPage> {
                                 value: e.key,
                                 child: Text(
                                   e.value,
-                                  style: const TextStyle(
-                                    fontSize: 13,
-                                    fontFamily: 'Microsoft YaHei',
-                                  ),
+                                  style: const TextStyle(fontSize: 13),
                                 ),
                               );
                             }).toList(),
@@ -256,31 +262,36 @@ class _CollectionPageState extends State<CollectionPage> {
                       ),
                       const SizedBox(width: 8),
                       SizedBox(
-                        height: 32,
-                        child: ElevatedButton.icon(
+                        height: 38,
+                        child: IconButton.filledTonal(
+                          tooltip: '刷新',
                           onPressed: _loadCollection,
-                          icon: const Icon(Icons.refresh, size: 16),
-                          label: const Text(
-                            '刷新',
-                            style: TextStyle(fontFamily: 'Microsoft YaHei'),
-                          ),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.blue.shade700,
-                            foregroundColor: Colors.white,
-                          ),
+                          icon: const Icon(Icons.refresh_rounded, size: 18),
                         ),
                       ),
                     ],
                   ),
                   const SizedBox(height: 12),
-                  const Text(
-                    '💡 提示: 点击标题可查看详情或去下载。',
-                    style: TextStyle(fontSize: 12, color: Colors.grey),
+                  Row(
+                    children: <Widget>[
+                      Icon(
+                        Icons.info_outline_rounded,
+                        size: 15,
+                        color: colors.onSurfaceVariant,
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        '点击标题可查看详情或去下载',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: colors.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
             ),
-            Divider(height: 1, thickness: 1, color: theme.dividerColor),
             Expanded(
               child: isLoading
                   ? const Center(child: CircularProgressIndicator())
@@ -307,12 +318,26 @@ class _CollectionPageState extends State<CollectionPage> {
                             ? anime.eps.toString()
                             : '?';
 
+                        final double progress = anime.eps > 0
+                            ? anime.epStatus / anime.eps
+                            : 0;
                         return Container(
                           margin: const EdgeInsets.only(bottom: 12.0),
                           decoration: BoxDecoration(
-                            color: theme.cardColor,
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: theme.dividerColor),
+                            color: colors.surface,
+                            borderRadius: BorderRadius.circular(18),
+                            border: Border.all(color: colors.outlineVariant),
+                            boxShadow: <BoxShadow>[
+                              BoxShadow(
+                                color: Colors.black.withValues(
+                                  alpha: theme.brightness == Brightness.dark
+                                      ? 0.18
+                                      : 0.04,
+                                ),
+                                blurRadius: 18,
+                                offset: const Offset(0, 8),
+                              ),
+                            ],
                           ),
                           child: Padding(
                             padding: const EdgeInsets.all(16.0),
@@ -339,7 +364,7 @@ class _CollectionPageState extends State<CollectionPage> {
                                       style: TextStyle(
                                         fontSize: 15,
                                         fontWeight: FontWeight.bold,
-                                        color: Colors.blue.shade500,
+                                        color: colors.primary,
                                         height: 1.4,
                                       ),
                                     ),
@@ -350,18 +375,40 @@ class _CollectionPageState extends State<CollectionPage> {
                                   mainAxisAlignment:
                                       MainAxisAlignment.spaceBetween,
                                   children: [
-                                    Text(
-                                      currentSubjectType == 2
-                                          ? '放送进度: ${anime.epStatus} / $totalEpStr 集'
-                                          : '阅读进度: ${anime.epStatus} / $totalEpStr 话(卷)',
-                                      style: const TextStyle(fontSize: 13),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: <Widget>[
+                                          Text(
+                                            currentSubjectType == 2
+                                                ? '放送进度 ${anime.epStatus} / $totalEpStr 集'
+                                                : '阅读进度 ${anime.epStatus} / $totalEpStr 话(卷)',
+                                            style: TextStyle(
+                                              fontSize: 13,
+                                              color: colors.onSurfaceVariant,
+                                            ),
+                                          ),
+                                          if (anime.eps > 0) ...<Widget>[
+                                            const SizedBox(height: 8),
+                                            LinearProgressIndicator(
+                                              value: progress
+                                                  .clamp(0.0, 1.0)
+                                                  .toDouble(),
+                                              minHeight: 5,
+                                              borderRadius:
+                                                  BorderRadius.circular(99),
+                                            ),
+                                          ],
+                                        ],
+                                      ),
                                     ),
 
                                     // ✨ UI 判断：书籍弹出弹窗，番剧直通+1
                                     if (currentSubjectType == 1) ...[
                                       SizedBox(
                                         height: 32,
-                                        child: ElevatedButton.icon(
+                                        child: FilledButton.tonalIcon(
                                           onPressed: () =>
                                               _showUpdateBottomSheet(
                                                 context,
@@ -376,17 +423,12 @@ class _CollectionPageState extends State<CollectionPage> {
                                             style: TextStyle(
                                               fontWeight: FontWeight.bold,
                                               fontSize: 13,
-                                              fontFamily: 'Microsoft YaHei',
                                             ),
                                           ),
-                                          style: ElevatedButton.styleFrom(
+                                          style: FilledButton.styleFrom(
                                             padding: const EdgeInsets.symmetric(
                                               horizontal: 16,
                                             ),
-                                            backgroundColor:
-                                                Colors.orange.shade600,
-                                            foregroundColor: Colors.white,
-                                            elevation: 0,
                                           ),
                                         ),
                                       ),
@@ -394,7 +436,7 @@ class _CollectionPageState extends State<CollectionPage> {
                                         currentType == 3) ...[
                                       SizedBox(
                                         height: 32,
-                                        child: ElevatedButton.icon(
+                                        child: FilledButton.icon(
                                           onPressed:
                                               (anime.eps > 0 &&
                                                   anime.epStatus >= anime.eps)
@@ -409,19 +451,12 @@ class _CollectionPageState extends State<CollectionPage> {
                                             style: TextStyle(
                                               fontWeight: FontWeight.bold,
                                               fontSize: 13,
-                                              fontFamily: 'Microsoft YaHei',
                                             ),
                                           ),
-                                          style: ElevatedButton.styleFrom(
+                                          style: FilledButton.styleFrom(
                                             padding: const EdgeInsets.symmetric(
                                               horizontal: 16,
                                             ),
-                                            backgroundColor:
-                                                Colors.blue.shade600,
-                                            foregroundColor: Colors.white,
-                                            disabledBackgroundColor:
-                                                Colors.grey.shade600,
-                                            elevation: 0,
                                           ),
                                         ),
                                       ),
@@ -557,15 +592,13 @@ class _UpdateProgressSheetState extends State<_UpdateProgressSheet> {
     required VoidCallback onMinus,
     required VoidCallback onPlus,
   }) {
-    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
-    final primaryIconColor = isDarkMode
-        ? Colors.blue.shade400
-        : Theme.of(context).primaryColor;
-    final iconColor = isDarkMode ? Colors.green.shade400 : Colors.green;
+    final ThemeData theme = Theme.of(context);
+    final Color primaryIconColor = theme.colorScheme.primary;
+    final Color iconColor = theme.colorScheme.primary;
 
     final minusIconColor = value > 0
-        ? (isDarkMode ? Colors.grey.shade300 : Colors.grey.shade700)
-        : (isDarkMode ? Colors.grey.shade800 : Colors.grey.shade300);
+        ? theme.colorScheme.onSurfaceVariant
+        : theme.colorScheme.outlineVariant;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 16.0),
@@ -613,10 +646,12 @@ class _UpdateProgressSheetState extends State<_UpdateProgressSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+    final ColorScheme colors = theme.colorScheme;
     return Container(
       decoration: BoxDecoration(
-        color: Theme.of(context).scaffoldBackgroundColor,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        color: colors.surface,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
       ),
       padding: EdgeInsets.only(
         left: 20,
@@ -633,7 +668,7 @@ class _UpdateProgressSheetState extends State<_UpdateProgressSheet> {
               height: 4,
               decoration: BoxDecoration(
                 color: Colors.grey.shade400,
-                borderRadius: BorderRadius.circular(2),
+                borderRadius: BorderRadius.circular(99),
               ),
             ),
             const SizedBox(height: 16),
@@ -681,7 +716,7 @@ class _UpdateProgressSheetState extends State<_UpdateProgressSheet> {
               SizedBox(
                 width: double.infinity,
                 height: 48,
-                child: ElevatedButton.icon(
+                child: FilledButton.icon(
                   onPressed: isSyncing ? null : _syncProgress,
                   icon: isSyncing
                       ? const SizedBox(
@@ -698,13 +733,6 @@ class _UpdateProgressSheetState extends State<_UpdateProgressSheet> {
                     style: const TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blueAccent,
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
                     ),
                   ),
                 ),

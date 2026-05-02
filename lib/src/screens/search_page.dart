@@ -126,23 +126,29 @@ class _SearchPageState extends State<SearchPage> {
           '搜索: ${widget.keyword}',
           style: const TextStyle(fontSize: 16),
         ),
-        elevation: 1,
         actions: [
           Padding(
             padding: const EdgeInsets.only(right: 16.0),
-            child: ToggleButtons(
-              constraints: const BoxConstraints(minHeight: 32, minWidth: 60),
-              borderRadius: BorderRadius.circular(8),
-              isSelected: [currentSubjectType == 2, currentSubjectType == 1],
-              onPressed: (index) {
+            child: SegmentedButton<int>(
+              showSelectedIcon: false,
+              segments: const <ButtonSegment<int>>[
+                ButtonSegment<int>(
+                  value: 2,
+                  icon: Icon(Icons.tv_rounded, size: 16),
+                  label: Text('番剧'),
+                ),
+                ButtonSegment<int>(
+                  value: 1,
+                  icon: Icon(Icons.menu_book_rounded, size: 16),
+                  label: Text('书籍'),
+                ),
+              ],
+              selected: <int>{currentSubjectType},
+              onSelectionChanged: (Set<int> value) {
                 if (isLoading) return;
-                setState(() => currentSubjectType = index == 0 ? 2 : 1);
+                setState(() => currentSubjectType = value.first);
                 _performSearch();
               },
-              children: const [
-                Text('番剧', style: TextStyle(fontSize: 13)),
-                Text('书籍', style: TextStyle(fontSize: 13)),
-              ],
             ),
           ),
         ],
@@ -170,65 +176,81 @@ class _SearchPageState extends State<SearchPage> {
                 final anime = searchResults[index];
                 final String secureUrl = normalizeImageUrl(anime.imageUrl);
 
-                return ListTile(
-                  contentPadding: const EdgeInsets.symmetric(vertical: 8.0),
-                  leading: secureUrl.isNotEmpty
-                      ? ClipRRect(
-                          borderRadius: BorderRadius.circular(4),
-                          child: CachedNetworkImage(
-                            imageUrl: secureUrl,
-                            width: 50,
-                            height: 70,
-                            fit: BoxFit.cover,
-                            httpHeaders: buildImageHeaders(secureUrl),
-                            placeholder: (context, url) => Container(
+                return Card(
+                  margin: const EdgeInsets.only(bottom: 10),
+                  child: ListTile(
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
+                    leading: secureUrl.isNotEmpty
+                        ? ClipRRect(
+                            borderRadius: BorderRadius.circular(10),
+                            child: CachedNetworkImage(
+                              imageUrl: secureUrl,
                               width: 50,
                               height: 70,
-                              color: Colors.grey.withValues(alpha: 0.2),
-                            ),
-                            errorWidget: (context, url, error) => Container(
-                              width: 50,
-                              height: 70,
-                              color: Colors.grey.withValues(alpha: 0.2),
-                              child: const Icon(
-                                Icons.broken_image,
-                                color: Colors.grey,
+                              fit: BoxFit.cover,
+                              httpHeaders: buildImageHeaders(secureUrl),
+                              placeholder: (context, url) => Container(
+                                width: 50,
+                                height: 70,
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.surfaceContainerHighest,
+                              ),
+                              errorWidget: (context, url, error) => Container(
+                                width: 50,
+                                height: 70,
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.surfaceContainerHighest,
+                                child: const Icon(
+                                  Icons.broken_image,
+                                  color: Colors.grey,
+                                ),
                               ),
                             ),
+                          )
+                        : Container(
+                            width: 50,
+                            height: 70,
+                            decoration: BoxDecoration(
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.surfaceContainerHighest,
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: const Icon(
+                              Icons.image_not_supported,
+                              color: Colors.grey,
+                            ),
                           ),
-                        )
-                      : Container(
-                          width: 50,
-                          height: 70,
-                          color: Colors.grey.withValues(alpha: 0.2),
-                          child: const Icon(
-                            Icons.image_not_supported,
-                            color: Colors.grey,
+                    title: Text(
+                      anime.displayName,
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    subtitle: Text(
+                      anime.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    trailing: const Icon(Icons.chevron_right_rounded),
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => DetailPage(
+                            animeId: anime.id,
+                            initialName: anime.displayName,
+                            subjectType: currentSubjectType,
                           ),
                         ),
-                  title: Text(
-                    anime.displayName,
-                    style: const TextStyle(fontWeight: FontWeight.bold),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
+                      );
+                    },
                   ),
-                  subtitle: Text(
-                    anime.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => DetailPage(
-                          animeId: anime.id,
-                          initialName: anime.displayName,
-                          subjectType: currentSubjectType,
-                        ),
-                      ),
-                    );
-                  },
                 );
               },
             ),

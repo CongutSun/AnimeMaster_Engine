@@ -18,6 +18,7 @@ import '../utils/cached_media_playback.dart';
 import '../utils/media_duration_probe.dart';
 import '../utils/playback_progress_store.dart';
 import '../utils/task_title_parser.dart';
+import '../widgets/playback_action_prompt.dart';
 import 'video_player_page.dart';
 
 class EpisodeWatchPage extends StatefulWidget {
@@ -71,6 +72,11 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
   Duration _duration = Duration.zero;
   Duration _durationFallback = Duration.zero;
   Duration? _dragPosition;
+  Duration _inlineSeekStartPosition = Duration.zero;
+  double _inlineSeekAccumulatedDx = 0;
+  double _inlinePlaybackRate = 1.0;
+  double? _inlineLongPressRestoreRate;
+  Timer? _inlineGestureTimer;
   Timer? _progressSaveTimer;
   bool _isSearchingOnline = false;
   bool _isPreparingMedia = false;
@@ -80,12 +86,21 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
   bool _showInlineControls = true;
   bool _isOpeningMedia = false;
   String _statusText = '正在准备播放...';
+  String _inlineGestureText = '';
+  IconData _inlineGestureIcon = Icons.touch_app_rounded;
+  double? _inlineGestureProgress;
   String _dataSourceName = '自动选择';
   int _durationProbeSerial = 0;
   Duration? _restoreProtectedPosition;
   DateTime? _restoreProtectionUntil;
   DateTime _lastProgressSavedAt = DateTime.fromMillisecondsSinceEpoch(0);
   bool _deferRestoredPositionDisplay = false;
+  PlaybackProgressSnapshot? _resumePromptProgress;
+  Map<String, dynamic>? _autoNextEpisode;
+  int _autoNextCountdown = 0;
+  Timer? _autoNextCountdownTimer;
+  bool _autoNextInFlight = false;
+  String? _completedMediaKey;
 
   @override
   void initState() {
@@ -106,6 +121,8 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
           _syncPictureInPicturePlaybackState();
           if (value && !_isBuffering) {
             _releaseRestoredPositionForDisplay();
+          } else if (!value) {
+            _pauseCountdownPrompts();
           }
         }),
       )
@@ -118,6 +135,8 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
           _syncPictureInPicturePlaybackState();
           if (!value && _isPlaying) {
             _releaseRestoredPositionForDisplay();
+          } else if (value) {
+            _pauseCountdownPrompts();
           }
         }),
       )
@@ -134,6 +153,7 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
           }
           setState(() => _position = value);
           _savePlaybackProgressThrottled();
+          _maybeHandlePlaybackNearEnd(value);
         }),
       )
       ..add(
@@ -148,7 +168,23 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
                 : value;
           });
         }),
+      )
+      ..add(
+        _player.stream.rate.listen((double value) {
+          if (!mounted || _inlineLongPressRestoreRate != null) {
+            return;
+          }
+          setState(() => _inlinePlaybackRate = value);
+        }),
       );
+    _playerSubscriptions.add(
+      _player.stream.completed.listen((bool value) {
+        if (!mounted || !value || _isFullscreenRouteOpen) {
+          return;
+        }
+        _handlePlaybackCompleted();
+      }),
+    );
     _progressSaveTimer = Timer.periodic(const Duration(seconds: 10), (_) {
       unawaited(_savePlaybackProgress(force: true));
     });
@@ -169,6 +205,8 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
     unawaited(_onlineSubscription?.cancel());
     _cachedSession?.streamServer?.stop();
     _progressSaveTimer?.cancel();
+    _inlineGestureTimer?.cancel();
+    _cancelAutoNextCountdown();
     for (final StreamSubscription<dynamic> subscription
         in _playerSubscriptions) {
       subscription.cancel();
@@ -232,11 +270,18 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
         _duration = Duration.zero;
         _durationFallback = Duration.zero;
         _dragPosition = null;
+        _inlineGestureText = '';
+        _inlineGestureProgress = null;
         _showInlineControls = true;
         _deferRestoredPositionDisplay = false;
+        _resumePromptProgress = null;
+        _autoNextEpisode = null;
+        _autoNextCountdown = 0;
+        _completedMediaKey = null;
       });
       _syncPictureInPicturePlaybackState();
     }
+    _cancelAutoNextCountdown();
 
     final List<DownloadTaskInfo> cachedTasks = _findCachedEpisodeTasks(episode);
     _startOnlineSearch(
@@ -411,15 +456,23 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
         _duration = Duration.zero;
         _durationFallback = Duration.zero;
         _dragPosition = null;
+        _inlineGestureText = '';
+        _inlineGestureProgress = null;
         _restoreProtectedPosition = null;
         _restoreProtectionUntil = null;
         _deferRestoredPositionDisplay = false;
+        _resumePromptProgress = null;
+        _autoNextEpisode = null;
+        _autoNextCountdown = 0;
+        _completedMediaKey = null;
       });
     }
+    _cancelAutoNextCountdown();
     _syncPictureInPicturePlaybackState();
     await _player.open(Media(media.url, httpHeaders: media.headers));
     unawaited(_probeDurationForMedia(media, serial: probeSerial));
-    final Duration? restoredPosition = await _restorePlaybackProgress(media);
+    final PlaybackProgressSnapshot? resumeProgress =
+        await _loadPlaybackProgressForPrompt(media);
     if (!mounted) {
       return;
     }
@@ -428,7 +481,7 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
     setState(() {
       _isOpeningMedia = false;
       _activeMedia = media;
-      _position = restoredPosition == null ? currentPosition : Duration.zero;
+      _position = currentPosition;
       if (currentDuration > Duration.zero) {
         _duration = currentDuration;
       }
@@ -437,7 +490,7 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
       _statusText = '';
     });
     _syncPictureInPicturePlaybackState();
-    _releaseRestoredPositionForDisplay();
+    _handleResumeProgress(media, resumeProgress);
   }
 
   Duration get _displayDuration {
@@ -472,29 +525,182 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
     );
   }
 
-  Future<Duration?> _restorePlaybackProgress(PlayableMedia media) async {
-    final PlaybackProgressSnapshot? progress = await PlaybackProgressStore.load(
-      media,
-    );
-    if (progress == null) {
+  Future<PlaybackProgressSnapshot?> _loadPlaybackProgressForPrompt(
+    PlayableMedia media,
+  ) {
+    return PlaybackProgressStore.load(media);
+  }
+
+  void _handleResumeProgress(
+    PlayableMedia media,
+    PlaybackProgressSnapshot? progress,
+  ) {
+    if (progress == null || !mounted) {
+      return;
+    }
+    final String behavior = context
+        .read<SettingsProvider>()
+        .resumePlaybackBehavior;
+    if (behavior == 'never') {
+      return;
+    }
+    if (behavior == 'auto') {
+      unawaited(_continueFromResumeProgress(progress));
+      return;
+    }
+    setState(() {
+      _resumePromptProgress = progress;
+      _showInlineControls = true;
+    });
+  }
+
+  Future<void> _continueFromResumeProgress(
+    PlaybackProgressSnapshot progress,
+  ) async {
+    final Duration restored = progress.position;
+    setState(() {
+      _resumePromptProgress = null;
+      _deferRestoredPositionDisplay = false;
+    });
+    await _player.seek(restored);
+    _protectRestoredPosition(restored);
+    unawaited(_confirmRestoredPosition(restored));
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _position = restored;
+      _dragPosition = null;
+    });
+  }
+
+  void _dismissResumeProgress() {
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _resumePromptProgress = null;
+    });
+  }
+
+  void _handlePlaybackCompleted() {
+    final PlayableMedia? media = _activeMedia;
+    if (media == null || _autoNextInFlight) {
+      return;
+    }
+    final String key = PlaybackProgressStore.keyFor(media);
+    if (_completedMediaKey == key) {
+      return;
+    }
+    _completedMediaKey = key;
+    unawaited(_savePlaybackProgress(position: _displayDuration, force: true));
+    final SettingsProvider settings = context.read<SettingsProvider>();
+    if (!settings.autoPlayNextEpisode) {
+      return;
+    }
+    final Map<String, dynamic>? next = _findNextEpisode();
+    if (next == null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('已经是最后一集或没有可播放的下一集。')));
+      return;
+    }
+    _showAutoNextPrompt(next);
+  }
+
+  void _maybeHandlePlaybackNearEnd(Duration position) {
+    if (_autoNextInFlight ||
+        _completedMediaKey != null ||
+        !_isPlaying ||
+        _isFullscreenRouteOpen) {
+      return;
+    }
+    final Duration duration = _displayDuration;
+    if (duration < const Duration(minutes: 3)) {
+      return;
+    }
+    final Duration remaining = duration - position;
+    final bool veryCloseToEnd = remaining <= const Duration(seconds: 8);
+    final bool sourceTailLikelyUnavailable =
+        remaining <= const Duration(seconds: 30) &&
+        position.inMilliseconds >= (duration.inMilliseconds * 0.985).round();
+    if (veryCloseToEnd || sourceTailLikelyUnavailable) {
+      _handlePlaybackCompleted();
+    }
+  }
+
+  Map<String, dynamic>? _findNextEpisode() {
+    final int currentIndex = widget.episodes.indexWhere(_isCurrentEpisode);
+    if (currentIndex < 0 || currentIndex + 1 >= widget.episodes.length) {
       return null;
     }
-    await Future<void>.delayed(const Duration(milliseconds: 250));
-    await _player.seek(progress.position);
-    _protectRestoredPosition(progress.position);
-    _deferRestoredPositionDisplay = true;
-    unawaited(_confirmRestoredPosition(progress.position));
-    if (!mounted) {
-      return progress.position;
-    }
-    if (!_isOpeningMedia && !_deferRestoredPositionDisplay) {
-      setState(() {
-        _position = progress.position;
-        _dragPosition = null;
-      });
-    }
-    return progress.position;
+    return widget.episodes[currentIndex + 1];
   }
+
+  void _showAutoNextPrompt(Map<String, dynamic> episode) {
+    _cancelAutoNextCountdown();
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _autoNextEpisode = episode;
+      _autoNextCountdown = 5;
+      _showInlineControls = true;
+    });
+    _autoNextCountdownTimer = Timer.periodic(const Duration(seconds: 1), (
+      Timer timer,
+    ) {
+      if (!mounted || _autoNextEpisode == null) {
+        timer.cancel();
+        return;
+      }
+      if (_autoNextCountdown <= 1) {
+        timer.cancel();
+        unawaited(_playAutoNextNow());
+        return;
+      }
+      setState(() {
+        _autoNextCountdown -= 1;
+      });
+    });
+  }
+
+  void _cancelAutoNextPrompt() {
+    _cancelAutoNextCountdown();
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _autoNextEpisode = null;
+      _autoNextCountdown = 0;
+    });
+  }
+
+  Future<void> _playAutoNextNow() async {
+    final Map<String, dynamic>? episode = _autoNextEpisode;
+    if (episode == null || _autoNextInFlight) {
+      return;
+    }
+    _autoNextInFlight = true;
+    _cancelAutoNextCountdown();
+    setState(() {
+      _autoNextEpisode = null;
+      _autoNextCountdown = 0;
+    });
+    final int currentEpisodeNumber = _episodeNumber(_episode);
+    if (currentEpisodeNumber > 0 && widget.onSetProgress != null) {
+      await widget.onSetProgress!(currentEpisodeNumber);
+    }
+    await _selectEpisode(episode, preferCache: true);
+    _autoNextInFlight = false;
+  }
+
+  void _cancelAutoNextCountdown() {
+    _autoNextCountdownTimer?.cancel();
+    _autoNextCountdownTimer = null;
+  }
+
+  void _pauseCountdownPrompts() {}
 
   void _protectRestoredPosition(Duration target) {
     _restoreProtectedPosition = target;
@@ -592,6 +798,8 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
           externalController: _controller,
           onMediaChanged: _applyFullscreenMediaUpdate,
           preferLandscapeOnOpen: true,
+          initialResumeProgress: _resumePromptProgress,
+          onResumePromptResolved: _dismissResumeProgress,
         ),
       ),
     );
@@ -841,6 +1049,169 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
     unawaited(_togglePlayPause());
   }
 
+  Future<void> _seekInlineTo(Duration value) async {
+    final Duration target = _clampInlineSeekTarget(value);
+    setState(() {
+      _deferRestoredPositionDisplay = false;
+      _dragPosition = target;
+    });
+    await _player.seek(target);
+    unawaited(_savePlaybackProgress(position: target, force: true));
+    if (mounted) {
+      setState(() {
+        _position = target;
+        _dragPosition = null;
+      });
+    }
+  }
+
+  void _handleInlineHorizontalDragStart(DragStartDetails details) {
+    if (_displayDuration <= Duration.zero) {
+      return;
+    }
+    _inlineGestureTimer?.cancel();
+    _inlineSeekStartPosition = _dragPosition ?? _position;
+    _inlineSeekAccumulatedDx = 0;
+    setState(() {
+      _deferRestoredPositionDisplay = false;
+      _dragPosition = _inlineSeekStartPosition;
+      _showInlineControls = true;
+    });
+    _showInlineSeekIndicator(_inlineSeekStartPosition);
+  }
+
+  void _handleInlineHorizontalDragUpdate(DragUpdateDetails details) {
+    if (_displayDuration <= Duration.zero || _dragPosition == null) {
+      return;
+    }
+    _inlineSeekAccumulatedDx += details.delta.dx;
+    final int deltaSeconds = (_inlineSeekAccumulatedDx / 6).round();
+    final Duration target = _clampInlineSeekTarget(
+      _inlineSeekStartPosition + Duration(seconds: deltaSeconds),
+    );
+    setState(() {
+      _position = target;
+      _dragPosition = target;
+    });
+    _showInlineSeekIndicator(target);
+  }
+
+  Future<void> _handleInlineHorizontalDragEnd([DragEndDetails? details]) async {
+    final Duration? target = _dragPosition;
+    if (target == null || _displayDuration <= Duration.zero) {
+      _hideInlineGestureIndicatorDelayed();
+      return;
+    }
+    await _player.seek(target);
+    unawaited(_savePlaybackProgress(position: target, force: true));
+    if (mounted) {
+      setState(() {
+        _position = target;
+        _dragPosition = null;
+      });
+    }
+    _hideInlineGestureIndicatorDelayed();
+  }
+
+  void _handleInlineLongPressStart(LongPressStartDetails details) {
+    if (_inlineLongPressRestoreRate != null) {
+      return;
+    }
+    _inlineLongPressRestoreRate = _inlinePlaybackRate;
+    unawaited(_player.setRate(2.0));
+    setState(() {
+      _inlinePlaybackRate = 2.0;
+      _showInlineControls = true;
+    });
+    _showInlineGestureIndicator(
+      icon: Icons.speed_rounded,
+      text: '2.0x 倍速播放',
+      progress: null,
+      autoHide: false,
+    );
+  }
+
+  void _handleInlineLongPressEnd(LongPressEndDetails details) {
+    unawaited(_restoreInlineLongPressRate());
+  }
+
+  void _handleInlineLongPressCancel() {
+    unawaited(_restoreInlineLongPressRate());
+  }
+
+  Future<void> _restoreInlineLongPressRate() async {
+    final double? restoreRate = _inlineLongPressRestoreRate;
+    if (restoreRate == null) {
+      return;
+    }
+    _inlineLongPressRestoreRate = null;
+    await _player.setRate(restoreRate);
+    if (mounted) {
+      setState(() {
+        _inlinePlaybackRate = restoreRate;
+      });
+    }
+    _hideInlineGestureIndicatorDelayed();
+  }
+
+  void _showInlineSeekIndicator(Duration target) {
+    final Duration duration = _displayDuration;
+    final bool forward = target >= _inlineSeekStartPosition;
+    final double progress = duration.inMilliseconds <= 0
+        ? 0
+        : target.inMilliseconds / duration.inMilliseconds;
+    _showInlineGestureIndicator(
+      icon: forward ? Icons.fast_forward_rounded : Icons.fast_rewind_rounded,
+      text:
+          '${_formatInlineDuration(target)} / ${_formatInlineDuration(duration)}',
+      progress: progress.clamp(0.0, 1.0).toDouble(),
+      autoHide: false,
+    );
+  }
+
+  void _showInlineGestureIndicator({
+    required IconData icon,
+    required String text,
+    double? progress,
+    bool autoHide = true,
+  }) {
+    _inlineGestureTimer?.cancel();
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _inlineGestureIcon = icon;
+      _inlineGestureText = text;
+      _inlineGestureProgress = progress;
+    });
+    if (autoHide) {
+      _hideInlineGestureIndicatorDelayed();
+    }
+  }
+
+  void _hideInlineGestureIndicatorDelayed() {
+    _inlineGestureTimer?.cancel();
+    _inlineGestureTimer = Timer(const Duration(milliseconds: 650), () {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _inlineGestureText = '';
+        _inlineGestureProgress = null;
+      });
+    });
+  }
+
+  Duration _clampInlineSeekTarget(Duration target) {
+    final Duration max = _displayDuration > Duration.zero
+        ? _displayDuration
+        : target;
+    if (target < Duration.zero) {
+      return Duration.zero;
+    }
+    return target > max ? max : target;
+  }
+
   OnlineEpisodeSourceResult _selectBestOnlineSource(
     List<OnlineEpisodeSourceResult> results,
   ) {
@@ -1061,6 +1432,37 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
     return _episodeNumber(_episode) == _episodeNumber(episode);
   }
 
+  bool get _hasPlaybackPrompt =>
+      _resumePromptProgress != null || _autoNextEpisode != null;
+
+  Widget _buildPlaybackPrompt() {
+    final PlaybackProgressSnapshot? resume = _resumePromptProgress;
+    if (resume != null) {
+      return PlaybackActionPrompt(
+        icon: Icons.restore_rounded,
+        title: '上次看到 ${_formatInlineDuration(resume.position)}',
+        subtitle: '是否从历史进度继续播放？',
+        primaryLabel: '继续播放',
+        onPrimary: () => unawaited(_continueFromResumeProgress(resume)),
+        secondaryLabel: '从头播放',
+        onSecondary: _dismissResumeProgress,
+      );
+    }
+    final Map<String, dynamic>? next = _autoNextEpisode;
+    if (next != null) {
+      return PlaybackActionPrompt(
+        icon: Icons.skip_next_rounded,
+        title: '${_autoNextCountdown.clamp(0, 99)} 秒后播放下一集',
+        subtitle: _episodeTitle(next),
+        primaryLabel: '立即播放',
+        onPrimary: () => unawaited(_playAutoNextNow()),
+        secondaryLabel: '取消',
+        onSecondary: _cancelAutoNextPrompt,
+      );
+    }
+    return const SizedBox.shrink();
+  }
+
   @override
   Widget build(BuildContext context) {
     final int episodeNumber = _episodeNumber(_episode);
@@ -1093,21 +1495,18 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
             onToggleControls: _toggleInlineControls,
             onTogglePlay: _togglePlayPause,
             onDoubleTap: _handleInlineDoubleTap,
-            onSeek: (Duration value) async {
-              setState(() {
-                _deferRestoredPositionDisplay = false;
-                _dragPosition = value;
-              });
-              await _player.seek(value);
-              unawaited(_savePlaybackProgress(position: value, force: true));
-              if (mounted) {
-                setState(() {
-                  _position = value;
-                  _dragPosition = null;
-                });
-              }
-            },
+            onSeek: _seekInlineTo,
+            onHorizontalDragStart: _handleInlineHorizontalDragStart,
+            onHorizontalDragUpdate: _handleInlineHorizontalDragUpdate,
+            onHorizontalDragEnd: _handleInlineHorizontalDragEnd,
+            onLongPressStart: _handleInlineLongPressStart,
+            onLongPressEnd: _handleInlineLongPressEnd,
+            onLongPressCancel: _handleInlineLongPressCancel,
             onFullscreen: _openFullscreen,
+            gestureIcon: _inlineGestureIcon,
+            gestureText: _inlineGestureText,
+            gestureProgress: _inlineGestureProgress,
+            playbackPrompt: _hasPlaybackPrompt ? _buildPlaybackPrompt() : null,
           ),
           Material(
             color: Theme.of(context).colorScheme.surface,
@@ -1246,7 +1645,17 @@ class _EmbeddedEpisodePlayer extends StatelessWidget {
   final VoidCallback onTogglePlay;
   final VoidCallback onDoubleTap;
   final ValueChanged<Duration> onSeek;
+  final void Function(DragStartDetails) onHorizontalDragStart;
+  final void Function(DragUpdateDetails) onHorizontalDragUpdate;
+  final void Function(DragEndDetails) onHorizontalDragEnd;
+  final void Function(LongPressStartDetails) onLongPressStart;
+  final void Function(LongPressEndDetails) onLongPressEnd;
+  final VoidCallback onLongPressCancel;
   final VoidCallback onFullscreen;
+  final IconData gestureIcon;
+  final String gestureText;
+  final double? gestureProgress;
+  final Widget? playbackPrompt;
 
   const _EmbeddedEpisodePlayer({
     required this.controller,
@@ -1262,7 +1671,17 @@ class _EmbeddedEpisodePlayer extends StatelessWidget {
     required this.onTogglePlay,
     required this.onDoubleTap,
     required this.onSeek,
+    required this.onHorizontalDragStart,
+    required this.onHorizontalDragUpdate,
+    required this.onHorizontalDragEnd,
+    required this.onLongPressStart,
+    required this.onLongPressEnd,
+    required this.onLongPressCancel,
     required this.onFullscreen,
+    required this.gestureIcon,
+    required this.gestureText,
+    required this.gestureProgress,
+    this.playbackPrompt,
   });
 
   @override
@@ -1307,9 +1726,25 @@ class _EmbeddedEpisodePlayer extends StatelessWidget {
               behavior: HitTestBehavior.opaque,
               onTap: onToggleControls,
               onDoubleTap: onDoubleTap,
+              onHorizontalDragStart: onHorizontalDragStart,
+              onHorizontalDragUpdate: onHorizontalDragUpdate,
+              onHorizontalDragEnd: onHorizontalDragEnd,
+              onLongPressStart: onLongPressStart,
+              onLongPressEnd: onLongPressEnd,
+              onLongPressCancel: onLongPressCancel,
               child: const SizedBox.expand(),
             ),
           ),
+          if (gestureText.isNotEmpty)
+            Positioned.fill(
+              child: IgnorePointer(
+                child: _InlineGestureIndicator(
+                  icon: gestureIcon,
+                  text: gestureText,
+                  progress: gestureProgress,
+                ),
+              ),
+            ),
           Positioned(
             left: 0,
             right: 0,
@@ -1331,7 +1766,70 @@ class _EmbeddedEpisodePlayer extends StatelessWidget {
               ),
             ),
           ),
+          if (playbackPrompt != null)
+            Positioned(
+              left: 8,
+              right: 8,
+              bottom: showControls ? 58 : 12,
+              child: Align(alignment: Alignment.center, child: playbackPrompt!),
+            ),
         ],
+      ),
+    );
+  }
+}
+
+class _InlineGestureIndicator extends StatelessWidget {
+  final IconData icon;
+  final String text;
+  final double? progress;
+
+  const _InlineGestureIndicator({
+    required this.icon,
+    required this.text,
+    required this.progress,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.68),
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+          child: SizedBox(
+            width: 126,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                Icon(icon, color: Colors.white, size: 30),
+                const SizedBox(height: 8),
+                Text(
+                  text,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                if (progress != null) ...<Widget>[
+                  const SizedBox(height: 10),
+                  LinearProgressIndicator(
+                    value: progress!.clamp(0.0, 1.0).toDouble(),
+                    minHeight: 3,
+                    color: const Color(0xFF0A84FF),
+                    backgroundColor: Colors.white24,
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }

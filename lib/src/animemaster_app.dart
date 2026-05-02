@@ -5,6 +5,7 @@ import 'managers/download_manager.dart';
 import 'providers/settings_provider.dart';
 import 'screens/home_page.dart';
 import 'services/app_update_service.dart';
+import 'theme/app_theme.dart';
 
 class AnimeMasterApp extends StatelessWidget {
   const AnimeMasterApp({super.key});
@@ -31,20 +32,8 @@ class AnimeMasterApp extends StatelessWidget {
                 title: 'AnimeMaster',
                 debugShowCheckedModeBanner: false,
                 themeMode: isDark ? ThemeMode.dark : ThemeMode.light,
-                theme: ThemeData(
-                  colorScheme: ColorScheme.fromSeed(
-                    seedColor: Colors.deepPurple,
-                    brightness: Brightness.light,
-                  ),
-                  useMaterial3: true,
-                ),
-                darkTheme: ThemeData(
-                  colorScheme: ColorScheme.fromSeed(
-                    seedColor: Colors.deepPurple,
-                    brightness: Brightness.dark,
-                  ),
-                  useMaterial3: true,
-                ),
+                theme: AppTheme.light(),
+                darkTheme: AppTheme.dark(),
                 home: _StartupUpdateProbe(
                   settings: settings,
                   child: const HomePage(),

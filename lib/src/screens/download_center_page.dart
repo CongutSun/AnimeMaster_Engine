@@ -21,6 +21,7 @@ class DownloadCenterPage extends StatelessWidget {
       builder: (BuildContext context, Widget? child) {
         final DownloadManager manager = DownloadManager();
         final List<DownloadTaskInfo> tasks = manager.allTasks.reversed.toList();
+        final ColorScheme colors = Theme.of(context).colorScheme;
 
         return Scaffold(
           appBar: AppBar(title: const Text('缓存中心')),
@@ -47,6 +48,13 @@ class DownloadCenterPage extends StatelessWidget {
                     final bool isQueued = manager.isQueued(config.hash);
                     final bool isCompleted = progress >= 1.0;
                     final bool isSeeding = manager.isSeeding(config.hash);
+                    final Color statusColor = isSeeding
+                        ? const Color(0xFFFF9F0A)
+                        : (isCompleted
+                              ? const Color(0xFF30D158)
+                              : (isPaused || isQueued
+                                    ? colors.onSurfaceVariant
+                                    : colors.primary));
 
                     return Card(
                       child: Padding(
@@ -61,14 +69,14 @@ class DownloadCenterPage extends StatelessWidget {
                                   width: 44,
                                   height: 44,
                                   decoration: BoxDecoration(
-                                    color: Colors.blueAccent.withValues(
+                                    color: colors.primary.withValues(
                                       alpha: 0.12,
                                     ),
-                                    borderRadius: BorderRadius.circular(12),
+                                    borderRadius: BorderRadius.circular(14),
                                   ),
-                                  child: const Icon(
+                                  child: Icon(
                                     Icons.download_for_offline_rounded,
-                                    color: Colors.blueAccent,
+                                    color: colors.primary,
                                   ),
                                 ),
                                 const SizedBox(width: 12),
@@ -111,7 +119,8 @@ class DownloadCenterPage extends StatelessWidget {
                                                       : '正在匹配剧集信息...',
                                                   style: TextStyle(
                                                     fontSize: 12,
-                                                    color: Colors.grey.shade700,
+                                                    color:
+                                                        colors.onSurfaceVariant,
                                                   ),
                                                 );
                                               },
@@ -122,7 +131,7 @@ class DownloadCenterPage extends StatelessWidget {
                                         '任务哈希：${config.hash}',
                                         style: TextStyle(
                                           fontSize: 11,
-                                          color: Colors.grey.shade600,
+                                          color: colors.onSurfaceVariant,
                                         ),
                                       ),
                                     ],
@@ -135,38 +144,41 @@ class DownloadCenterPage extends StatelessWidget {
                               value: isCompleted ? 1.0 : progress,
                               minHeight: 8,
                               borderRadius: BorderRadius.circular(4),
-                              color: isSeeding
-                                  ? Colors.orange
-                                  : (isCompleted
-                                        ? Colors.green
-                                        : (isPaused || isQueued
-                                              ? Colors.grey
-                                              : Colors.blueAccent)),
-                              backgroundColor: Colors.grey.withValues(
-                                alpha: 0.2,
-                              ),
+                              color: statusColor,
+                              backgroundColor: colors.surfaceContainerHighest
+                                  .withValues(
+                                    alpha:
+                                        Theme.of(context).brightness ==
+                                            Brightness.dark
+                                        ? 0.72
+                                        : 0.9,
+                                  ),
                             ),
                             const SizedBox(height: 8),
-                            Text(
-                              _buildStatusText(
-                                progress: progress,
-                                isPaused: isPaused,
-                                isQueued: isQueued,
-                                isCompleted: isCompleted,
-                                isSeeding: isSeeding,
-                                speed: speed,
-                                uploadSpeed: uploadSpeed,
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 5,
                               ),
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: isSeeding
-                                    ? Colors.orange
-                                    : (isCompleted
-                                          ? Colors.green
-                                          : (isPaused || isQueued
-                                                ? Colors.grey
-                                                : Colors.blueAccent)),
-                                fontWeight: FontWeight.w600,
+                              decoration: BoxDecoration(
+                                color: statusColor.withValues(alpha: 0.12),
+                                borderRadius: BorderRadius.circular(99),
+                              ),
+                              child: Text(
+                                _buildStatusText(
+                                  progress: progress,
+                                  isPaused: isPaused,
+                                  isQueued: isQueued,
+                                  isCompleted: isCompleted,
+                                  isSeeding: isSeeding,
+                                  speed: speed,
+                                  uploadSpeed: uploadSpeed,
+                                ),
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: statusColor,
+                                  fontWeight: FontWeight.w700,
+                                ),
                               ),
                             ),
                             const SizedBox(height: 8),

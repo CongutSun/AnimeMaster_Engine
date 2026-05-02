@@ -507,16 +507,14 @@ class _DetailPageState extends State<DetailPage>
     VoidCallback onMinus,
     VoidCallback onPlus,
   ) {
-    final primaryColor = Theme.of(context).brightness == Brightness.dark
-        ? Colors.blueAccent.shade100
-        : Colors.blueAccent.shade700;
+    final Color primaryColor = Theme.of(context).colorScheme.primary;
     return Padding(
       padding: const EdgeInsets.only(bottom: 12.0),
       child: Row(
         children: [
           Icon(
             widget.subjectType == 1 ? Icons.menu_book : Icons.ondemand_video,
-            color: Colors.green.shade500,
+            color: primaryColor,
             size: 20,
           ),
           const SizedBox(width: 8),
@@ -627,12 +625,8 @@ class _DetailPageState extends State<DetailPage>
     final imageUrl = detailData?['images']?['large']?.toString() ?? '';
 
     final theme = Theme.of(context);
-    final highlightOrange = theme.brightness == Brightness.dark
-        ? Colors.orangeAccent.shade100
-        : Colors.orange.shade700;
-    final highlightBlue = theme.brightness == Brightness.dark
-        ? Colors.blueAccent.shade100
-        : Colors.blueAccent.shade700;
+    final Color highlightOrange = const Color(0xFFFF9F0A);
+    final Color highlightBlue = theme.colorScheme.primary;
 
     return Scaffold(
       extendBodyBehindAppBar: true,
@@ -681,7 +675,7 @@ class _DetailPageState extends State<DetailPage>
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             ClipRRect(
-                              borderRadius: BorderRadius.circular(6),
+                              borderRadius: BorderRadius.circular(12),
                               child: _buildSafeImage(
                                 imageUrl: imageUrl,
                                 width: 105,
@@ -820,12 +814,15 @@ class _DetailPageState extends State<DetailPage>
                   delegate: _SliverAppBarDelegate(
                     TabBar(
                       controller: _tabController,
-                      labelColor: theme.brightness == Brightness.dark
-                          ? Colors.white
-                          : Colors.black87,
-                      indicatorColor: theme.brightness == Brightness.dark
-                          ? Colors.white
-                          : Colors.black87,
+                      splashFactory: NoSplash.splashFactory,
+                      overlayColor: WidgetStateProperty.all<Color>(
+                        Colors.transparent,
+                      ),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 6,
+                      ),
+                      indicatorPadding: const EdgeInsets.symmetric(vertical: 4),
                       tabs: <Widget>[
                         const Tab(text: '详情'),
                         if (_hasEpisodeTab) const Tab(text: '剧集'),
@@ -840,51 +837,43 @@ class _DetailPageState extends State<DetailPage>
             ),
       bottomNavigationBar: widget.subjectType == 1
           ? null
-          : Container(
-              padding: EdgeInsets.only(
-                bottom: MediaQuery.of(context).padding.bottom > 0
-                    ? MediaQuery.of(context).padding.bottom
-                    : 12.0,
-                left: 16.0,
-                right: 16.0,
-                top: 12.0,
-              ),
-              decoration: BoxDecoration(
-                color: Theme.of(context).scaffoldBackgroundColor,
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.05),
-                    blurRadius: 10,
-                    offset: const Offset(0, -5),
+          : ClipRect(
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.surface.withValues(
+                      alpha: theme.brightness == Brightness.dark ? 0.78 : 0.9,
+                    ),
+                    border: Border(
+                      top: BorderSide(color: theme.colorScheme.outlineVariant),
+                    ),
                   ),
-                ],
-              ),
-              child: SizedBox(
-                height: 52,
-                child: ElevatedButton.icon(
-                  onPressed: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => MagnetConfigPage(
-                        animeName: displayName,
-                        aliases: _extractAliases(cnName, originalName),
-                        bangumiSubjectId: widget.animeId,
+                  child: SafeArea(
+                    top: false,
+                    minimum: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+                    child: SizedBox(
+                      height: 52,
+                      child: FilledButton.icon(
+                        onPressed: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => MagnetConfigPage(
+                              animeName: displayName,
+                              aliases: _extractAliases(cnName, originalName),
+                              bangumiSubjectId: widget.animeId,
+                            ),
+                          ),
+                        ),
+                        icon: const Icon(Icons.download_rounded),
+                        label: const Text(
+                          '全网磁力检索',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
                       ),
-                    ),
-                  ),
-                  icon: const Icon(Icons.download_rounded, color: Colors.white),
-                  label: const Text(
-                    '全网磁力检索',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blueAccent,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
                     ),
                   ),
                 ),
@@ -1252,7 +1241,7 @@ class _DetailPageState extends State<DetailPage>
                       style: const TextStyle(fontWeight: FontWeight.bold),
                     ),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.orange.shade700,
+                      backgroundColor: Theme.of(context).colorScheme.primary,
                       foregroundColor: Colors.white,
                     ),
                   ),
@@ -1354,10 +1343,26 @@ class _SliverAppBarDelegate extends SliverPersistentHeaderDelegate {
     BuildContext context,
     double shrinkOffset,
     bool overlapsContent,
-  ) => Container(
-    color: Theme.of(context).scaffoldBackgroundColor,
-    child: tabBar,
-  );
+  ) {
+    final ThemeData theme = Theme.of(context);
+    return ClipRect(
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+        child: Container(
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surface.withValues(
+              alpha: theme.brightness == Brightness.dark ? 0.82 : 0.9,
+            ),
+            border: Border(
+              bottom: BorderSide(color: theme.colorScheme.outlineVariant),
+            ),
+          ),
+          child: tabBar,
+        ),
+      ),
+    );
+  }
+
   @override
   bool shouldRebuild(covariant _SliverAppBarDelegate oldDelegate) => false;
 }

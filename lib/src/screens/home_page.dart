@@ -148,6 +148,7 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget _buildWeekSchedule() {
+    final ColorScheme colors = Theme.of(context).colorScheme;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: fullCalendar.whereType<Map>().map((day) {
@@ -166,14 +167,14 @@ class _HomePageState extends State<HomePage> {
             children: [
               Row(
                 children: [
-                  const Icon(Icons.live_tv, color: Colors.blueAccent, size: 20),
-                  const SizedBox(width: 8),
+                  Icon(Icons.live_tv_rounded, color: colors.primary, size: 18),
+                  const SizedBox(width: 7),
                   Text(
                     weekdayName.toString(),
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
-                      color: Colors.blueAccent,
+                      color: colors.primary,
                     ),
                   ),
                 ],
@@ -184,6 +185,42 @@ class _HomePageState extends State<HomePage> {
           ),
         );
       }).toList(),
+    );
+  }
+
+  Widget _buildSectionHeader({
+    required IconData icon,
+    required String title,
+    Color? iconColor,
+    Widget? trailing,
+  }) {
+    final ThemeData theme = Theme.of(context);
+    final ColorScheme colors = theme.colorScheme;
+    final Color resolvedIconColor = iconColor ?? colors.primary;
+
+    return Row(
+      children: <Widget>[
+        Container(
+          width: 32,
+          height: 32,
+          decoration: BoxDecoration(
+            color: resolvedIconColor.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Icon(icon, color: resolvedIconColor, size: 18),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(
+            title,
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w800,
+            ),
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+        ?trailing,
+      ],
     );
   }
 
@@ -211,66 +248,44 @@ class _HomePageState extends State<HomePage> {
       onRefresh: () => _loadData(forceRefresh: true),
       child: SingleChildScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 10.0),
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 1180),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(
-                  child: Row(
-                    children: [
-                      const Icon(
-                        Icons.calendar_month,
-                        color: Colors.blueAccent,
-                      ),
-                      const SizedBox(width: 8),
-                      Flexible(
-                        child: Text(
-                          showTodayOnly ? '$todayString · 今日排期' : '本周整体排期',
-                          style: const TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                          ),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ],
+                _buildSectionHeader(
+                  icon: Icons.calendar_month_rounded,
+                  title: showTodayOnly ? '$todayString · 今日排期' : '本周整体排期',
+                  trailing: TextButton.icon(
+                    onPressed: () =>
+                        setState(() => showTodayOnly = !showTodayOnly),
+                    icon: Icon(
+                      showTodayOnly
+                          ? Icons.calendar_view_week_rounded
+                          : Icons.today_rounded,
+                      size: 18,
+                    ),
+                    label: Text(showTodayOnly ? '查看全周' : '查看今日'),
                   ),
                 ),
-                TextButton.icon(
-                  onPressed: () =>
-                      setState(() => showTodayOnly = !showTodayOnly),
-                  icon: Icon(
-                    showTodayOnly ? Icons.calendar_view_week : Icons.today,
-                    size: 18,
-                  ),
-                  label: Text(showTodayOnly ? '查看全周' : '查看今日'),
+                const SizedBox(height: 16),
+                showTodayOnly
+                    ? AnimeGrid(animeList: todayAnime, isTop: false)
+                    : _buildWeekSchedule(),
+                const SizedBox(height: 32),
+                _buildSectionHeader(
+                  icon: Icons.emoji_events_rounded,
+                  title: '本年度高分榜单',
+                  iconColor: const Color(0xFFFF9F0A),
                 ),
+                const SizedBox(height: 16),
+                AnimeGrid(animeList: topAnime, isTop: true),
+                const SizedBox(height: 40),
               ],
             ),
-            const SizedBox(height: 16),
-            showTodayOnly
-                ? AnimeGrid(animeList: todayAnime, isTop: false)
-                : _buildWeekSchedule(),
-            const SizedBox(height: 32),
-            const Padding(
-              padding: EdgeInsets.only(bottom: 16.0),
-              child: Row(
-                children: [
-                  Icon(Icons.emoji_events, color: Colors.orange),
-                  SizedBox(width: 8),
-                  Text(
-                    '本年度高分榜单',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                  ),
-                ],
-              ),
-            ),
-            AnimeGrid(animeList: topAnime, isTop: true),
-            const SizedBox(height: 40),
-          ],
+          ),
         ),
       ),
     );
@@ -283,6 +298,7 @@ class _HomePageState extends State<HomePage> {
     final bool hasBg =
         !kIsWeb && bgPath.isNotEmpty && File(bgPath).existsSync();
     final bool isDark = Theme.of(context).brightness == Brightness.dark;
+    final ColorScheme colors = Theme.of(context).colorScheme;
 
     return Scaffold(
       resizeToAvoidBottomInset: false,
@@ -301,8 +317,8 @@ class _HomePageState extends State<HomePage> {
             Positioned.fill(
               child: ColoredBox(
                 color: isDark
-                    ? Colors.black.withValues(alpha: 0.38)
-                    : Colors.white.withValues(alpha: 0.18),
+                    ? Colors.black.withValues(alpha: 0.46)
+                    : colors.surface.withValues(alpha: 0.24),
               ),
             ),
           SafeArea(

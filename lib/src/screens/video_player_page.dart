@@ -26,6 +26,7 @@ import '../services/picture_in_picture_service.dart';
 import '../utils/media_duration_probe.dart';
 import '../utils/playback_progress_store.dart';
 import '../utils/torrent_stream_server.dart';
+import '../widgets/playback_action_prompt.dart';
 
 enum _GestureAdjustmentKind { brightness, volume }
 
@@ -36,6 +37,8 @@ class VideoPlayerPage extends StatefulWidget {
   final VideoController? externalController;
   final ValueChanged<PlayableMedia>? onMediaChanged;
   final bool preferLandscapeOnOpen;
+  final PlaybackProgressSnapshot? initialResumeProgress;
+  final VoidCallback? onResumePromptResolved;
 
   const VideoPlayerPage({
     super.key,
@@ -45,6 +48,8 @@ class VideoPlayerPage extends StatefulWidget {
     this.externalController,
     this.onMediaChanged,
     this.preferLandscapeOnOpen = false,
+    this.initialResumeProgress,
+    this.onResumePromptResolved,
   });
 
   @override
@@ -73,6 +78,9 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
   Duration _duration = Duration.zero;
   Duration _durationFallback = Duration.zero;
   Duration? _dragPosition;
+  Duration _horizontalSeekStartPosition = Duration.zero;
+  double _horizontalSeekAccumulatedDx = 0;
+  double? _longPressRestoreRate;
   double _rate = 1.0;
   bool _isPlaying = false;
   bool _isBuffering = false;
@@ -105,6 +113,12 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
   DateTime? _restoreProtectionUntil;
   DateTime _lastProgressSavedAt = DateTime.fromMillisecondsSinceEpoch(0);
   bool _deferRestoredPositionDisplay = false;
+  PlaybackProgressSnapshot? _resumePromptProgress;
+  OnlineEpisodeQuery? _autoNextQuery;
+  int _autoNextCountdown = 0;
+  Timer? _autoNextCountdownTimer;
+  bool _autoNextInFlight = false;
+  String? _completedMediaKey;
   List<DandanplayComment> _danmakuComments = <DandanplayComment>[];
   List<_ActiveDanmakuItem> _activeDanmaku = <_ActiveDanmakuItem>[];
   String _danmakuStatusText = '';
@@ -178,6 +192,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
           _position = normalized;
         });
         _savePlaybackProgressThrottled();
+        _maybeHandlePlaybackNearEnd(normalized);
       }),
     );
     _subscriptions.add(
@@ -223,6 +238,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
           _scheduleControlsAutoHide();
         } else {
           _cancelControlsAutoHide();
+          _pauseCountdownPrompts();
         }
       }),
     );
@@ -243,9 +259,18 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
         }
         if (value) {
           _cancelControlsAutoHide();
+          _pauseCountdownPrompts();
         } else if (_isPlaying) {
           _scheduleControlsAutoHide();
         }
+      }),
+    );
+    _subscriptions.add(
+      _player.stream.completed.listen((bool value) {
+        if (!mounted || !value) {
+          return;
+        }
+        _handlePlaybackCompleted();
       }),
     );
 
@@ -261,6 +286,10 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
       _openMedia(widget.media);
     } else {
       _activeMedia = widget.media;
+      _resumePromptProgress = widget.initialResumeProgress;
+      if (_resumePromptProgress != null) {
+        _showControls = true;
+      }
       _syncPictureInPicturePlaybackState();
       unawaited(_probeDurationForMedia(widget.media));
       unawaited(_prepareDanmakuForMedia(widget.media));
@@ -378,14 +407,20 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
         _restoreProtectedPosition = null;
         _restoreProtectionUntil = null;
         _deferRestoredPositionDisplay = false;
+        _resumePromptProgress = null;
+        _autoNextQuery = null;
+        _autoNextCountdown = 0;
+        _completedMediaKey = null;
       });
     }
+    _cancelAutoNextCountdown();
     _activeMedia = media;
     _syncPictureInPicturePlaybackState();
     widget.onMediaChanged?.call(media);
     await _player.open(Media(media.url, httpHeaders: media.headers));
     unawaited(_probeDurationForMedia(media, serial: probeSerial));
-    final Duration? restoredPosition = await _restorePlaybackProgress(media);
+    final PlaybackProgressSnapshot? resumeProgress =
+        await _loadPlaybackProgressForPrompt(media);
     if (_rate != 1.0) {
       await _player.setRate(_rate);
     }
@@ -399,12 +434,12 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
       );
       setState(() {
         _isOpeningMedia = false;
-        _position = restoredPosition == null ? currentPosition : Duration.zero;
+        _position = currentPosition;
         _duration = currentDuration;
         _showControls = false;
       });
       _syncPictureInPicturePlaybackState();
-      _releaseRestoredPositionForDisplay();
+      _handleResumeProgress(media, resumeProgress);
     }
   }
 
@@ -646,32 +681,201 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
     _scheduleControlsAutoHide();
   }
 
-  Future<Duration?> _restorePlaybackProgress(PlayableMedia media) async {
-    final PlaybackProgressSnapshot? progress = await PlaybackProgressStore.load(
-      media,
-    );
-    if (progress == null) {
-      return null;
-    }
+  Future<PlaybackProgressSnapshot?> _loadPlaybackProgressForPrompt(
+    PlayableMedia media,
+  ) {
+    return PlaybackProgressStore.load(media);
+  }
 
+  void _handleResumeProgress(
+    PlayableMedia media,
+    PlaybackProgressSnapshot? progress,
+  ) {
+    if (progress == null || !mounted) {
+      return;
+    }
+    final String behavior = context
+        .read<SettingsProvider>()
+        .resumePlaybackBehavior;
+    if (behavior == 'never') {
+      return;
+    }
+    if (behavior == 'auto') {
+      unawaited(_continueFromResumeProgress(progress));
+      return;
+    }
+    setState(() {
+      _resumePromptProgress = progress;
+      _showControls = true;
+    });
+  }
+
+  Future<void> _continueFromResumeProgress(
+    PlaybackProgressSnapshot progress,
+  ) async {
     final Duration restored = progress.position;
-    await Future<void>.delayed(const Duration(milliseconds: 250));
+    setState(() {
+      _resumePromptProgress = null;
+      _deferRestoredPositionDisplay = false;
+    });
+    widget.onResumePromptResolved?.call();
     await _player.seek(restored);
     _protectRestoredPosition(restored);
-    _deferRestoredPositionDisplay = true;
     unawaited(_confirmRestoredPosition(restored));
     if (!mounted) {
-      return restored;
+      return;
     }
-    if (!_isOpeningMedia && !_deferRestoredPositionDisplay) {
-      setState(() {
-        _position = restored;
-        _dragPosition = null;
-      });
-    }
+    setState(() {
+      _position = restored;
+      _dragPosition = null;
+    });
     _resyncDanmakuCursor(restored);
-    return restored;
+    _scheduleControlsAutoHide();
   }
+
+  void _dismissResumeProgress() {
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _resumePromptProgress = null;
+    });
+    widget.onResumePromptResolved?.call();
+    _scheduleControlsAutoHide();
+  }
+
+  void _handlePlaybackCompleted() {
+    final PlayableMedia? media = _activeMedia;
+    if (media == null || _autoNextInFlight) {
+      return;
+    }
+    final String key = PlaybackProgressStore.keyFor(media);
+    if (_completedMediaKey == key) {
+      return;
+    }
+    _completedMediaKey = key;
+    unawaited(_savePlaybackProgress(position: _displayDuration, force: true));
+    final SettingsProvider settings = context.read<SettingsProvider>();
+    if (!settings.autoPlayNextEpisode) {
+      return;
+    }
+    final OnlineEpisodeQuery? next = _findNextOnlineEpisode();
+    if (next == null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('已经是最后一集或没有可播放的下一集。')));
+      return;
+    }
+    _showAutoNextPrompt(next);
+  }
+
+  void _maybeHandlePlaybackNearEnd(Duration position) {
+    if (_autoNextInFlight || _completedMediaKey != null || !_isPlaying) {
+      return;
+    }
+    final Duration duration = _displayDuration;
+    if (duration < const Duration(minutes: 3)) {
+      return;
+    }
+    final Duration remaining = duration - position;
+    final bool veryCloseToEnd = remaining <= const Duration(seconds: 8);
+    final bool sourceTailLikelyUnavailable =
+        remaining <= const Duration(seconds: 30) &&
+        position.inMilliseconds >= (duration.inMilliseconds * 0.985).round();
+    if (veryCloseToEnd || sourceTailLikelyUnavailable) {
+      _handlePlaybackCompleted();
+    }
+  }
+
+  OnlineEpisodeQuery? _findNextOnlineEpisode() {
+    if (_onlineEpisodes.isEmpty) {
+      return null;
+    }
+    final OnlineEpisodeQuery? current =
+        _activeMedia?.onlineQuery ?? _onlineQuery;
+    if (current == null) {
+      return null;
+    }
+    int index = _onlineEpisodes.indexWhere((OnlineEpisodeQuery item) {
+      if (current.bangumiEpisodeId > 0 &&
+          item.bangumiEpisodeId == current.bangumiEpisodeId) {
+        return true;
+      }
+      if (current.episodeNumber > 0 &&
+          item.episodeNumber == current.episodeNumber) {
+        return true;
+      }
+      return false;
+    });
+    if (index < 0) {
+      index = _onlineEpisodes.indexOf(current);
+    }
+    if (index < 0 || index + 1 >= _onlineEpisodes.length) {
+      return null;
+    }
+    return _onlineEpisodes[index + 1];
+  }
+
+  void _showAutoNextPrompt(OnlineEpisodeQuery query) {
+    _cancelAutoNextCountdown();
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _autoNextQuery = query;
+      _autoNextCountdown = 5;
+      _showControls = true;
+    });
+    _autoNextCountdownTimer = Timer.periodic(const Duration(seconds: 1), (
+      Timer timer,
+    ) {
+      if (!mounted || _autoNextQuery == null) {
+        timer.cancel();
+        return;
+      }
+      if (_autoNextCountdown <= 1) {
+        timer.cancel();
+        unawaited(_playAutoNextNow());
+        return;
+      }
+      setState(() {
+        _autoNextCountdown -= 1;
+      });
+    });
+  }
+
+  void _cancelAutoNextPrompt() {
+    _cancelAutoNextCountdown();
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _autoNextQuery = null;
+      _autoNextCountdown = 0;
+    });
+  }
+
+  Future<void> _playAutoNextNow() async {
+    final OnlineEpisodeQuery? query = _autoNextQuery;
+    if (query == null || _autoNextInFlight) {
+      return;
+    }
+    _autoNextInFlight = true;
+    _cancelAutoNextCountdown();
+    setState(() {
+      _autoNextQuery = null;
+      _autoNextCountdown = 0;
+    });
+    await _switchOnlineEpisode(query);
+    _autoNextInFlight = false;
+  }
+
+  void _cancelAutoNextCountdown() {
+    _autoNextCountdownTimer?.cancel();
+    _autoNextCountdownTimer = null;
+  }
+
+  void _pauseCountdownPrompts() {}
 
   void _protectRestoredPosition(Duration target) {
     _restoreProtectedPosition = target;
@@ -889,6 +1093,128 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
   void _handleVerticalDragEnd([DragEndDetails? details]) {
     _gestureAdjustmentKind = null;
     _hideGestureIndicatorDelayed();
+  }
+
+  void _handleHorizontalDragStart(DragStartDetails details) {
+    if (_displayDuration <= Duration.zero) {
+      return;
+    }
+    _cancelControlsAutoHide();
+    _sliderSeekThrottle?.cancel();
+    _sliderSeekThrottle = null;
+    _gestureAdjustmentKind = null;
+    _horizontalSeekStartPosition = _effectivePosition;
+    _horizontalSeekAccumulatedDx = 0;
+    setState(() {
+      _deferRestoredPositionDisplay = false;
+      _dragPosition = _horizontalSeekStartPosition;
+    });
+    _showHorizontalSeekIndicator(_horizontalSeekStartPosition);
+  }
+
+  void _handleHorizontalDragUpdate(DragUpdateDetails details) {
+    if (_displayDuration <= Duration.zero || _dragPosition == null) {
+      return;
+    }
+    _horizontalSeekAccumulatedDx += details.delta.dx;
+    final int deltaSeconds = (_horizontalSeekAccumulatedDx / 6).round();
+    final Duration target = _clampSeekTarget(
+      _horizontalSeekStartPosition + Duration(seconds: deltaSeconds),
+    );
+    setState(() {
+      _position = target;
+      _dragPosition = target;
+    });
+    _resyncDanmakuCursor(target);
+    _showHorizontalSeekIndicator(target);
+  }
+
+  Future<void> _handleHorizontalDragEnd([DragEndDetails? details]) async {
+    final Duration? target = _dragPosition;
+    if (target == null || _displayDuration <= Duration.zero) {
+      _hideGestureIndicatorDelayed();
+      return;
+    }
+    _lastManualSeekAt = DateTime.now();
+    _deferRestoredPositionDisplay = false;
+    await _player.seek(target);
+    unawaited(_savePlaybackProgress(position: target, force: true));
+    if (mounted) {
+      setState(() {
+        _position = target;
+        _dragPosition = null;
+      });
+    }
+    _resyncDanmakuCursor(target);
+    _hideGestureIndicatorDelayed();
+    _scheduleControlsAutoHide();
+  }
+
+  void _showHorizontalSeekIndicator(Duration target) {
+    final Duration duration = _displayDuration;
+    final bool forward = target >= _horizontalSeekStartPosition;
+    final double progress = duration.inMilliseconds <= 0
+        ? 0
+        : target.inMilliseconds / duration.inMilliseconds;
+    _showGestureIndicator(
+      icon: forward ? Icons.fast_forward_rounded : Icons.fast_rewind_rounded,
+      text: '${_formatDuration(target)} / ${_formatDuration(duration)}',
+      progress: progress.clamp(0.0, 1.0).toDouble(),
+      autoHide: false,
+    );
+  }
+
+  Duration _clampSeekTarget(Duration target) {
+    final Duration max = _displayDuration > Duration.zero
+        ? _displayDuration
+        : target;
+    if (target < Duration.zero) {
+      return Duration.zero;
+    }
+    return target > max ? max : target;
+  }
+
+  void _handleLongPressStart(LongPressStartDetails details) {
+    if (_longPressRestoreRate != null) {
+      return;
+    }
+    _cancelControlsAutoHide();
+    _longPressRestoreRate = _rate;
+    unawaited(_player.setRate(2.0));
+    if (mounted) {
+      setState(() {
+        _rate = 2.0;
+      });
+    }
+    _showGestureIndicator(
+      icon: Icons.speed_rounded,
+      text: '2.0x 倍速播放',
+      autoHide: false,
+    );
+  }
+
+  void _handleLongPressEnd(LongPressEndDetails details) {
+    unawaited(_restoreLongPressRate());
+  }
+
+  void _handleLongPressCancel() {
+    unawaited(_restoreLongPressRate());
+  }
+
+  Future<void> _restoreLongPressRate() async {
+    final double? restoreRate = _longPressRestoreRate;
+    if (restoreRate == null) {
+      return;
+    }
+    _longPressRestoreRate = null;
+    await _player.setRate(restoreRate);
+    if (mounted) {
+      setState(() {
+        _rate = restoreRate;
+      });
+    }
+    _hideGestureIndicatorDelayed();
+    _scheduleControlsAutoHide();
   }
 
   void _showGestureIndicatorForAdjustment(double value) {
@@ -1973,6 +2299,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
     );
     VolumeController.instance.showSystemUI = true;
     _cancelControlsAutoHide();
+    _cancelAutoNextCountdown();
     _sliderSeekThrottle?.cancel();
     _cancelDanmakuTicker();
     _gestureIndicatorTimer?.cancel();
@@ -2015,6 +2342,16 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
                   ? _handleVerticalDragUpdate
                   : null,
               onVerticalDragEnd: showPlayer ? _handleVerticalDragEnd : null,
+              onHorizontalDragStart: showPlayer
+                  ? _handleHorizontalDragStart
+                  : null,
+              onHorizontalDragUpdate: showPlayer
+                  ? _handleHorizontalDragUpdate
+                  : null,
+              onHorizontalDragEnd: showPlayer ? _handleHorizontalDragEnd : null,
+              onLongPressStart: showPlayer ? _handleLongPressStart : null,
+              onLongPressEnd: showPlayer ? _handleLongPressEnd : null,
+              onLongPressCancel: showPlayer ? _handleLongPressCancel : null,
               child: showPlayer
                   ? Center(
                       child: Video(
@@ -2050,6 +2387,18 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
                 ),
               ),
             ),
+          if (showPlayer && _hasPlaybackPrompt)
+            Positioned(
+              left: 14,
+              right: 14,
+              bottom: MediaQuery.orientationOf(context) == Orientation.landscape
+                  ? 92
+                  : 126,
+              child: Align(
+                alignment: Alignment.center,
+                child: _buildPlaybackPrompt(),
+              ),
+            ),
           if (showPlayer && _gestureIndicatorText.isNotEmpty)
             Positioned.fill(
               child: IgnorePointer(child: _buildGestureIndicator()),
@@ -2057,6 +2406,37 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
         ],
       ),
     );
+  }
+
+  bool get _hasPlaybackPrompt =>
+      _resumePromptProgress != null || _autoNextQuery != null;
+
+  Widget _buildPlaybackPrompt() {
+    final PlaybackProgressSnapshot? resume = _resumePromptProgress;
+    if (resume != null) {
+      return PlaybackActionPrompt(
+        icon: Icons.restore_rounded,
+        title: '上次看到 ${_formatDuration(resume.position)}',
+        subtitle: '是否从历史进度继续播放？',
+        primaryLabel: '继续播放',
+        onPrimary: () => unawaited(_continueFromResumeProgress(resume)),
+        secondaryLabel: '从头播放',
+        onSecondary: _dismissResumeProgress,
+      );
+    }
+    final OnlineEpisodeQuery? next = _autoNextQuery;
+    if (next != null) {
+      return PlaybackActionPrompt(
+        icon: Icons.skip_next_rounded,
+        title: '${_autoNextCountdown.clamp(0, 99)} 秒后播放下一集',
+        subtitle: next.episodeLabel,
+        primaryLabel: '立即播放',
+        onPrimary: () => unawaited(_playAutoNextNow()),
+        secondaryLabel: '取消',
+        onSecondary: _cancelAutoNextPrompt,
+      );
+    }
+    return const SizedBox.shrink();
   }
 
   Widget _buildControlsOverlay() {
@@ -2073,6 +2453,12 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
       onVerticalDragStart: _handleVerticalDragStart,
       onVerticalDragUpdate: _handleVerticalDragUpdate,
       onVerticalDragEnd: _handleVerticalDragEnd,
+      onHorizontalDragStart: _handleHorizontalDragStart,
+      onHorizontalDragUpdate: _handleHorizontalDragUpdate,
+      onHorizontalDragEnd: _handleHorizontalDragEnd,
+      onLongPressStart: _handleLongPressStart,
+      onLongPressEnd: _handleLongPressEnd,
+      onLongPressCancel: _handleLongPressCancel,
       child: SafeArea(
         child: Container(
           decoration: const BoxDecoration(
@@ -2225,7 +2611,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
                           max: _displayDuration.inMilliseconds <= 0
                               ? 1
                               : _displayDuration.inMilliseconds.toDouble(),
-                          activeColor: Colors.blueAccent,
+                          activeColor: const Color(0xFF0A84FF),
                           inactiveColor: Colors.white30,
                           onChangeStart: (_) => _cancelControlsAutoHide(),
                           onChanged: _displayDuration.inMilliseconds <= 0

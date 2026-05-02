@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:ui';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
@@ -33,6 +34,8 @@ class _SettingsPageState extends State<SettingsPage> {
   int selectedRssIndex = -1;
   bool autoCheckUpdates = true;
   bool enablePictureInPicture = false;
+  String resumePlaybackBehavior = 'ask';
+  bool autoPlayNextEpisode = false;
   bool isSaving = false;
   bool isAuthorizingBangumi = false;
   bool isCheckingUpdate = false;
@@ -65,6 +68,8 @@ class _SettingsPageState extends State<SettingsPage> {
         themeMode = provider.themeMode;
         autoCheckUpdates = provider.autoCheckUpdates;
         enablePictureInPicture = provider.enablePictureInPicture;
+        resumePlaybackBehavior = provider.resumePlaybackBehavior;
+        autoPlayNextEpisode = provider.autoPlayNextEpisode;
       });
     }
   }
@@ -124,6 +129,8 @@ class _SettingsPageState extends State<SettingsPage> {
     await provider.updateDistribution(autoCheckUpdates);
     await provider.updatePlaybackOptions(
       enablePictureInPicture: enablePictureInPicture,
+      resumePlaybackBehavior: resumePlaybackBehavior,
+      autoPlayNextEpisode: autoPlayNextEpisode,
     );
 
     if (!mounted) {
@@ -298,52 +305,227 @@ class _SettingsPageState extends State<SettingsPage> {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
+    final ThemeData theme = Theme.of(context);
+    final ColorScheme colors = theme.colorScheme;
+
     return Scaffold(
       appBar: AppBar(title: const Text('系统设置')),
       body: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 104),
         children: <Widget>[
+          _buildSettingsOverview(provider),
+          const SizedBox(height: 18),
+          _buildSectionLabel(
+            icon: Icons.account_circle_outlined,
+            title: '账号与同步',
+            subtitle: 'Bangumi 登录、授权状态与资料同步',
+          ),
+          const SizedBox(height: 8),
           _buildBangumiCard(provider),
-          const SizedBox(height: 12),
+          const SizedBox(height: 18),
+          _buildSectionLabel(
+            icon: Icons.palette_outlined,
+            title: '界面外观',
+            subtitle: '主题模式与首页背景',
+          ),
+          const SizedBox(height: 8),
           _buildAppearanceCard(),
-          const SizedBox(height: 12),
+          const SizedBox(height: 18),
+          _buildSectionLabel(
+            icon: Icons.play_circle_outline_rounded,
+            title: '播放体验',
+            subtitle: '小窗、续播和自动下一集',
+          ),
+          const SizedBox(height: 8),
           _buildPlaybackCard(),
-          const SizedBox(height: 12),
+          const SizedBox(height: 18),
+          _buildSectionLabel(
+            icon: Icons.hub_outlined,
+            title: '数据与弹幕',
+            subtitle: '弹幕凭据和 RSS 搜索源',
+          ),
+          const SizedBox(height: 8),
           _buildDandanplayCard(provider),
           const SizedBox(height: 12),
           _buildRssCard(provider),
-          const SizedBox(height: 12),
+          const SizedBox(height: 18),
+          _buildSectionLabel(
+            icon: Icons.system_update_alt_rounded,
+            title: '应用维护',
+            subtitle: '更新检查与版本信息',
+          ),
+          const SizedBox(height: 8),
           _buildUpdateCard(),
           const SizedBox(height: 12),
-          Card(
-            child: ListTile(
-              leading: const Icon(Icons.info_outline),
-              title: const Text('关于 AnimeMaster'),
-              subtitle: Text(provider.coreEngineVersion),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute<void>(builder: (_) => const AboutPage()),
-                );
-              },
+          _buildAboutCard(provider),
+        ],
+      ),
+      bottomNavigationBar: ClipRect(
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+          child: Container(
+            decoration: BoxDecoration(
+              color: colors.surface.withValues(
+                alpha: theme.brightness == Brightness.dark ? 0.78 : 0.9,
+              ),
+              border: Border(top: BorderSide(color: colors.outlineVariant)),
+            ),
+            child: SafeArea(
+              minimum: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+              child: FilledButton.icon(
+                onPressed: isSaving ? null : _saveSettings,
+                icon: isSaving
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.check_rounded),
+                label: Text(isSaving ? '保存中...' : '保存设置'),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSettingsOverview(SettingsProvider provider) {
+    final ThemeData theme = Theme.of(context);
+    final ColorScheme colors = theme.colorScheme;
+    final bool isDark = theme.brightness == Brightness.dark;
+    final String accountStatus = provider.isBangumiAuthorized
+        ? (provider.bangumiDisplayName.isNotEmpty
+              ? provider.bangumiDisplayName
+              : '已登录')
+        : '未登录';
+
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: colors.surface.withValues(alpha: isDark ? 0.9 : 0.98),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: colors.outlineVariant),
+        boxShadow: <BoxShadow>[
+          BoxShadow(
+            color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.06),
+            blurRadius: 26,
+            offset: const Offset(0, 12),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              _SettingsIconBadge(icon: Icons.tune_rounded),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(
+                      '系统设置',
+                      style: theme.textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      '偏好、数据源和播放体验集中管理',
+                      style: TextStyle(color: colors.onSurfaceVariant),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: <Widget>[
+              _SettingsStatusChip(
+                icon: Icons.person_rounded,
+                label: accountStatus,
+              ),
+              _SettingsStatusChip(
+                icon: themeMode == 'Dark'
+                    ? Icons.dark_mode_rounded
+                    : Icons.light_mode_rounded,
+                label: themeMode == 'Dark' ? '深色外观' : '浅色外观',
+              ),
+              _SettingsStatusChip(
+                icon: Icons.play_circle_rounded,
+                label: autoPlayNextEpisode ? '自动下一集' : '手动下一集',
+              ),
+              _SettingsStatusChip(
+                icon: Icons.info_outline_rounded,
+                label: provider.coreEngineVersion,
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSectionLabel({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+  }) {
+    final ThemeData theme = Theme.of(context);
+    final ColorScheme colors = theme.colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(left: 2, right: 2),
+      child: Row(
+        children: <Widget>[
+          _SettingsIconBadge(icon: icon, compact: true),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  title,
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  subtitle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: colors.onSurfaceVariant,
+                  ),
+                ),
+              ],
             ),
           ),
         ],
       ),
-      bottomNavigationBar: SafeArea(
-        minimum: const EdgeInsets.all(16),
-        child: FilledButton.icon(
-          onPressed: isSaving ? null : _saveSettings,
-          icon: isSaving
-              ? const SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const Icon(Icons.save_outlined),
-          label: Text(isSaving ? '保存中...' : '保存设置'),
-        ),
+    );
+  }
+
+  Widget _buildAboutCard(SettingsProvider provider) {
+    return Card(
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+        leading: const Icon(Icons.info_outline),
+        title: const Text('关于 AnimeMaster'),
+        subtitle: Text(provider.coreEngineVersion),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute<void>(builder: (_) => const AboutPage()),
+          );
+        },
       ),
     );
   }
@@ -618,6 +800,48 @@ class _SettingsPageState extends State<SettingsPage> {
                 );
               },
             ),
+            const Divider(height: 18),
+            DropdownButtonFormField<String>(
+              initialValue: resumePlaybackBehavior,
+              decoration: const InputDecoration(labelText: '继续播放'),
+              items: const <DropdownMenuItem<String>>[
+                DropdownMenuItem(value: 'ask', child: Text('每次询问')),
+                DropdownMenuItem(value: 'auto', child: Text('自动继续')),
+                DropdownMenuItem(value: 'never', child: Text('从头播放')),
+              ],
+              onChanged: (String? value) {
+                if (value == null) {
+                  return;
+                }
+                setState(() {
+                  resumePlaybackBehavior = value;
+                });
+                unawaited(
+                  context.read<SettingsProvider>().updatePlaybackOptions(
+                    enablePictureInPicture: enablePictureInPicture,
+                    resumePlaybackBehavior: value,
+                  ),
+                );
+              },
+            ),
+            const SizedBox(height: 10),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('自动播放下一集'),
+              subtitle: const Text('接近片尾或播放结束后显示倒计时，可手动取消。'),
+              value: autoPlayNextEpisode,
+              onChanged: (bool value) {
+                setState(() {
+                  autoPlayNextEpisode = value;
+                });
+                unawaited(
+                  context.read<SettingsProvider>().updatePlaybackOptions(
+                    enablePictureInPicture: enablePictureInPicture,
+                    autoPlayNextEpisode: value,
+                  ),
+                );
+              },
+            ),
           ],
         ),
       ),
@@ -658,6 +882,7 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Widget _buildRssCard(SettingsProvider provider) {
+    final ColorScheme colors = Theme.of(context).colorScheme;
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -683,9 +908,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   final bool isSelected = selectedRssIndex == index;
                   return ListTile(
                     selected: isSelected,
-                    selectedTileColor: Colors.blueAccent.withValues(
-                      alpha: 0.08,
-                    ),
+                    selectedTileColor: colors.primary.withValues(alpha: 0.08),
                     title: Text(item['name'] ?? '未知源'),
                     subtitle: Text(item['url'] ?? ''),
                     onTap: () {
@@ -773,6 +996,61 @@ class _SettingsPageState extends State<SettingsPage> {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _SettingsIconBadge extends StatelessWidget {
+  final IconData icon;
+  final bool compact;
+
+  const _SettingsIconBadge({required this.icon, this.compact = false});
+
+  @override
+  Widget build(BuildContext context) {
+    final ColorScheme colors = Theme.of(context).colorScheme;
+    final double size = compact ? 32 : 42;
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: colors.primary.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(compact ? 12 : 16),
+      ),
+      child: Icon(icon, color: colors.primary, size: compact ? 18 : 22),
+    );
+  }
+}
+
+class _SettingsStatusChip extends StatelessWidget {
+  final IconData icon;
+  final String label;
+
+  const _SettingsStatusChip({required this.icon, required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    final ColorScheme colors = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: colors.surfaceContainerHighest.withValues(alpha: 0.72),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: colors.outlineVariant),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          Icon(icon, size: 15, color: colors.primary),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+          ),
+        ],
       ),
     );
   }

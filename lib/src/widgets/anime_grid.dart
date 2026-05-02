@@ -13,20 +13,34 @@ class AnimeGrid extends StatelessWidget {
     if (animeList.isEmpty) {
       return const Text('暂无数据', style: TextStyle(color: Colors.grey));
     }
-    return GridView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 3,
-        childAspectRatio: 0.55, 
-        crossAxisSpacing: 12,
-        mainAxisSpacing: 16,
-      ),
-      itemCount: animeList.length,
-      itemBuilder: (context, index) {
-        final anime = animeList[index];
-        // ✨ 修复：直接把整个 anime 对象传给卡片
-        return AnimeCard(anime: anime, isTop: isTop);
+    return LayoutBuilder(
+      builder: (BuildContext context, BoxConstraints constraints) {
+        final double width = constraints.maxWidth;
+        final int crossAxisCount = width >= 1180
+            ? 8
+            : width >= 980
+            ? 7
+            : width >= 760
+            ? 5
+            : width >= 480
+            ? 4
+            : 3;
+
+        return GridView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: crossAxisCount,
+            childAspectRatio: 0.55,
+            crossAxisSpacing: 14,
+            mainAxisSpacing: 20,
+          ),
+          itemCount: animeList.length,
+          itemBuilder: (context, index) {
+            final anime = animeList[index];
+            return AnimeCard(anime: anime, isTop: isTop);
+          },
+        );
       },
     );
   }

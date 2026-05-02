@@ -37,6 +37,8 @@ class SettingsProvider with ChangeNotifier {
   String _appUpdateFeedUrl = '';
   bool _autoCheckUpdates = true;
   bool _enablePictureInPicture = false;
+  String _resumePlaybackBehavior = 'ask';
+  bool _autoPlayNextEpisode = false;
 
   final FlutterSecureStorage _secureStorage = const FlutterSecureStorage();
 
@@ -91,6 +93,8 @@ class SettingsProvider with ChangeNotifier {
   String get appUpdateFeedUrl => _appUpdateFeedUrl;
   bool get autoCheckUpdates => _autoCheckUpdates;
   bool get enablePictureInPicture => _enablePictureInPicture;
+  String get resumePlaybackBehavior => _resumePlaybackBehavior;
+  bool get autoPlayNextEpisode => _autoPlayNextEpisode;
 
   SettingsProvider() {
     EngineBridge().wakeUpEngine();
@@ -112,6 +116,11 @@ class SettingsProvider with ChangeNotifier {
     _autoCheckUpdates = prefs.getBool('app_auto_check_updates') ?? true;
     _enablePictureInPicture =
         prefs.getBool('playback_enable_picture_in_picture') ?? false;
+    _resumePlaybackBehavior = _normalizeResumePlaybackBehavior(
+      prefs.getString('playback_resume_behavior'),
+    );
+    _autoPlayNextEpisode =
+        prefs.getBool('playback_auto_play_next_episode') ?? false;
     _bgmNickname = prefs.getString('bgm_nickname') ?? '';
     _bgmAvatarUrl = prefs.getString('bgm_avatar_url') ?? '';
     _bgmBio = prefs.getString('bgm_bio') ?? '';
@@ -331,13 +340,28 @@ class SettingsProvider with ChangeNotifier {
 
   Future<void> updatePlaybackOptions({
     required bool enablePictureInPicture,
+    String? resumePlaybackBehavior,
+    bool? autoPlayNextEpisode,
   }) async {
     _enablePictureInPicture = enablePictureInPicture;
+    if (resumePlaybackBehavior != null) {
+      _resumePlaybackBehavior = _normalizeResumePlaybackBehavior(
+        resumePlaybackBehavior,
+      );
+    }
+    if (autoPlayNextEpisode != null) {
+      _autoPlayNextEpisode = autoPlayNextEpisode;
+    }
 
     final SharedPreferences prefs = await SharedPreferences.getInstance();
     await prefs.setBool(
       'playback_enable_picture_in_picture',
       _enablePictureInPicture,
+    );
+    await prefs.setString('playback_resume_behavior', _resumePlaybackBehavior);
+    await prefs.setBool(
+      'playback_auto_play_next_episode',
+      _autoPlayNextEpisode,
     );
 
     notifyListeners();
@@ -440,5 +464,16 @@ class SettingsProvider with ChangeNotifier {
       return 'Dark';
     }
     return 'Light';
+  }
+
+  String _normalizeResumePlaybackBehavior(String? rawValue) {
+    switch ((rawValue ?? '').trim()) {
+      case 'auto':
+      case 'never':
+      case 'ask':
+        return rawValue!.trim();
+      default:
+        return 'ask';
+    }
   }
 }
