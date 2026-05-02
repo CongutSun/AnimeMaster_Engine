@@ -13,8 +13,8 @@ const RESOURCE_PROXY_ALLOWED_HOSTS = new Set([
 ]);
 const ALLOWED_BROWSER_ORIGINS = new Set(['https://auth.congutsun.com']);
 const APP_UPDATE_MANIFEST = {
-  version: '2.2.7',
-  build: 24,
+  version: '2.2.8',
+  build: 25,
   apkUrl: 'https://auth.congutsun.com/download/apk/universal',
   apkUrls: {
     'android-arm64': 'https://auth.congutsun.com/download/apk/android-arm64',
@@ -23,24 +23,24 @@ const APP_UPDATE_MANIFEST = {
     universal: 'https://auth.congutsun.com/download/apk/universal',
   },
   notes: [
-    '修复番剧、书籍详情页“吐槽”和剧集播放页“本集讨论”无法正常加载的问题，Bangumi HTML 抓取统一使用浏览器请求头并自动在 chii.in / bgm.tv 间兜底。',
-    '书籍详情页不再显示不需要的“剧集”分支。',
-    '修正 Android 自动小窗触发条件：只在应用退到桌面且仍在后台播放时进入画中画，进入全屏、旋转或切换播放路由不再误触发。',
-    '重排全屏播放控制台，底部聚焦弹幕开关、弹幕设置、倍速和线路/画质，选集、小窗和全屏等操作移到顶部。',
-    '优化历史进度恢复，黑屏加载和缓冲阶段不再提前显示上次进度，也不会在恢复完成前覆盖已有历史。',
+    '重做系统设置页为纵向分组结构，账号、外观、播放、数据和维护入口更接近成熟软件的设置体验。',
+    '优化首页搜索框展开和收起动画，搜索状态下隐藏其他操作按钮，减少误触并提升过渡质感。',
+    '播放页支持横向滑动调整进度，竖屏小窗和横屏全屏均可用，并在松手后写入播放进度。',
+    '播放页支持按住屏幕临时 2.0x 倍速播放，松手后自动恢复原倍速。',
+    '延续 2.2 系列 UI 高级感调整，保留既有数据源、弹幕、续播和自动下一集功能链路。',
   ],
-  publishedAt: '2026-05-01T20:29:09+08:00',
+  publishedAt: '2026-05-02T17:15:00+08:00',
   forceUpdate: false,
 };
 const APK_DOWNLOAD_URLS = {
   'android-arm64':
-    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.2.7/app-arm64-v8a-release.apk',
+    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.2.8/app-arm64-v8a-release.apk',
   'android-arm':
-    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.2.7/app-armeabi-v7a-release.apk',
+    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.2.8/app-armeabi-v7a-release.apk',
   'android-x64':
-    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.2.7/app-x86_64-release.apk',
+    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.2.8/app-x86_64-release.apk',
   universal:
-    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.2.7/app-release.apk',
+    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.2.8/app-release.apk',
 };
 
 function applyCors(headers, request, methods = 'GET,POST,OPTIONS') {
