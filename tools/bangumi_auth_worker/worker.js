@@ -13,8 +13,8 @@ const RESOURCE_PROXY_ALLOWED_HOSTS = new Set([
 ]);
 const ALLOWED_BROWSER_ORIGINS = new Set(['https://auth.congutsun.com']);
 const APP_UPDATE_MANIFEST = {
-  version: '2.2.8',
-  build: 25,
+  version: '2.2.9',
+  build: 26,
   apkUrl: 'https://auth.congutsun.com/download/apk/universal',
   apkUrls: {
     'android-arm64': 'https://auth.congutsun.com/download/apk/android-arm64',
@@ -23,24 +23,24 @@ const APP_UPDATE_MANIFEST = {
     universal: 'https://auth.congutsun.com/download/apk/universal',
   },
   notes: [
-    '重做系统设置页为纵向分组结构，账号、外观、播放、数据和维护入口更接近成熟软件的设置体验。',
-    '优化首页搜索框展开和收起动画，搜索状态下隐藏其他操作按钮，减少误触并提升过渡质感。',
-    '播放页支持横向滑动调整进度，竖屏小窗和横屏全屏均可用，并在松手后写入播放进度。',
-    '播放页支持按住屏幕临时 2.0x 倍速播放，松手后自动恢复原倍速。',
-    '延续 2.2 系列 UI 高级感调整，保留既有数据源、弹幕、续播和自动下一集功能链路。',
+    '移除首页搜索栏冗余的蓝色箭头按钮，搜索改由键盘搜索动作提交，减少误触和视觉负担。',
+    '修复系统设置概览中长版本信息溢出圆角标签的问题。',
+    '主题模式选择改为圆角底部面板，和新版设置页整体 UI 保持一致。',
+    '补齐应用内更新日志，并同步自动检查更新清单。',
+    '优化拖动进度和倍速切换后的弹幕同步，长按 2.0x 与恢复原倍速时会重新对齐当前播放位置。',
   ],
-  publishedAt: '2026-05-02T17:15:00+08:00',
+  publishedAt: '2026-05-02T19:35:27+08:00',
   forceUpdate: false,
 };
 const APK_DOWNLOAD_URLS = {
   'android-arm64':
-    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.2.8/app-arm64-v8a-release.apk',
+    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.2.9/app-arm64-v8a-release.apk',
   'android-arm':
-    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.2.8/app-armeabi-v7a-release.apk',
+    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.2.9/app-armeabi-v7a-release.apk',
   'android-x64':
-    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.2.8/app-x86_64-release.apk',
+    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.2.9/app-x86_64-release.apk',
   universal:
-    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.2.8/app-release.apk',
+    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.2.9/app-release.apk',
 };
 
 function applyCors(headers, request, methods = 'GET,POST,OPTIONS') {

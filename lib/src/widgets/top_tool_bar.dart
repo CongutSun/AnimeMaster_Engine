@@ -86,13 +86,6 @@ class _TopToolBarState extends State<TopToolBar> {
                       children: <Widget>[
                         const SizedBox(width: 8),
                         _ToolbarIconButton(
-                          tooltip: '搜索',
-                          icon: Icons.arrow_forward_rounded,
-                          isPrimary: true,
-                          onPressed: _doSearch,
-                        ),
-                        const SizedBox(width: 6),
-                        _ToolbarIconButton(
                           tooltip: '收藏',
                           icon: Icons.video_library_rounded,
                           onPressed: () => Navigator.push(
@@ -212,13 +205,11 @@ class _ToolbarIconButton extends StatelessWidget {
   final String tooltip;
   final IconData icon;
   final VoidCallback onPressed;
-  final bool isPrimary;
 
   const _ToolbarIconButton({
     required this.tooltip,
     required this.icon,
     required this.onPressed,
-    this.isPrimary = false,
   });
 
   @override
@@ -233,10 +224,10 @@ class _ToolbarIconButton extends StatelessWidget {
         style: IconButton.styleFrom(
           splashFactory: NoSplash.splashFactory,
           overlayColor: Colors.transparent,
-          backgroundColor: isPrimary
-              ? colors.primary
-              : colors.surfaceContainerHighest.withValues(alpha: 0.82),
-          foregroundColor: isPrimary ? colors.onPrimary : colors.onSurface,
+          backgroundColor: colors.surfaceContainerHighest.withValues(
+            alpha: 0.82,
+          ),
+          foregroundColor: colors.onSurface,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(14),
           ),

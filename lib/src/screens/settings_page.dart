@@ -74,6 +74,68 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
+  Future<void> _showThemeModeSheet() async {
+    final String? selected = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      useSafeArea: true,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      builder: (BuildContext sheetContext) {
+        final ThemeData theme = Theme.of(sheetContext);
+        final ColorScheme colors = theme.colorScheme;
+        return SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  '主题模式',
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '选择应用整体明暗风格',
+                  style: TextStyle(color: colors.onSurfaceVariant),
+                ),
+                const SizedBox(height: 16),
+                _ThemeModeOption(
+                  icon: Icons.light_mode_rounded,
+                  title: '浅色',
+                  subtitle: '清爽明亮，适合白天使用',
+                  selected: themeMode == 'Light',
+                  onTap: () => Navigator.pop(sheetContext, 'Light'),
+                ),
+                const SizedBox(height: 10),
+                _ThemeModeOption(
+                  icon: Icons.dark_mode_rounded,
+                  title: '深色',
+                  subtitle: '降低夜间亮度，更贴近沉浸播放',
+                  selected: themeMode == 'Dark',
+                  onTap: () => Navigator.pop(sheetContext, 'Dark'),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+
+    if (!mounted || selected == null || selected == themeMode) {
+      return;
+    }
+    setState(() {
+      themeMode = selected;
+    });
+  }
+
   Future<void> _pickAndCropImage() async {
     final ImagePicker picker = ImagePicker();
     final XFile? pickedFile = await picker.pickImage(
@@ -689,6 +751,10 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Widget _buildAppearanceCard() {
+    final ThemeData theme = Theme.of(context);
+    final ColorScheme colors = theme.colorScheme;
+    final bool isDarkMode = themeMode == 'Dark';
+
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -700,21 +766,59 @@ class _SettingsPageState extends State<SettingsPage> {
               style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 12),
-            DropdownButtonFormField<String>(
-              initialValue: themeMode,
-              decoration: const InputDecoration(labelText: '主题模式'),
-              items: const <DropdownMenuItem<String>>[
-                DropdownMenuItem(value: 'Light', child: Text('浅色 (Light)')),
-                DropdownMenuItem(value: 'Dark', child: Text('深色 (Dark)')),
-              ],
-              onChanged: (String? value) {
-                if (value == null) {
-                  return;
-                }
-                setState(() {
-                  themeMode = value;
-                });
-              },
+            Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: _showThemeModeSheet,
+                borderRadius: BorderRadius.circular(18),
+                child: Ink(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 12,
+                  ),
+                  decoration: BoxDecoration(
+                    color: colors.surfaceContainerHighest.withValues(
+                      alpha: theme.brightness == Brightness.dark ? 0.48 : 0.7,
+                    ),
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(color: colors.outlineVariant),
+                  ),
+                  child: Row(
+                    children: <Widget>[
+                      _SettingsIconBadge(
+                        icon: isDarkMode
+                            ? Icons.dark_mode_rounded
+                            : Icons.light_mode_rounded,
+                        compact: true,
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: <Widget>[
+                            const Text(
+                              '主题模式',
+                              style: TextStyle(fontWeight: FontWeight.w700),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              isDarkMode ? '深色外观' : '浅色外观',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: colors.onSurfaceVariant,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Icon(
+                        Icons.keyboard_arrow_down_rounded,
+                        color: colors.onSurfaceVariant,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             ),
             const SizedBox(height: 12),
             TextField(
@@ -1001,6 +1105,83 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 }
 
+class _ThemeModeOption extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _ThemeModeOption({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+    final ColorScheme colors = theme.colorScheme;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(20),
+        child: Ink(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: selected
+                ? colors.primary.withValues(alpha: 0.12)
+                : colors.surfaceContainerHighest.withValues(
+                    alpha: theme.brightness == Brightness.dark ? 0.44 : 0.66,
+                  ),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: selected ? colors.primary : colors.outlineVariant,
+            ),
+          ),
+          child: Row(
+            children: <Widget>[
+              _SettingsIconBadge(icon: icon, compact: true),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(
+                      title,
+                      style: const TextStyle(fontWeight: FontWeight.w800),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: colors.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              AnimatedScale(
+                scale: selected ? 1 : 0.78,
+                duration: const Duration(milliseconds: 180),
+                curve: Curves.easeOutCubic,
+                child: Icon(
+                  selected ? Icons.check_circle_rounded : Icons.circle_outlined,
+                  color: selected ? colors.primary : colors.outlineVariant,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _SettingsIconBadge extends StatelessWidget {
   final IconData icon;
   final bool compact;
@@ -1032,25 +1213,36 @@ class _SettingsStatusChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ColorScheme colors = Theme.of(context).colorScheme;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-      decoration: BoxDecoration(
-        color: colors.surfaceContainerHighest.withValues(alpha: 0.72),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: colors.outlineVariant),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: <Widget>[
-          Icon(icon, size: 15, color: colors.primary),
-          const SizedBox(width: 6),
-          Text(
-            label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
-          ),
-        ],
+    final double maxWidth = (MediaQuery.sizeOf(context).width - 64)
+        .clamp(140.0, 320.0)
+        .toDouble();
+    return ConstrainedBox(
+      constraints: BoxConstraints(maxWidth: maxWidth),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+        decoration: BoxDecoration(
+          color: colors.surfaceContainerHighest.withValues(alpha: 0.72),
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: colors.outlineVariant),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Icon(icon, size: 15, color: colors.primary),
+            const SizedBox(width: 6),
+            Flexible(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

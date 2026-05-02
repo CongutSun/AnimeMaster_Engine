@@ -1186,6 +1186,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
         _rate = 2.0;
       });
     }
+    _resyncDanmakuCursor(_effectivePosition);
     _showGestureIndicator(
       icon: Icons.speed_rounded,
       text: '2.0x 倍速播放',
@@ -1213,6 +1214,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
         _rate = restoreRate;
       });
     }
+    _resyncDanmakuCursor(_effectivePosition);
     _hideGestureIndicatorDelayed();
     _scheduleControlsAutoHide();
   }
@@ -1296,6 +1298,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
         _rate = value;
       });
     }
+    _resyncDanmakuCursor(_effectivePosition);
     _scheduleControlsAutoHide();
   }
 
