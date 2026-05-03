@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import 'api/dio_client.dart';
+import 'core/service_locator.dart';
 import 'managers/download_manager.dart';
 import 'providers/settings_provider.dart';
 import 'screens/home_page.dart';
@@ -18,7 +19,7 @@ class AnimeMasterApp extends StatelessWidget {
         ChangeNotifierProvider<SettingsProvider>(
           create: (_) => SettingsProvider(),
         ),
-        ChangeNotifierProvider<DownloadManager>.value(value: DownloadManager()),
+        ChangeNotifierProvider<DownloadManager>.value(value: locator<DownloadManager>()),
       ],
       child: Consumer<SettingsProvider>(
         builder:
@@ -106,13 +107,14 @@ class _StartupUpdateProbeState extends State<_StartupUpdateProbe> {
     }
     _isChecking = true;
     try {
-      final AppUpdateCheckResult result = await const AppUpdateService()
+      final AppUpdateService updateService = locator<AppUpdateService>();
+      final AppUpdateCheckResult result = await updateService
           .checkForUpdates(feedUrl);
       if (!mounted || !result.updateAvailable) {
         return;
       }
 
-      await const AppUpdateService().showUpdateDialog(
+      await updateService.showUpdateDialog(
         context,
         result,
         quietIfUpToDate: true,

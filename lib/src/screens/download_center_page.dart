@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 
 import '../api/bangumi_api.dart';
+import '../core/service_locator.dart';
 import '../managers/download_manager.dart';
 import '../models/download_task_info.dart';
 import '../models/playable_media.dart';
@@ -16,10 +17,10 @@ class DownloadCenterPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final DownloadManager manager = locator<DownloadManager>();
     return ListenableBuilder(
-      listenable: DownloadManager(),
+      listenable: manager,
       builder: (BuildContext context, Widget? child) {
-        final DownloadManager manager = DownloadManager();
         final List<DownloadTaskInfo> tasks = manager.allTasks.reversed.toList();
         final ColorScheme colors = Theme.of(context).colorScheme;
 
@@ -49,9 +50,9 @@ class DownloadCenterPage extends StatelessWidget {
                     final bool isCompleted = progress >= 1.0;
                     final bool isSeeding = manager.isSeeding(config.hash);
                     final Color statusColor = isSeeding
-                        ? const Color(0xFFFF9F0A)
+                        ? colors.tertiary
                         : (isCompleted
-                              ? const Color(0xFF30D158)
+                              ? colors.primary
                               : (isPaused || isQueued
                                     ? colors.onSurfaceVariant
                                     : colors.primary));

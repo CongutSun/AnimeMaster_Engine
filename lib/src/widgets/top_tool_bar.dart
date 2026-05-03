@@ -1,6 +1,7 @@
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
+import '../utils/app_strings.dart';
 import '../screens/search_page.dart';
 import '../screens/collection_page.dart';
 import '../screens/settings_page.dart';
@@ -86,7 +87,7 @@ class _TopToolBarState extends State<TopToolBar> {
                       children: <Widget>[
                         const SizedBox(width: 8),
                         _ToolbarIconButton(
-                          tooltip: '收藏',
+                          tooltip: AppStrings.toolbarCollection,
                           icon: Icons.video_library_rounded,
                           onPressed: () => Navigator.push(
                             context,
@@ -97,7 +98,7 @@ class _TopToolBarState extends State<TopToolBar> {
                         ),
                         const SizedBox(width: 6),
                         _ToolbarIconButton(
-                          tooltip: '缓存中心',
+                          tooltip: AppStrings.toolbarDownloadCenter,
                           icon: Icons.download_for_offline_rounded,
                           onPressed: () => Navigator.push(
                             context,
@@ -108,7 +109,7 @@ class _TopToolBarState extends State<TopToolBar> {
                         ),
                         const SizedBox(width: 6),
                         _ToolbarIconButton(
-                          tooltip: '设置',
+                          tooltip: AppStrings.toolbarSettings,
                           icon: Icons.settings_rounded,
                           onPressed: () => Navigator.push(
                             context,
@@ -132,7 +133,7 @@ class _TopToolBarState extends State<TopToolBar> {
                             splashFactory: NoSplash.splashFactory,
                             overlayColor: Colors.transparent,
                           ),
-                          child: const Text('取消'),
+                          child: const Text(AppStrings.cancel),
                         ),
                       ],
                     ),
@@ -163,7 +164,7 @@ class _TopToolBarState extends State<TopToolBar> {
         controller: _searchController,
         textInputAction: TextInputAction.search,
         decoration: InputDecoration(
-          hintText: '搜番剧、书籍',
+          hintText: AppStrings.toolbarSearch,
           prefixIcon: Icon(
             Icons.search_rounded,
             color: colors.onSurfaceVariant,
@@ -172,7 +173,7 @@ class _TopToolBarState extends State<TopToolBar> {
           suffixIcon: _searchController.text.isEmpty
               ? null
               : IconButton(
-                  tooltip: '清空',
+                  tooltip: AppStrings.toolbarClear,
                   icon: const Icon(Icons.close_rounded, size: 18),
                   onPressed: () {
                     _searchController.clear();

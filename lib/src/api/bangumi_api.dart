@@ -66,6 +66,77 @@ class BangumiApi {
       );
   static int? _yearTopCacheYear;
 
+  // ── Helpers to eliminate repeated try/cache/fetch/catch boilerplate ──
+
+  /// Generic cached GET that returns a [List] result.
+  /// Throws [NetworkException] on connectivity failure and [ServerException]
+  /// on 5xx, so callers can distinguish errors from empty results.
+  static Future<List<dynamic>> _cachedListGet({
+    required ApiCacheManager<List<dynamic>> cache,
+    required dynamic cacheKey,
+    required String url,
+    required String methodLabel,
+    Map<String, dynamic>? queryParameters,
+  }) async {
+    final List<dynamic>? cached = cache.get(cacheKey);
+    if (cached != null) return cached;
+
+    try {
+      final Response<dynamic> response = await _dio.get(
+        url,
+        queryParameters: queryParameters,
+      );
+      if (response.statusCode == 200 && response.data is List) {
+        cache.set(cacheKey, response.data as List<dynamic>);
+        return cache.get(cacheKey)!;
+      }
+      final int? status = response.statusCode;
+      if (status != null && status >= 500) {
+        throw ServerException(url, status);
+      }
+    } on DioException catch (e) {
+      debugPrint('[BangumiApi.$methodLabel] DioException: ${e.message}');
+      throw NetworkException(e.message ?? 'Connection failed', e);
+    }
+    return <dynamic>[];
+  }
+
+  /// Generic cached GET that returns a [Map] result.
+  /// Throws [NetworkException] on connectivity failure and [ServerException]
+  /// on 5xx, so callers can distinguish errors from empty results.
+  static Future<Map<String, dynamic>?> _cachedMapGet({
+    required ApiCacheManager<Map<String, dynamic>> cache,
+    required dynamic cacheKey,
+    required String url,
+    required String methodLabel,
+    Map<String, dynamic>? queryParameters,
+  }) async {
+    final Map<String, dynamic>? cached = cache.get(cacheKey);
+    if (cached != null) return cached;
+
+    try {
+      final Response<dynamic> response = await _dio.get(
+        url,
+        queryParameters: queryParameters,
+      );
+      if (response.statusCode == 200 && response.data is Map) {
+        final Map<String, dynamic> detail = Map<String, dynamic>.from(
+          response.data as Map,
+        );
+        cache.set(cacheKey, detail);
+        return detail;
+      }
+      final int? status = response.statusCode;
+      if (status != null && status >= 500) {
+        throw ServerException(url, status);
+      }
+    } on DioException catch (e) {
+      debugPrint('[BangumiApi.$methodLabel] DioException: ${e.message}');
+      throw NetworkException(e.message ?? 'Connection failed', e);
+    }
+    return null;
+  }
+
   static List<Map<String, String>> _parseSubjectCommentsDocument(
     dom.Document document,
   ) {
@@ -965,53 +1036,29 @@ class BangumiApi {
   }
 
   static Future<List<dynamic>> getSubjectCharacters(int id) async {
-    final List<dynamic>? cachedChars = _charactersCache.get(id);
-    if (cachedChars != null) return cachedChars;
-    try {
-      final response = await _dio.get(
-        '${_ApiConfig.apiBase}/v0/subjects/$id/characters',
-      );
-      if (response.statusCode == 200 && response.data is List) {
-        _charactersCache.set(id, response.data);
-        return _charactersCache.get(id)!;
-      }
-    } catch (e) {
-      debugPrint('[BangumiApi.getSubjectCharacters] ${e.runtimeType}: $e');
-    }
-    return [];
+    return _cachedListGet(
+      cache: _charactersCache,
+      cacheKey: id,
+      url: '${_ApiConfig.apiBase}/v0/subjects/$id/characters',
+      methodLabel: 'getSubjectCharacters',
+    );
   }
 
   static Future<List<dynamic>> getSubjectPersons(int id) async {
-    final List<dynamic>? cachedPersons = _personsCache.get(id);
-    if (cachedPersons != null) return cachedPersons;
-    try {
-      final response = await _dio.get(
-        '${_ApiConfig.apiBase}/v0/subjects/$id/persons',
-      );
-      if (response.statusCode == 200 && response.data is List) {
-        _personsCache.set(id, response.data);
-        return _personsCache.get(id)!;
-      }
-    } catch (e) {
-      debugPrint('[BangumiApi.getSubjectPersons] ${e.runtimeType}: $e');
-    }
-    return [];
+    return _cachedListGet(
+      cache: _personsCache,
+      cacheKey: id,
+      url: '${_ApiConfig.apiBase}/v0/subjects/$id/persons',
+      methodLabel: 'getSubjectPersons',
+    );
   }
 
   static Future<List<dynamic>> getSubjectRelations(int id) async {
-    final List<dynamic>? cachedRelations = _relationsCache.get(id);
-    if (cachedRelations != null) return cachedRelations;
-    try {
-      final response = await _dio.get(
-        '${_ApiConfig.apiBase}/v0/subjects/$id/subjects',
-      );
-      if (response.statusCode == 200 && response.data is List) {
-        _relationsCache.set(id, response.data);
-        return _relationsCache.get(id)!;
-      }
-    } catch (e) {
-      debugPrint('[BangumiApi.getSubjectRelations] ${e.runtimeType}: $e');
-    }
-    return [];
+    return _cachedListGet(
+      cache: _relationsCache,
+      cacheKey: id,
+      url: '${_ApiConfig.apiBase}/v0/subjects/$id/subjects',
+      methodLabel: 'getSubjectRelations',
+    );
   }
 }

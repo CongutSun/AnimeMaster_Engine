@@ -44,12 +44,15 @@ class AnimeGridSkeleton extends StatelessWidget {
     return LayoutBuilder(
       builder: (BuildContext context, BoxConstraints constraints) {
         final double width = constraints.maxWidth;
-        final int crossAxisCount = switch (width) {
-          < 420 => 3,
-          < 720 => 4,
-          < 980 => 5,
-          _ => 6,
-        };
+        final int crossAxisCount = width >= 1180
+            ? 8
+            : width >= 980
+            ? 7
+            : width >= 760
+            ? 5
+            : width >= 480
+            ? 4
+            : 3;
         return GridView.builder(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
@@ -57,8 +60,8 @@ class AnimeGridSkeleton extends StatelessWidget {
           gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: crossAxisCount,
             crossAxisSpacing: 14,
-            mainAxisSpacing: 18,
-            childAspectRatio: 0.58,
+            mainAxisSpacing: 20,
+            childAspectRatio: 0.55,
           ),
           itemBuilder: (BuildContext context, int index) {
             return const Column(

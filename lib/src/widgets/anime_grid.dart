@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/anime.dart';
+import '../utils/app_strings.dart';
 import 'anime_card.dart';
 
 class AnimeGrid extends StatelessWidget {
@@ -11,7 +12,7 @@ class AnimeGrid extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (animeList.isEmpty) {
-      return const Text('暂无数据', style: TextStyle(color: Colors.grey));
+      return const Text(AppStrings.noData, style: TextStyle(color: Colors.grey));
     }
     return LayoutBuilder(
       builder: (BuildContext context, BoxConstraints constraints) {

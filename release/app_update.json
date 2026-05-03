@@ -1,6 +1,6 @@
 {
-  "version": "2.3.1",
-  "build": 31,
+  "version": "2.3.2",
+  "build": 32,
   "apkUrl": "https://auth.congutsun.com/download/apk/universal",
   "apkUrls": {
     "android-arm64": "https://auth.congutsun.com/download/apk/android-arm64",
@@ -8,14 +8,21 @@
     "android-x64": "https://auth.congutsun.com/download/apk/android-x64",
     "universal": "https://auth.congutsun.com/download/apk/universal"
   },
+  "sha256": {
+    "universal": ""
+  },
   "notes": [
-    "优化详情页状态栏过渡：头图毛玻璃延伸到系统栏，置顶 TabBar 使用半透明渐变隔离，不再出现突兀白条。",
-    "稳定详情页“详情 / 剧集 / 进度 / 吐槽”切换时的滚动位置，TabBar 已置顶时切换板块不再带动整页上下跳动。",
-    "修复番剧播放页本集讨论的楼中楼解析重复问题，避免同一条嵌套回复被当成多条评论显示。",
-    "修正番剧和书籍详情页顶部 TabBar 的安全区与返回按钮命中区域，置顶后不再多出空白、闪移或挡住切换。",
-    "二次元库状态切换菜单补齐圆角，与应用内弹窗和控件风格保持一致。",
-    "修复搜索结果页番剧/书籍类型切换只能稳定生效一次的问题，切换时会重置分页和滚动位置。"
+    "工程基础设施：引入 GitHub Actions CI 流水线（lint + test + build），开启 12 条新 lint 规则提升代码质量。",
+    "增强更新安全性：APK 更新清单新增 SHA256 字段，更新对话框展示校验值供用户核对。",
+    "重构在线源适配器：抽象基类提取共享方法，消除约 200 行重复代码；60+ 站点配置迁移至 JSON 数据驱动，支持热更新。",
+    "API 层优化：新增泛型缓存 helper 消除模板代码；完善类型化异常体系。",
+    "DI 容器引入：集成 get_it 服务定位器，核心服务统一注册管理。",
+    "亮色主题适配：PlaybackActionPrompt、下载中心状态色迁移至语义化 colorScheme。",
+    "骨架屏断点与动画网格对齐，消除加载布局跳变。",
+    "顶部工具栏等硬编码中文迁移至 AppStrings 集中管理。",
+    "新增可复用 ErrorStateWidget 错误状态组件。",
+    "补充测试覆盖：测试用例从 24 增至 73+。"
   ],
-  "publishedAt": "2026-05-03T13:33:33+08:00",
+  "publishedAt": "2026-05-04T08:00:00+08:00",
   "forceUpdate": false
 }

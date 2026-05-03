@@ -3,6 +3,7 @@ class AppUpdateInfo {
   final int buildNumber;
   final String apkUrl;
   final Map<String, String> apkUrls;
+  final Map<String, String> sha256Map;
   final String changeLog;
   final String publishedAt;
   final bool forceUpdate;
@@ -12,6 +13,7 @@ class AppUpdateInfo {
     required this.buildNumber,
     required this.apkUrl,
     this.apkUrls = const <String, String>{},
+    this.sha256Map = const <String, String>{},
     required this.changeLog,
     required this.publishedAt,
     this.forceUpdate = false,
@@ -29,6 +31,9 @@ class AppUpdateInfo {
     final Map<String, String> apkUrls = _parseApkUrls(
       json['apkUrls'] ?? json['downloads'],
     );
+    final Map<String, String> sha256Map = _parseApkUrls(
+      json['sha256'],
+    );
 
     return AppUpdateInfo(
       version: (json['version'] ?? '').toString().trim(),
@@ -39,6 +44,7 @@ class AppUpdateInfo {
           0,
       apkUrl: (json['apkUrl'] ?? json['url'] ?? '').toString().trim(),
       apkUrls: apkUrls,
+      sha256Map: sha256Map,
       changeLog: changeLog,
       publishedAt: (json['publishedAt'] ?? '').toString().trim(),
       forceUpdate: json['forceUpdate'] == true,

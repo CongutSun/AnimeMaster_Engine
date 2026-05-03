@@ -23,20 +23,23 @@ class AnimeCard extends StatelessWidget {
         ? anime.nameCn
         : anime.name;
 
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(16),
-        onTap: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) =>
-                  DetailPage(animeId: anime.id, initialName: displayName),
-            ),
-          );
-        },
-        child: Column(
+    return Semantics(
+      label: displayName,
+      button: true,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) =>
+                    DetailPage(animeId: anime.id, initialName: displayName),
+              ),
+            );
+          },
+          child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
             Expanded(
@@ -127,6 +130,7 @@ class AnimeCard extends StatelessWidget {
               ),
           ],
         ),
+      ),
       ),
     );
   }

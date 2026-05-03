@@ -23,3 +23,6 @@ export 'src/resolvers/torrent_resolver.dart';
 // 4. 导出 UI 页面 (Export UI Screens)
 export 'src/screens/video_player_page.dart';
 export 'src/screens/download_center_page.dart';
+
+// 5. 导出 DI 服务定位器 (Export Service Locator)
+export 'src/core/service_locator.dart';

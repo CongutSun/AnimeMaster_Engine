@@ -9,6 +9,7 @@ import 'package:image_cropper/image_cropper.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
+import '../core/service_locator.dart';
 import '../providers/settings_provider.dart';
 import '../services/app_update_service.dart';
 import '../services/bangumi_auth_gateway_service.dart';
@@ -299,7 +300,8 @@ class _SettingsPageState extends State<SettingsPage> {
     });
 
     final SettingsProvider provider = context.read<SettingsProvider>();
-    final AppUpdateCheckResult result = await const AppUpdateService()
+    final AppUpdateService updateService = locator<AppUpdateService>();
+    final AppUpdateCheckResult result = await updateService
         .checkForUpdates(provider.appUpdateFeedUrl);
 
     if (!mounted) {
@@ -309,7 +311,7 @@ class _SettingsPageState extends State<SettingsPage> {
     setState(() {
       isCheckingUpdate = false;
     });
-    await const AppUpdateService().showUpdateDialog(context, result);
+    await updateService.showUpdateDialog(context, result);
   }
 
   Future<void> _startBangumiOAuthLogin() async {

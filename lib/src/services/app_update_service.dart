@@ -99,6 +99,19 @@ class AppUpdateService {
     return updateInfo.apkUrl;
   }
 
+  String? _resolveSha256(AppUpdateInfo updateInfo) {
+    final Map<String, String> sha256s = updateInfo.sha256Map;
+    final String? abiSha = sha256s[_currentAndroidAbiKey()];
+    if (abiSha != null && abiSha.trim().isNotEmpty) {
+      return abiSha.trim();
+    }
+    final String? universalSha = sha256s['universal'];
+    if (universalSha != null && universalSha.trim().isNotEmpty) {
+      return universalSha.trim();
+    }
+    return null;
+  }
+
   String _currentAndroidAbiKey() {
     return switch (Abi.current()) {
       Abi.androidArm => 'android-arm',
@@ -152,6 +165,15 @@ class AppUpdateService {
             if (latest.publishedAt.isNotEmpty) ...<Widget>[
               const SizedBox(height: 6),
               Text('发布时间：${latest.publishedAt}'),
+            ],
+            if (_resolveSha256(latest) case final String sha?) ...[
+              const SizedBox(height: 12),
+              const Text('SHA256 校验', style: TextStyle(fontWeight: FontWeight.w700)),
+              const SizedBox(height: 4),
+              SelectableText(
+                sha,
+                style: const TextStyle(fontSize: 11, fontFamily: 'monospace'),
+              ),
             ],
             if (latest.changeLog.isNotEmpty) ...<Widget>[
               const SizedBox(height: 12),

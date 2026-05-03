@@ -1,4 +1,16 @@
 include: package:flutter_lints/flutter.yaml
 
-# Additional information about this file can be found at
-# https://dart.dev/guides/language/analysis-options
+linter:
+  rules:
+    - avoid_print
+    - require_trailing_commas
+    - use_build_context_synchronously
+    - unawaited_futures
+    - prefer_const_constructors
+    - prefer_const_declarations
+    - avoid_redundant_argument_values
+    - avoid_unnecessary_containers
+    - sort_child_properties_last
+    - use_key_in_widget_constructors
+    - avoid_empty_else
+    - prefer_single_quotes

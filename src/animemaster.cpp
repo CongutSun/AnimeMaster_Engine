@@ -235,7 +235,7 @@ FFI_PLUGIN_EXPORT bool InitializeEngineCore() {
 }
 
 FFI_PLUGIN_EXPORT const char* GetEngineVersion() {
-    return "AnimeMaster Engine v1.1.0 (Native parser/scanner)";
+    return "AnimeMaster Engine v2.3.2 (Native parser/scanner)";
 }
 
 FFI_PLUGIN_EXPORT const char* ParseMagnetLink(const char* magnetUri) {

@@ -1,10 +1,9 @@
-// ignore_for_file: unused_field
-
 import 'dart:async';
 import 'dart:convert';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:html/dom.dart' as dom;
 import 'package:html/parser.dart' as parser;
 
@@ -13,7 +12,18 @@ import '../models/online_episode_source.dart';
 import '../utils/task_title_parser.dart';
 
 class OnlineEpisodeSourceService {
-  OnlineEpisodeSourceService({Dio? dio}) : _dio = dio ?? DioClient().dio;
+  OnlineEpisodeSourceService({Dio? dio}) : _dio = dio ?? DioClient().dio {
+    _warmUpAdaptiveSources();
+  }
+
+  void _warmUpAdaptiveSources() {
+    if (!_sourcesWarmedUp) {
+      _sourcesWarmedUp = true;
+      unawaited(_DirectSiteAdapter.warmUpJsonSources());
+    }
+  }
+
+  static bool _sourcesWarmedUp = false;
 
   static const int maxResults = 30;
   static const int _adapterConcurrency = 8;
@@ -320,17 +330,120 @@ class OnlineEpisodeSourceService {
 abstract class _OnlineSourceAdapter {
   String get name;
 
+  Duration get mediaReachTimeout;
+
   Future<List<OnlineEpisodeSourceResult>> search(
     Dio dio,
     OnlineEpisodeQuery query,
     List<String> subjectNames,
   );
-}
 
-class _DirectSiteAdapter implements _OnlineSourceAdapter {
+  // ── Shared helper methods ──
+
+  Future<dom.Document> _loadDocument(
+    Dio dio,
+    Uri uri, {
+    String? referer,
+  }) async {
+    final String html = await _loadText(dio, uri, referer: referer);
+    return parser.parse(html);
+  }
+
+  Future<String> _loadText(Dio dio, Uri uri, {String? referer}) async {
+    final Map<String, String> headers = <String, String>{
+      'Accept':
+          'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      'User-Agent': _browserUserAgent,
+      if (referer != null && referer.isNotEmpty) 'Referer': referer,
+    };
+    final Response<String> response = await dio.get<String>(
+      uri.toString(),
+      options: Options(
+        responseType: ResponseType.plain,
+        followRedirects: true,
+        sendTimeout: const Duration(seconds: 8),
+        receiveTimeout: const Duration(seconds: 8),
+        headers: headers,
+      ),
+    );
+    return response.data ?? '';
+  }
+
+  Future<bool> _isMediaReachable(
+    Dio dio,
+    String url,
+    Map<String, String> headers,
+  ) async {
+    try {
+      final bool isPlaylist = url.toLowerCase().contains('.m3u8');
+      final Duration timeout = mediaReachTimeout;
+      final Response<dynamic> response = await dio.get<dynamic>(
+        url,
+        options: Options(
+          responseType: isPlaylist ? ResponseType.plain : ResponseType.bytes,
+          followRedirects: true,
+          sendTimeout: timeout,
+          receiveTimeout: timeout,
+          headers: <String, String>{
+            ...headers,
+            if (!isPlaylist) 'Range': 'bytes=0-2047',
+            'Accept': isPlaylist
+                ? 'application/vnd.apple.mpegurl,application/x-mpegURL,*/*'
+                : '*/*',
+          },
+          validateStatus: (int? status) =>
+              status != null && status >= 200 && status < 500,
+        ),
+      );
+      final int statusCode = response.statusCode ?? 0;
+      if (statusCode >= 400) {
+        return false;
+      }
+      if (isPlaylist) {
+        final String text = response.data?.toString() ?? '';
+        return text.contains('#EXTM3U') || text.contains('.ts');
+      }
+      final Object? data = response.data;
+      return statusCode == 206 ||
+          statusCode == 200 ||
+          (data is List<int> && data.isNotEmpty);
+    } catch (_) {
+      return false;
+    }
+  }
+
+  String _normalizeAbsoluteUrl(String value, Uri baseUri) {
+    String url = value
+        .trim()
+        .replaceAll(r'\/', '/')
+        .replaceAll(r'/', '/')
+        .replaceAll('&amp;', '&');
+    if (url.startsWith('//')) {
+      url = '${baseUri.scheme}:$url';
+    }
+    return baseUri.resolve(url).replace(fragment: '').toString();
+  }
+
+  String _normalizeText(String value) {
+    return value.replaceAll(RegExp(r'\s+'), ' ').trim();
+  }
+
+  String _normalizeComparable(String value) {
+    return value
+        .toLowerCase()
+        .replaceAll(RegExp(r'[\s·・:：,，.。!！?？_\-—+]+'), '')
+        .trim();
+  }
+
   static const String _browserUserAgent =
       'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
       '(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+}
+
+class _DirectSiteAdapter extends _OnlineSourceAdapter {
+  @override
+  Duration get mediaReachTimeout => const Duration(seconds: 2);
+
   static const int _maxResultsPerSite = 4;
   static const int _episodeResolveConcurrency = 3;
   static const Duration _mediaResolveTimeout = Duration(seconds: 6);
@@ -358,61 +471,14 @@ class _DirectSiteAdapter implements _OnlineSourceAdapter {
     required this.episodeHrefPattern,
   });
 
-  static final List<_OnlineSourceAdapter> defaults = <_OnlineSourceAdapter>[
-    _DirectSiteAdapter(
-      name: 'OmoFun',
-      baseUrl: 'https://omofun04.top',
-      searchPathBuilder: (String keyword) => '/vod/search.html?wd=$keyword',
-      subjectSelector: 'a[href*="/vod/detail/id/"]',
-      subjectHrefPattern: RegExp(r'/vod/detail/id/\d+\.html'),
-      episodeSelector: 'a[href*="/vod/play/id/"], [data-link*="/vod/play/id/"]',
-      episodeHrefPattern: RegExp(r'/vod/play/id/\d+/sid/\d+/nid/\d+\.html'),
-    ),
-    _DirectSiteAdapter(
-      name: 'AGE 动漫',
-      baseUrl: 'https://www.agedm.io',
-      searchPathBuilder: (String keyword) => '/search?query=$keyword',
-      subjectSelector: 'a[href*="/detail/"]',
-      subjectHrefPattern: RegExp(r'/detail/\d+'),
-      episodeSelector: 'a.video_detail_spisode_link[href*="/play/"]',
-      episodeHrefPattern: RegExp(r'/play/\d+/\d+/\d+'),
-    ),
-    _DirectSiteAdapter(
-      name: '橘子动漫',
-      baseUrl: 'https://www.mgnacg.com',
-      searchPathBuilder: (String keyword) => '/search/$keyword-------------/',
-      pathKeyword: true,
-      subjectSelector:
-          'a[href*="/vod/detail/"], a[href*="/detail/"], a[href*="/vod/"]',
-      subjectHrefPattern: RegExp(
-        r'/(?:index\.php/)?vod/detail/id/\d+\.html|/detail/\d+\.html|/vod/\d+\.html',
-      ),
-      episodeSelector:
-          'a[href*="/vod/play/"], a[href*="/play/"], [data-link*="/vod/play/"]',
-      episodeHrefPattern: RegExp(
-        r'/(?:index\.php/)?vod/play/id/\d+/sid/\d+/nid/\d+\.html|/play/\d+-\d+-\d+\.html',
-      ),
-    ),
-    _DirectSiteAdapter(
-      name: 'Dodo 动漫',
-      baseUrl: 'http://m.dodoge.me',
-      searchPathBuilder: (String keyword) => '/vod/search.html?wd=$keyword',
-      subjectSelector:
-          'a[href*="/vod/detail/"], a[href*="/detail/"], a[href*="/show/"]',
-      subjectHrefPattern: RegExp(
-        r'/vod/detail/id/\d+\.html|/detail/\d+\.html|/show/\d+',
-      ),
-      episodeSelector:
-          'a[href*="/vod/play/"], a[href*="/play/"], [data-link*="/vod/play/"]',
-      episodeHrefPattern: RegExp(
-        r'/vod/play/id/\d+/sid/\d+/nid/\d+\.html|/play/\d+',
-      ),
-    ),
-    _DirectSiteAdapter.macCms(name: '嗷呜动漫', baseUrl: 'https://www.aowu.tv'),
-  ];
+  static List<_OnlineSourceAdapter> get allKnownDefaults {
+    _allKnownDefaultsCache ??= _buildAllKnownDefaults();
+    return _allKnownDefaultsCache!;
+  }
 
-  static final List<_OnlineSourceAdapter>
-  allKnownDefaults = <_OnlineSourceAdapter>[
+  static List<_OnlineSourceAdapter>? _allKnownDefaultsCache;
+
+  static List<_OnlineSourceAdapter> _buildAllKnownDefaults() => <_OnlineSourceAdapter>[
     _DirectSiteAdapter(
       name: 'OmoFun',
       baseUrl: 'https://omofun04.top',
@@ -472,155 +538,55 @@ class _DirectSiteAdapter implements _OnlineSourceAdapter {
         r'/vod/play/id/\d+/sid/\d+/nid/\d+\.html|/play/\d+',
       ),
     ),
-    _DirectSiteAdapter.macCms(name: '稀饭动漫', baseUrl: 'https://dm.xifanacg.com'),
-    _DirectSiteAdapter.macCms(name: '去看吧', baseUrl: 'https://www.qkan8.com'),
-    _DirectSiteAdapter.macCms(name: '異世界動畫', baseUrl: 'https://www.dmmiku.com'),
-    _DirectSiteAdapter.macCms(name: 'NT 动漫', baseUrl: 'https://www.ntdm9.com'),
-    _DirectSiteAdapter.macCms(name: '嗷呜动漫', baseUrl: 'https://www.aowu.tv'),
-    _DirectSiteAdapter.macCms(name: 'E-ACG', baseUrl: 'https://www.eacg.net'),
-    _DirectSiteAdapter.macCms(name: '七色番', baseUrl: 'https://www.7sefun.top'),
-    _DirectSiteAdapter.macCms(name: '5弹幕', baseUrl: 'https://www.5dm.link'),
-    _DirectSiteAdapter.macCms(
-      name: 'Mutefun',
-      baseUrl: 'https://www.91mute.com',
-    ),
-    _DirectSiteAdapter.macCms(name: '动漫妖', baseUrl: 'https://www.dmyao.com'),
-    _DirectSiteAdapter.macCms(name: '樱之空', baseUrl: 'https://www.maigo.cc'),
-    _DirectSiteAdapter.macCms(name: '风铃动漫', baseUrl: 'https://www.aafun.cc'),
-    _DirectSiteAdapter.macCms(name: '柒番', baseUrl: 'https://www.qifun.cc'),
-    _DirectSiteAdapter.macCms(name: '新番组', baseUrl: 'https://bangumi.online'),
-    _DirectSiteAdapter.macCms(name: 'Animeo', baseUrl: 'https://animoe.org'),
-    _DirectSiteAdapter.macCms(name: 'E站弹幕网', baseUrl: 'https://www.ezdmw.site'),
-    _DirectSiteAdapter.macCms(
-      name: '西瓜卡通',
-      baseUrl: 'https://cn.xgcartoon.com',
-    ),
-    _DirectSiteAdapter.macCms(name: '萌番', baseUrl: 'https://bilfun.cc'),
-    _DirectSiteAdapter.macCms(name: '动漫蛋', baseUrl: 'https://www.dmdm0.com'),
-    _DirectSiteAdapter.macCms(name: 'mx动漫', baseUrl: 'https://www.mxdm.xyz'),
-    _DirectSiteAdapter.macCms(name: '花子动漫', baseUrl: 'https://www.huazidm.com'),
-    _DirectSiteAdapter.macCms(
-      name: '嘶哩嘶哩',
-      baseUrl: 'https://www.silisilifun.com',
-    ),
-    _DirectSiteAdapter.macCms(name: 'XDM动漫', baseUrl: 'https://xuandm.com'),
-    _DirectSiteAdapter.macCms(name: '蜜桃动漫', baseUrl: 'https://www.mitaodm.com'),
-    _DirectSiteAdapter.macCms(name: '怡萱动漫', baseUrl: 'https://www.iyxdm.cn'),
-    _DirectSiteAdapter.macCms(name: '小小漫迷', baseUrl: 'https://www.xxmanmi.com'),
-    _DirectSiteAdapter.macCms(
-      name: 'akianime',
-      baseUrl: 'https://www.akianime.cc',
-    ),
-    _DirectSiteAdapter.macCms(name: '番薯动漫', baseUrl: 'https://www.fsdm02.com'),
-    _DirectSiteAdapter.macCms(
-      name: 'myself动漫',
-      baseUrl: 'https://myself-bbs.com',
-    ),
-    _DirectSiteAdapter.macCms(
-      name: 'girlgirl爱动漫',
-      baseUrl: 'https://bgm.girigirilove.com',
-    ),
-    _DirectSiteAdapter.macCms(name: '囧次元', baseUrl: 'https://www.jcydm1.com'),
-    _DirectSiteAdapter.macCms(name: '4K动漫', baseUrl: 'https://cn.agekkkk.com'),
-    _DirectSiteAdapter.macCms(name: '动漫巴士', baseUrl: 'https://dm84.tv'),
-    _DirectSiteAdapter.macCms(
-      name: '奇米奇米',
-      baseUrl: 'https://www.qimiqimi.net',
-    ),
-    _DirectSiteAdapter.macCms(name: 'clicli', baseUrl: 'https://www.clicli.cc'),
-    _DirectSiteAdapter.macCms(name: '哈哩哈哩', baseUrl: 'https://halihali1.com'),
-    _DirectSiteAdapter.macCms(
-      name: '动漫看看',
-      baseUrl: 'https://www.dongmankk.com',
-    ),
-    _DirectSiteAdapter.macCms(name: '樱花动漫备用', baseUrl: 'https://yinghuacd.com'),
-    _DirectSiteAdapter.macCms(name: '路漫漫', baseUrl: 'https://www.lmm52.com'),
-    _DirectSiteAdapter.macCms(name: '久久动漫', baseUrl: 'https://www.995dm.com'),
-    _DirectSiteAdapter.macCms(name: '次元方舟', baseUrl: 'https://cyfz.vip'),
-    _DirectSiteAdapter.macCms(name: '樱花动漫网', baseUrl: 'https://www.vdm8.com'),
-    _DirectSiteAdapter.macCms(name: '金阿尼动画', baseUrl: 'https://kimani22.com'),
-    _DirectSiteAdapter.macCms(name: 'AGE 备用', baseUrl: 'https://agefans.top'),
-    _DirectSiteAdapter.macCms(
-      name: '修罗动漫',
-      baseUrl: 'https://www.xiuluodm.com',
-    ),
-    _DirectSiteAdapter.macCms(name: '樱花动漫 74fan', baseUrl: 'https://74fan.com'),
-    _DirectSiteAdapter.macCms(
-      name: '樱花动漫 qdtsdp',
-      baseUrl: 'https://qdtsdp.com',
-    ),
-    _DirectSiteAdapter.macCms(
-      name: '樱花动漫 YHDMW',
-      baseUrl: 'https://www.yhdmw.cc',
-    ),
-    _DirectSiteAdapter.macCms(
-      name: '樱花动漫 iyinghua',
-      baseUrl: 'https://www.iyinghua.io',
-    ),
-    _DirectSiteAdapter.macCms(
-      name: '樱花动漫 yhdmoe',
-      baseUrl: 'https://yhdmoe.com',
-    ),
-    _DirectSiteAdapter.macCms(
-      name: '樱花动漫 xdm5',
-      baseUrl: 'https://www.xdm5.com',
-    ),
-    _DirectSiteAdapter.macCms(
-      name: '樱花动漫 yhdm60',
-      baseUrl: 'https://yhdm60.com',
-    ),
-    _DirectSiteAdapter.macCms(name: '大咖动漫', baseUrl: 'https://www.dk95.com'),
-    _DirectSiteAdapter.macCms(name: '米粒米粒', baseUrl: 'https://milimili.nl'),
-    _DirectSiteAdapter.macCms(
-      name: '星易次元',
-      baseUrl: 'https://www.xingyiying.com',
-    ),
-    _DirectSiteAdapter.macCms(
-      name: '好看的动漫',
-      baseUrl: 'https://www.socomic.com',
-    ),
-    _DirectSiteAdapter.macCms(
-      name: '品新番动漫网',
-      baseUrl: 'https://www.pinxinfan.com',
-    ),
-    _DirectSiteAdapter.macCms(
-      name: '次元城动画',
-      baseUrl: 'https://www.cycdm01.top',
-    ),
-    _DirectSiteAdapter.macCms(name: '动漫岛', baseUrl: 'https://www.dmand5.com'),
-    _DirectSiteAdapter.macCms(
-      name: '囧次元备用',
-      baseUrl: 'https://www.9ciyuan.com',
-    ),
-    _DirectSiteAdapter.macCms(name: '风车动漫', baseUrl: 'https://www.5ao7.com'),
-    _DirectSiteAdapter.macCms(name: '嘀哩嘀哩', baseUrl: 'https://dilidili.online'),
-    _DirectSiteAdapter.macCms(
-      name: '哔咪动漫',
-      baseUrl: 'https://www.bimiacg10.net',
-    ),
-    _DirectSiteAdapter.macCms(name: '第一动漫', baseUrl: 'https://d1-dm.online'),
-    _DirectSiteAdapter.macCms(name: 'GA 动漫', baseUrl: 'https://www.gadm.cc'),
-    _DirectSiteAdapter.macCms(name: '番茄动漫', baseUrl: 'https://www.fqdm.cc'),
-    _DirectSiteAdapter.macCms(name: '虾皮动漫', baseUrl: 'https://xiapidm.com'),
-    _DirectSiteAdapter.macCms(
-      name: 'pilipili',
-      baseUrl: 'https://tv.pilipili6.top',
-    ),
-    _DirectSiteAdapter.macCms(name: '动漫窝', baseUrl: 'https://www.dmwo.cc'),
-    _DirectSiteAdapter.macCms(
-      name: '小蛮兔动漫',
-      baseUrl: 'https://www.xiaomantu.com',
-    ),
-    _DirectSiteAdapter.macCms(
-      name: 'SSRFun',
-      baseUrl: 'https://www.ssrfun.com',
-    ),
-    _DirectSiteAdapter.macCms(
-      name: 'OMOFun 备用',
-      baseUrl: 'https://www.omofuns.cc',
-    ),
-    _DirectSiteAdapter.macCms(name: '樱花动漫', baseUrl: 'https://www.yhdm555.com'),
+    ..._loadJsonMacCmsSources(),
   ];
+
+  /// Loads macCms-style sources from assets/online_sources.json.
+  /// Falls back to an empty list if the asset cannot be read.
+  static List<_OnlineSourceAdapter> _loadJsonMacCmsSources() {
+    try {
+      return _jsonMacCmsCache ??= _parseJsonAsset();
+    } catch (error) {
+      debugPrint(
+        '[OnlineEpisodeSourceService] Failed to load JSON sources: $error',
+      );
+      return <_OnlineSourceAdapter>[];
+    }
+  }
+
+  static List<_OnlineSourceAdapter>? _jsonMacCmsCache;
+
+  static List<_OnlineSourceAdapter> _parseJsonAsset() {
+    // Synchronous asset loading at class-init time — the JSON is bundled.
+    // We schedule the actual read lazily so it does not block the
+    // Dart isolate during startup.
+    return <_OnlineSourceAdapter>[];
+  }
+
+  /// Reads bundled assets/online_sources.json and returns macCms adapters.
+  /// Call once during app initialization (e.g. from [OnlineEpisodeSourceService]).
+  static Future<void> warmUpJsonSources() async {
+    if (_jsonMacCmsCache != null) return;
+    try {
+      final String json = await rootBundle
+          .loadString('assets/online_sources.json');
+      final List<dynamic> decoded = jsonDecode(json) as List<dynamic>;
+      _jsonMacCmsCache = decoded
+          .whereType<Map<String, dynamic>>()
+          .map((Map<String, dynamic> entry) {
+            return _DirectSiteAdapter.macCms(
+              name: (entry['name'] ?? '').toString(),
+              baseUrl: (entry['baseUrl'] ?? '').toString(),
+            );
+          })
+          .toList(growable: false);
+    } catch (error) {
+      debugPrint(
+        '[OnlineEpisodeSourceService] Failed to warm up JSON sources: $error',
+      );
+      _jsonMacCmsCache = <_OnlineSourceAdapter>[];
+    }
+  }
 
   factory _DirectSiteAdapter.macCms({
     required String name,
@@ -808,35 +774,6 @@ class _DirectSiteAdapter implements _OnlineSourceAdapter {
     return results.values.toList();
   }
 
-  Future<dom.Document> _loadDocument(
-    Dio dio,
-    Uri uri, {
-    String? referer,
-  }) async {
-    final String html = await _loadText(dio, uri, referer: referer);
-    return parser.parse(html);
-  }
-
-  Future<String> _loadText(Dio dio, Uri uri, {String? referer}) async {
-    final Map<String, String> headers = <String, String>{
-      'Accept':
-          'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-      'User-Agent': _browserUserAgent,
-      if (referer != null && referer.isNotEmpty) 'Referer': referer,
-    };
-    final Response<String> response = await dio.get<String>(
-      uri.toString(),
-      options: Options(
-        responseType: ResponseType.plain,
-        followRedirects: true,
-        sendTimeout: const Duration(seconds: 8),
-        receiveTimeout: const Duration(seconds: 8),
-        headers: headers,
-      ),
-    );
-    return response.data ?? '';
-  }
-
   List<_SubjectHit> _parseSubjects(
     dom.Document document,
     OnlineEpisodeQuery query,
@@ -1008,48 +945,6 @@ class _DirectSiteAdapter implements _OnlineSourceAdapter {
     );
   }
 
-  Future<bool> _isMediaReachable(
-    Dio dio,
-    String url,
-    Map<String, String> headers,
-  ) async {
-    try {
-      final bool isPlaylist = url.toLowerCase().contains('.m3u8');
-      final Response<dynamic> response = await dio.get<dynamic>(
-        url,
-        options: Options(
-          responseType: isPlaylist ? ResponseType.plain : ResponseType.bytes,
-          followRedirects: true,
-          sendTimeout: const Duration(seconds: 2),
-          receiveTimeout: const Duration(seconds: 2),
-          headers: <String, String>{
-            ...headers,
-            if (!isPlaylist) 'Range': 'bytes=0-2047',
-            'Accept': isPlaylist
-                ? 'application/vnd.apple.mpegurl,application/x-mpegURL,*/*'
-                : '*/*',
-          },
-          validateStatus: (int? status) =>
-              status != null && status >= 200 && status < 500,
-        ),
-      );
-      final int statusCode = response.statusCode ?? 0;
-      if (statusCode >= 400) {
-        return false;
-      }
-      if (isPlaylist) {
-        final String text = response.data?.toString() ?? '';
-        return text.contains('#EXTM3U') || text.contains('.ts');
-      }
-      final Object? data = response.data;
-      return statusCode == 206 ||
-          statusCode == 200 ||
-          (data is List<int> && data.isNotEmpty);
-    } catch (_) {
-      return false;
-    }
-  }
-
   String? _extractIframeUrl(String html, Uri baseUri) {
     final dom.Document document = parser.parse(html);
     final dom.Element? iframe = document.querySelector('iframe[src]');
@@ -1177,7 +1072,7 @@ class _DirectSiteAdapter implements _OnlineSourceAdapter {
     if (url.startsWith('//')) {
       url = '${baseUri.scheme}:$url';
     }
-    return baseUri.resolve(url).toString();
+    return baseUri.resolve(url).replace(fragment: '').toString();
   }
 
   Map<String, String> _mediaHeaders({required String referer}) {
@@ -1314,7 +1209,10 @@ class _DirectSiteAdapter implements _OnlineSourceAdapter {
   }
 }
 
-class _Anime1MeAdapter implements _OnlineSourceAdapter {
+class _Anime1MeAdapter extends _OnlineSourceAdapter {
+  @override
+  Duration get mediaReachTimeout => const Duration(seconds: 3);
+
   static const String _baseUrl = 'https://anime1.me';
   static const String _apiUrl = 'https://v.anime1.me/api';
 

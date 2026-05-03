@@ -26,6 +26,7 @@ class PlaybackActionPrompt extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final Color onSurface = Theme.of(context).colorScheme.onSurface;
     final List<Widget> actions = <Widget>[
       FilledButton(
         onPressed: onPrimary,
@@ -41,7 +42,7 @@ class PlaybackActionPrompt extends StatelessWidget {
         TextButton(
           onPressed: onSecondary,
           style: TextButton.styleFrom(
-            foregroundColor: Colors.white,
+            foregroundColor: onSurface,
             visualDensity: VisualDensity.compact,
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
           ),
@@ -54,7 +55,7 @@ class PlaybackActionPrompt extends StatelessWidget {
         TextButton(
           onPressed: onTertiary,
           style: TextButton.styleFrom(
-            foregroundColor: Colors.white70,
+            foregroundColor: onSurface.withValues(alpha: 0.7),
             visualDensity: VisualDensity.compact,
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
           ),
@@ -69,7 +70,7 @@ class PlaybackActionPrompt extends StatelessWidget {
         decoration: BoxDecoration(
           color: Colors.black.withValues(alpha: 0.76),
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.14)),
+          border: Border.all(color: onSurface.withValues(alpha: 0.14)),
           boxShadow: <BoxShadow>[
             BoxShadow(
               color: Colors.black.withValues(alpha: 0.24),
@@ -83,7 +84,7 @@ class PlaybackActionPrompt extends StatelessWidget {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
-              Icon(icon, color: Colors.white, size: 22),
+              Icon(icon, color: onSurface, size: 22),
               const SizedBox(width: 10),
               Flexible(
                 child: Column(
@@ -94,8 +95,8 @@ class PlaybackActionPrompt extends StatelessWidget {
                       title,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: Colors.white,
+                      style: TextStyle(
+                        color: onSurface,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
@@ -106,8 +107,8 @@ class PlaybackActionPrompt extends StatelessWidget {
                           subtitle!,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: Colors.white70,
+                          style: TextStyle(
+                            color: onSurface.withValues(alpha: 0.7),
                             fontSize: 12,
                           ),
                         ),

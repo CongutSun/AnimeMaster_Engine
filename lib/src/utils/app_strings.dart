@@ -65,6 +65,13 @@ class AppStrings {
   static const String bangumiLoginFailed = 'Bangumi 登录失败';
   static const String authCleared = 'Bangumi 授权已清除。';
 
+  // ── Toolbar ──
+  static const String toolbarCollection = '收藏';
+  static const String toolbarDownloadCenter = '缓存中心';
+  static const String toolbarSettings = '设置';
+  static const String toolbarClear = '清空';
+  static const String toolbarSearch = '搜索番剧或书籍';
+
   // ── Generic ──
   static const String noData = '暂无数据';
   static const String retry = '重试';
@@ -74,6 +81,15 @@ class AppStrings {
   static const String unknown = '未知';
   static const String loadFailed = '数据加载失败，请下拉重试或检查网络状态';
   static const String networkError = '网络连接异常，请检查后重试';
+
+  // ── Collection ──
+  static const String collectionEmpty = '已经看完啦！';
+
+  // ── Download ──
+  static const String downloadNoTasks = '暂无下载任务';
+  static const String downloadCompleted = '已完成';
+  static const String downloadPaused = '已暂停';
+  static const String downloadActive = '下载中';
 
   // ── Units ──
   static List<String> get collectionStatuses =>

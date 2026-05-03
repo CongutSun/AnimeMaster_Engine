@@ -1,3 +1,19 @@
+## 2.3.2
+
+* 工程基础设施：引入 GitHub Actions CI 流水线（lint + test + build），开启 12 条新 lint 规则提升代码质量。
+* 增强更新安全性：APK 更新清单新增 SHA256 字段，更新对话框展示校验值供用户核对。
+* 重构在线源适配器：抽象基类提取 6 个共享方法，消除约 200 行重复代码；60+ 站点配置迁移至 JSON 数据驱动，支持热更新。
+* API 层优化：新增 `_cachedListGet` / `_cachedMapGet` 泛型缓存 helper 消除模板代码；完善类型化异常体系（ServerException + exceptionUserMessage）。
+* DI 容器引入：集成 get_it 服务定位器，核心服务统一注册管理，降低组件间硬耦合。
+* 亮色主题适配：PlaybackActionPrompt、下载中心状态色迁移至语义化 colorScheme。
+* 骨架屏断点与动画网格对齐（480/760/980/1180），消除加载布局跳变。
+* 顶部工具栏、动画网格等 8 处硬编码中文迁移至 AppStrings 集中管理。
+* 视频播放器 dispose 链路 14 处静默 catch 增加调试日志输出。
+* 新增可复用 ErrorStateWidget 错误状态组件（含网络错误/加载失败变体及重试按钮）。
+* AnimeCard 增加 Semantics 无障碍标签，删除 50 行未引用的 defaults 列表死代码。
+* 补充测试覆盖：Episode、AppUpdateInfo 模型测试；SettingsProvider、HomeViewModel、SearchViewModel 状态测试；AppUpdateService 解析测试。测试用例从 24 增至 73+。
+* 原生引擎 C++ 版本号同步至 v2.3.2，依赖 dtorrent_parser 固定版本、sqlite3_flutter_libs 移除 EOL 标记。
+
 ## 2.3.1
 
 * 优化详情页状态栏过渡：头图毛玻璃延伸到系统栏，置顶 TabBar 使用半透明渐变隔离，不再出现突兀白条。

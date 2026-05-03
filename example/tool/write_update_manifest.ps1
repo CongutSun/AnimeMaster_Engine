@@ -6,6 +6,11 @@ param(
     [string]$ArmV7ApkUrl = "",
     [string]$X64ApkUrl = "",
 
+    [string]$Sha256 = "",
+    [string]$Arm64Sha256 = "",
+    [string]$ArmV7Sha256 = "",
+    [string]$X64Sha256 = "",
+
     [string]$OutputPath = "build/app/outputs/flutter-apk/app_update.json",
 
     [string[]]$Notes = @("Routine update")
@@ -43,6 +48,13 @@ if ($ArmV7ApkUrl.Trim()) { $apkUrls["android-arm"] = $ArmV7ApkUrl.Trim() }
 if ($X64ApkUrl.Trim()) { $apkUrls["android-x64"] = $X64ApkUrl.Trim() }
 if ($ApkUrl.Trim()) { $apkUrls["universal"] = $ApkUrl.Trim() }
 if ($apkUrls.Count -gt 0) { $manifest.apkUrls = $apkUrls }
+
+$sha256Map = [ordered]@{}
+if ($Arm64Sha256.Trim()) { $sha256Map["android-arm64"] = $Arm64Sha256.Trim() }
+if ($ArmV7Sha256.Trim()) { $sha256Map["android-arm"] = $ArmV7Sha256.Trim() }
+if ($X64Sha256.Trim()) { $sha256Map["android-x64"] = $X64Sha256.Trim() }
+if ($Sha256.Trim()) { $sha256Map["universal"] = $Sha256.Trim() }
+if ($sha256Map.Count -gt 0) { $manifest.sha256 = $sha256Map }
 
 $outputFile = Join-Path $projectRoot $OutputPath
 $outputDir = Split-Path -Parent $outputFile

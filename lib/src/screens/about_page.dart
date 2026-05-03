@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
 
+import '../core/service_locator.dart';
 import '../providers/settings_provider.dart';
 import '../services/app_update_service.dart';
 
@@ -41,7 +42,8 @@ class _AboutPageState extends State<AboutPage> {
       _isCheckingUpdate = true;
     });
 
-    final AppUpdateCheckResult result = await const AppUpdateService()
+    final AppUpdateService updateService = locator<AppUpdateService>();
+    final AppUpdateCheckResult result = await updateService
         .checkForUpdates(settings.appUpdateFeedUrl);
 
     if (!mounted) {
@@ -52,7 +54,7 @@ class _AboutPageState extends State<AboutPage> {
       _isCheckingUpdate = false;
     });
 
-    await const AppUpdateService().showUpdateDialog(context, result);
+    await updateService.showUpdateDialog(context, result);
   }
 
   @override

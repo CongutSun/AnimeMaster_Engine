@@ -2307,18 +2307,40 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
   @override
   void dispose() {
     // ── best-effort progress save before teardown ──
-    try { unawaited(_savePlaybackProgress(force: true)); } catch (_) {}
+    try {
+      unawaited(_savePlaybackProgress(force: true));
+    } catch (error) {
+      debugPrint('[VideoPlayerPage] Error saving progress on dispose: $error');
+    }
 
     WidgetsBinding.instance.removeObserver(this);
-    try { unawaited(PictureInPictureService.setPlaybackActive(false)); } catch (_) {}
-    try { unawaited(PictureInPictureService.setAutoEnter(false)); } catch (_) {}
-    try { unawaited(_onlineSourceSubscription?.cancel()); } catch (_) {}
+    try {
+      unawaited(PictureInPictureService.setPlaybackActive(false));
+    } catch (error) {
+      debugPrint('[VideoPlayerPage] Error in PiP setActive on dispose: $error');
+    }
+    try {
+      unawaited(PictureInPictureService.setAutoEnter(false));
+    } catch (error) {
+      debugPrint('[VideoPlayerPage] Error in PiP setAutoEnter on dispose: $error');
+    }
+    try {
+      unawaited(_onlineSourceSubscription?.cancel());
+    } catch (error) {
+      debugPrint('[VideoPlayerPage] Error canceling online source sub: $error');
+    }
     try {
       unawaited(
         ScreenBrightnessPlatform.instance.resetApplicationScreenBrightness(),
       );
-    } catch (_) {}
-    try { VolumeController.instance.showSystemUI = true; } catch (_) {}
+    } catch (error) {
+      debugPrint('[VideoPlayerPage] Error resetting brightness on dispose: $error');
+    }
+    try {
+      VolumeController.instance.showSystemUI = true;
+    } catch (error) {
+      debugPrint('[VideoPlayerPage] Error restoring system UI on dispose: $error');
+    }
 
     _cancelControlsAutoHide();
     _cancelAutoNextCountdown();
@@ -2327,24 +2349,60 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
     _gestureIndicatorTimer?.cancel();
     _progressSaveTimer?.cancel();
     for (final StreamSubscription<dynamic> subscription in _subscriptions) {
-      try { subscription.cancel(); } catch (_) {}
+      try {
+        subscription.cancel();
+      } catch (error) {
+        debugPrint('[VideoPlayerPage] Error canceling subscription on dispose: $error');
+      }
     }
     if (_isMagnet) {
-      try { _coordinator.removeListener(_onStateChanged); } catch (_) {}
-      try { _coordinator.reset(); } catch (_) {}
+      try {
+        _coordinator.removeListener(_onStateChanged);
+      } catch (error) {
+        debugPrint('[VideoPlayerPage] Error removing listener on dispose: $error');
+      }
+      try {
+        _coordinator.reset();
+      } catch (error) {
+        debugPrint('[VideoPlayerPage] Error resetting coordinator on dispose: $error');
+      }
     }
 
     // ── stop media before disposing native resources ──
     if (_ownsPlayer) {
-      try { widget.streamServer?.stop(); } catch (_) {}
-      try { _player.stop(); } catch (_) {}
+      try {
+        widget.streamServer?.stop();
+      } catch (error) {
+        debugPrint('[VideoPlayerPage] Error stopping stream server on dispose: $error');
+      }
+      try {
+        _player.stop();
+      } catch (error) {
+        debugPrint('[VideoPlayerPage] Error stopping player on dispose: $error');
+      }
     }
-    try { _onlineSourcesNotifier.dispose(); } catch (_) {}
-    try { _onlineSourceSearchingNotifier.dispose(); } catch (_) {}
+    try {
+      _onlineSourcesNotifier.dispose();
+    } catch (error) {
+      debugPrint('[VideoPlayerPage] Error disposing online sources on dispose: $error');
+    }
+    try {
+      _onlineSourceSearchingNotifier.dispose();
+    } catch (error) {
+      debugPrint('[VideoPlayerPage] Error disposing search notifier on dispose: $error');
+    }
     if (_ownsPlayer) {
-      try { _player.dispose(); } catch (_) {}
+      try {
+        _player.dispose();
+      } catch (error) {
+        debugPrint('[VideoPlayerPage] Error disposing player on dispose: $error');
+      }
     }
-    try { _exitPlayerMode(); } catch (_) {}
+    try {
+      _exitPlayerMode();
+    } catch (error) {
+      debugPrint('[VideoPlayerPage] Error exiting player mode on dispose: $error');
+    }
     super.dispose();
   }
 
