@@ -353,7 +353,7 @@ abstract class _OnlineSourceAdapter {
     final Map<String, String> headers = <String, String>{
       'Accept':
           'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-      'User-Agent': _browserUserAgent,
+      'User-Agent': _OnlineSourceAdapter._browserUserAgent,
       if (referer != null && referer.isNotEmpty) 'Referer': referer,
     };
     final Response<String> response = await dio.get<String>(
@@ -459,7 +459,7 @@ class _DirectSiteAdapter extends _OnlineSourceAdapter {
   final String episodeSelector;
   final RegExp episodeHrefPattern;
 
-  const _DirectSiteAdapter({
+  _DirectSiteAdapter({
     required this.name,
     required this.baseUrl,
     required this.searchPathBuilder,
@@ -506,7 +506,7 @@ class _DirectSiteAdapter extends _OnlineSourceAdapter {
       episodeSelector: 'a.e-aa[href], a.e-ww[href]',
       episodeHrefPattern: RegExp(r'^/\d+-\d+-\d+/?$'),
     ),
-    const _Anime1MeAdapter(),
+    _Anime1MeAdapter(),
     _DirectSiteAdapter(
       name: '橘子动漫',
       baseUrl: 'https://www.mgnacg.com',
@@ -1078,7 +1078,7 @@ class _DirectSiteAdapter extends _OnlineSourceAdapter {
   Map<String, String> _mediaHeaders({required String referer}) {
     final Map<String, String> headers = <String, String>{
       'Accept': '*/*',
-      'User-Agent': _browserUserAgent,
+      'User-Agent': _OnlineSourceAdapter._browserUserAgent,
       'Referer': referer,
     };
     final Uri? refererUri = Uri.tryParse(referer);
@@ -1216,7 +1216,7 @@ class _Anime1MeAdapter extends _OnlineSourceAdapter {
   static const String _baseUrl = 'https://anime1.me';
   static const String _apiUrl = 'https://v.anime1.me/api';
 
-  const _Anime1MeAdapter();
+  _Anime1MeAdapter();
 
   @override
   String get name => 'Anime1.me';
@@ -1356,7 +1356,7 @@ class _Anime1MeAdapter extends _OnlineSourceAdapter {
         headers: <String, String>{
           'Accept':
               'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-          'User-Agent': _DirectSiteAdapter._browserUserAgent,
+          'User-Agent': _OnlineSourceAdapter._browserUserAgent,
           if (referer != null && referer.isNotEmpty) 'Referer': referer,
         },
       ),
@@ -1511,7 +1511,7 @@ class _Anime1MeAdapter extends _OnlineSourceAdapter {
           'Content-Type': 'application/x-www-form-urlencoded',
           'Origin': _baseUrl,
           'Referer': playPageUrl,
-          'User-Agent': _DirectSiteAdapter._browserUserAgent,
+          'User-Agent': _OnlineSourceAdapter._browserUserAgent,
           'X-Requested-With': 'XMLHttpRequest',
         },
       ),
@@ -1540,7 +1540,7 @@ class _Anime1MeAdapter extends _OnlineSourceAdapter {
 
     final String mediaUrl = _normalizeAbsoluteUrl(rawUrl, Uri.parse(_baseUrl));
     final Map<String, String> mediaHeaders = <String, String>{
-      'User-Agent': _DirectSiteAdapter._browserUserAgent,
+      'User-Agent': _OnlineSourceAdapter._browserUserAgent,
       'Referer': playPageUrl,
       'Origin': _baseUrl,
     };
