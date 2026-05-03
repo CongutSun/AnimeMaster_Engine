@@ -40,6 +40,24 @@ example/android/key.properties
 example/android/keystore/
 release/*.apk
 
+# C++ / FFI build artifacts
+*.o
+*.so
+*.dll
+*.dylib
+.cxx/
+android/.cxx/
+
+# Android NDK / Gradle cache
+android/.gradle/
+example/android/.gradle/
+example/android/app/build/
+example/android/build/
+example/android/local.properties
+
+# Generated FFI bindings (comment out if tracking)
+# animemaster_bindings_generated.dart
+
 # 排除所有平台产生的日志和缓存
 .flutter-plugins
 .packages

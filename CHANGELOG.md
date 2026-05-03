@@ -1,3 +1,31 @@
+## 2.3.1
+
+* 优化详情页状态栏过渡：头图毛玻璃延伸到系统栏，置顶 TabBar 使用半透明渐变隔离，不再出现突兀白条。
+* 稳定详情页“详情 / 剧集 / 进度 / 吐槽”切换时的滚动位置，TabBar 已置顶时切换板块不再带动整页上下跳动。
+* 修复番剧播放页本集讨论的楼中楼解析重复问题，避免同一条嵌套回复被当成多条评论显示。
+* 修正番剧和书籍详情页顶部 TabBar 的安全区与返回按钮命中区域，置顶后不再多出空白、闪移或挡住切换。
+* 二次元库状态切换菜单补齐圆角，与应用内弹窗和控件风格保持一致。
+* 修复搜索结果页番剧/书籍类型切换只能稳定生效一次的问题，切换时会重置分页和滚动位置。
+* 修复千集长连载番剧“已出 xx/xxx 集”只统计当前 100 集分片的问题。
+* 引入 Drift/SQLite 本地数据库，建立番剧、剧集、下载任务和播放进度的独立表结构。
+* 下载任务从 SharedPreferences 巨型 JSON 迁移为按 hash 主键增量更新，并保留旧数据自动迁移。
+* 播放进度迁移到独立数据库表，和番剧元数据、剧集状态解耦。
+* 首页和搜索页拆出 Repository / ViewModel 边界，缓存解析与列表映射下放后台线程。
+* 搜索页重构为 SearchViewModel 驱动，分页状态和类型切换脱离 UI 层。
+* 千集长番剧集列表支持分片渲染（每 100 集一组），ChoiceChip 快速跳转，短番保持原列表布局。
+* 剧集已看/未看状态切换改用 ValueListenableBuilder 局部刷新，不再触发整页重绘。
+* Bangumi API 全局缓存升级为 TTL + LRU 方案，替换 16 个无界 static Map，日历数据每小时自动失效。
+* Dio 网络层新增 Bangumi 401 自动 Token 刷新拦截器，无感续期后重放原请求。
+* 播放器 dispose 链路全部加 try-catch 隔离，销毁前显式 stop() 再释放原生编解码器。
+* 首页背景改回 BackdropFilter 毛玻璃效果，替代纯色 Alpha 遮挡。
+* 全局 Dialog / BottomSheet / SnackBar 圆角统一为 Radius.circular(20)，边框色和背景色绑定 scheme Token。
+* 详情页角色/声优选择从手写 AlertDialog 替换为通用 SelectionSheet 组件。
+* 系统设置页"继续播放"选项改用与主题模式一致的底部弹窗，标签改为"播放前询问 / 自动续播 / 始终从头播放"。
+* Bangumi Token 统一仅存 FlutterSecureStorage，移除 SharedPreferences 明文副本。
+* 消除 detail_page / episode_watch_page / torrent_media_resolver / bangumi_api 间 ~250 行重复解析逻辑，提取到 episode_helpers 和 format_helpers。
+* 新增 Episode 强类型模型、ApiCacheManager、ApiExceptions 类型化异常、AppStrings 集中字符串等基础模块。
+* 补齐工具函数单元测试（episode_helpers、format_helpers），完善 .gitignore 构建产物忽略。
+
 ## 2.2.9
 
 * 移除首页搜索栏冗余的蓝色箭头按钮，搜索改由键盘搜索动作提交，减少误触和视觉负担。

@@ -11,6 +11,7 @@ import '../managers/download_manager.dart';
 import '../models/download_task_info.dart';
 import '../utils/app_storage_paths.dart';
 import '../utils/magnet_optimizer.dart';
+import '../utils/episode_helpers.dart';
 import '../utils/task_title_parser.dart';
 import '../utils/torrent_cache_fetcher.dart';
 
@@ -482,15 +483,7 @@ class TorrentMediaResolver {
     }
   }
 
-  int? _numberValue(dynamic value) {
-    if (value is int) {
-      return value;
-    }
-    if (value is num) {
-      return value.round();
-    }
-    return int.tryParse(value?.toString() ?? '');
-  }
+  int? _numberValue(dynamic value) => safeInt(value);
 
   int _resolveInitialIndex({
     required List<ResolvedMediaInfo> mediaItems,

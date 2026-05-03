@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/playable_media.dart';
+import '../repositories/playback_progress_repository.dart';
+import '../storage/app_database.dart';
 
 class PlaybackProgressSnapshot {
   final Duration position;
@@ -20,14 +22,61 @@ class PlaybackProgressStore {
   static const Duration _minimumRestorePosition = Duration(seconds: 10);
   static const Duration _minimumSavePosition = Duration(seconds: 5);
   static const Duration _endIgnoreWindow = Duration(seconds: 20);
+  static final PlaybackProgressRepository _repository =
+      PlaybackProgressRepository.instance;
 
   const PlaybackProgressStore._();
 
   static Future<PlaybackProgressSnapshot?> load(PlayableMedia media) async {
-    final SharedPreferences prefs = await SharedPreferences.getInstance();
     final String key = keyFor(media);
-    final int savedPositionMs = prefs.getInt('$key.position') ?? 0;
-    final int savedDurationMs = prefs.getInt('$key.duration') ?? 0;
+    final PlaybackProgressRecord? record = await _repository.loadByKey(key);
+    if (record != null) {
+      return _snapshotFromRecord(record);
+    }
+
+    final PlaybackProgressSnapshot? legacySnapshot = await _loadLegacySnapshot(
+      key,
+    );
+    if (legacySnapshot != null) {
+      await _repository.save(
+        mediaKey: key,
+        media: media,
+        position: legacySnapshot.position,
+        duration: legacySnapshot.duration,
+      );
+      await _removeLegacySnapshot(key);
+    }
+    return legacySnapshot;
+  }
+
+  static PlaybackProgressSnapshot? _snapshotFromRecord(
+    PlaybackProgressRecord record,
+  ) {
+    return _buildSnapshot(
+      positionMs: record.positionMs,
+      durationMs: record.durationMs,
+      updatedAtMs: record.updatedAtMs,
+    );
+  }
+
+  static Future<PlaybackProgressSnapshot?> _loadLegacySnapshot(
+    String key,
+  ) async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    return _buildSnapshot(
+      positionMs: prefs.getInt('$key.position') ?? 0,
+      durationMs: prefs.getInt('$key.duration') ?? 0,
+      updatedAtMs: prefs.getInt('$key.updatedAt') ?? 0,
+    );
+  }
+
+  static PlaybackProgressSnapshot? _buildSnapshot({
+    required int positionMs,
+    required int durationMs,
+    required int updatedAtMs,
+  }) {
+    final int savedPositionMs = positionMs;
+    final int savedDurationMs = durationMs;
     if (savedPositionMs < _minimumRestorePosition.inMilliseconds) {
       return null;
     }
@@ -39,10 +88,15 @@ class PlaybackProgressStore {
     return PlaybackProgressSnapshot(
       position: Duration(milliseconds: savedPositionMs),
       duration: Duration(milliseconds: savedDurationMs),
-      updatedAt: DateTime.fromMillisecondsSinceEpoch(
-        prefs.getInt('$key.updatedAt') ?? 0,
-      ),
+      updatedAt: DateTime.fromMillisecondsSinceEpoch(updatedAtMs),
     );
+  }
+
+  static Future<void> _removeLegacySnapshot(String key) async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    await prefs.remove('$key.position');
+    await prefs.remove('$key.duration');
+    await prefs.remove('$key.updatedAt');
   }
 
   static Future<void> save(
@@ -55,11 +109,13 @@ class PlaybackProgressStore {
       return;
     }
 
-    final SharedPreferences prefs = await SharedPreferences.getInstance();
     final String key = keyFor(media);
-    await prefs.setInt('$key.position', position.inMilliseconds);
-    await prefs.setInt('$key.duration', duration.inMilliseconds);
-    await prefs.setInt('$key.updatedAt', DateTime.now().millisecondsSinceEpoch);
+    await _repository.save(
+      mediaKey: key,
+      media: media,
+      position: position,
+      duration: duration,
+    );
   }
 
   static String keyFor(PlayableMedia media) {

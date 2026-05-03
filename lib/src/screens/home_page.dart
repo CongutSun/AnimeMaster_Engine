@@ -1,16 +1,16 @@
 import 'dart:io' show File;
-import 'dart:convert';
+import 'dart:ui';
 
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
-import '../api/bangumi_api.dart';
-import '../models/anime.dart';
 import '../providers/settings_provider.dart';
-import '../widgets/top_tool_bar.dart';
+import '../repositories/home_repository.dart';
+import '../viewmodels/home_view_model.dart';
 import '../widgets/anime_grid.dart';
+import '../widgets/skeleton.dart';
+import '../widgets/top_tool_bar.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -20,171 +20,57 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  List<Anime> todayAnime = [];
-  List<Anime> topAnime = [];
-  List<dynamic> fullCalendar = [];
-
-  bool isLoading = true;
-  String? errorMessage;
-  bool showTodayOnly = true;
-  String todayString = '';
+  late final HomeViewModel _viewModel;
 
   @override
   void initState() {
     super.initState();
-    _loadData();
+    _viewModel = HomeViewModel();
+    _viewModel.load();
   }
 
-  Future<void> _loadData({bool forceRefresh = false}) async {
-    final prefs = await SharedPreferences.getInstance();
-    final cachedCalendar = prefs.getString('cache_calendar');
-    final cachedTop = prefs.getString('cache_top');
-    final cacheTimeStr = prefs.getString('cache_time');
-
-    bool hasValidCache = false;
-
-    if (cachedCalendar != null &&
-        cachedTop != null &&
-        cacheTimeStr != null &&
-        !forceRefresh) {
-      try {
-        final cacheTime = DateTime.parse(cacheTimeStr);
-        if (DateTime.now().difference(cacheTime).inHours < 4) {
-          final calendar = jsonDecode(cachedCalendar);
-          final rawTopData = jsonDecode(cachedTop);
-
-          if (calendar is List && rawTopData is List) {
-            final validTopData = rawTopData
-                .whereType<Map>()
-                .map((e) => Map<String, dynamic>.from(e))
-                .toList();
-            _parseAndSetData(calendar, validTopData);
-            hasValidCache = true;
-          }
-        }
-      } catch (e) {
-        debugPrint('[HomePage] Cache parsing failed: $e');
-      }
-    }
-
-    if (!hasValidCache) {
-      if (mounted) {
-        setState(() {
-          isLoading = true;
-          errorMessage = null;
-        });
-      }
-      await _fetchNetworkData(prefs, isSilent: false);
-    } else {
-      _fetchNetworkData(prefs, isSilent: true);
-    }
+  @override
+  void dispose() {
+    _viewModel.dispose();
+    super.dispose();
   }
 
-  Future<void> _fetchNetworkData(
-    SharedPreferences prefs, {
-    bool isSilent = false,
-  }) async {
-    try {
-      final results = await Future.wait([
-        BangumiApi.getCalendar(),
-        BangumiApi.getYearTop(),
-      ]);
-
-      // 修复 Linter: unnecessary_cast
-      // Dart 自动推导出 results 的元素为 List，直接使用 List.from 转换内部元素即可
-      final List<dynamic> calendar = results[0];
-      final List<Map<String, dynamic>> rawTopData =
-          List<Map<String, dynamic>>.from(results[1]);
-
-      if (calendar.isNotEmpty && rawTopData.isNotEmpty) {
-        await prefs.setString('cache_calendar', jsonEncode(calendar));
-        await prefs.setString('cache_top', jsonEncode(rawTopData));
-        await prefs.setString('cache_time', DateTime.now().toIso8601String());
-
-        _parseAndSetData(calendar, rawTopData);
-      } else if (!isSilent) {
-        throw Exception("API returned empty data sequence.");
-      }
-    } catch (e) {
-      debugPrint('[HomePage] Network fetch exception: $e');
-      if (!isSilent && mounted && todayAnime.isEmpty) {
-        setState(() {
-          isLoading = false;
-          errorMessage = '数据加载失败，请下拉重试或检查网络状态';
-        });
-      }
-    }
-  }
-
-  void _parseAndSetData(
-    List<dynamic> calendar,
-    List<Map<String, dynamic>> rawTopData,
-  ) {
-    final weekday = DateTime.now().weekday;
-    const days = ["星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"];
-    todayString = days[weekday - 1];
-
-    List<Anime> parsedToday = [];
-    for (var day in calendar) {
-      if (day is Map && day['weekday']?['id'] == weekday) {
-        final items = day['items'] as List? ?? [];
-        parsedToday = items
-            .whereType<Map>()
-            .map((e) => Anime.fromJson(Map<String, dynamic>.from(e)))
-            .toList();
-        break;
-      }
-    }
-
-    if (mounted) {
-      setState(() {
-        fullCalendar = calendar;
-        todayAnime = parsedToday;
-        topAnime = rawTopData.map((e) => Anime.fromJson(e)).toList();
-        isLoading = false;
-        errorMessage = null;
-      });
-    }
-  }
-
-  Widget _buildWeekSchedule() {
+  Widget _buildWeekSchedule(HomeContentSnapshot snapshot) {
     final ColorScheme colors = Theme.of(context).colorScheme;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
-      children: fullCalendar.whereType<Map>().map((day) {
-        final weekdayName =
-            day['weekday']?['cn'] ?? day['weekday']?['en'] ?? '未知';
-        final items = day['items'] as List? ?? [];
-        final dayAnime = items
-            .whereType<Map>()
-            .map((e) => Anime.fromJson(Map<String, dynamic>.from(e)))
-            .toList();
-
-        return Padding(
-          padding: const EdgeInsets.only(bottom: 24.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Icon(Icons.live_tv_rounded, color: colors.primary, size: 18),
-                  const SizedBox(width: 7),
-                  Text(
-                    weekdayName.toString(),
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: colors.primary,
-                    ),
+      children: snapshot.weekSchedule
+          .map((HomeScheduleDay day) {
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 24.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Row(
+                    children: <Widget>[
+                      Icon(
+                        Icons.live_tv_rounded,
+                        color: colors.primary,
+                        size: 18,
+                      ),
+                      const SizedBox(width: 7),
+                      Text(
+                        day.weekdayName,
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: colors.primary,
+                        ),
+                      ),
+                    ],
                   ),
+                  const SizedBox(height: 12),
+                  AnimeGrid(animeList: day.animeList, isTop: false),
                 ],
               ),
-              const SizedBox(height: 12),
-              AnimeGrid(animeList: dayAnime, isTop: false),
-            ],
-          ),
-        );
-      }).toList(),
+            );
+          })
+          .toList(growable: false),
     );
   }
 
@@ -224,28 +110,57 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  Widget _buildContent() {
-    if (isLoading) return const Center(child: CircularProgressIndicator());
-    if (errorMessage != null) {
+  Widget _buildContent(HomeViewState state) {
+    final HomeContentSnapshot? snapshot = state.snapshot;
+    if (state.isLoading && snapshot == null) {
+      return SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 10.0),
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 1180),
+            child: const Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                SkeletonBlock(width: 180, height: 32),
+                SizedBox(height: 16),
+                AnimeGridSkeleton(itemCount: 6),
+                SizedBox(height: 32),
+                SkeletonBlock(width: 160, height: 32),
+                SizedBox(height: 16),
+                AnimeGridSkeleton(itemCount: 6),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+    if (state.errorMessage != null && snapshot == null) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
-          children: [
+          children: <Widget>[
             const Icon(Icons.error_outline, size: 48, color: Colors.redAccent),
             const SizedBox(height: 16),
-            Text(errorMessage!, style: const TextStyle(color: Colors.grey)),
+            Text(
+              state.errorMessage!,
+              style: const TextStyle(color: Colors.grey),
+            ),
             const SizedBox(height: 16),
             ElevatedButton(
-              onPressed: () => _loadData(forceRefresh: true),
+              onPressed: () => _viewModel.load(forceRefresh: true),
               child: const Text('重新加载'),
             ),
           ],
         ),
       );
     }
+    if (snapshot == null) {
+      return const SizedBox.shrink();
+    }
 
     return RefreshIndicator(
-      onRefresh: () => _loadData(forceRefresh: true),
+      onRefresh: () => _viewModel.load(forceRefresh: true),
       child: SingleChildScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 10.0),
@@ -254,26 +169,27 @@ class _HomePageState extends State<HomePage> {
             constraints: const BoxConstraints(maxWidth: 1180),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
+              children: <Widget>[
                 _buildSectionHeader(
                   icon: Icons.calendar_month_rounded,
-                  title: showTodayOnly ? '$todayString · 今日排期' : '本周整体排期',
+                  title: state.showTodayOnly
+                      ? '${snapshot.todayString} · 今日排期'
+                      : '本周整体排期',
                   trailing: TextButton.icon(
-                    onPressed: () =>
-                        setState(() => showTodayOnly = !showTodayOnly),
+                    onPressed: _viewModel.toggleScheduleMode,
                     icon: Icon(
-                      showTodayOnly
+                      state.showTodayOnly
                           ? Icons.calendar_view_week_rounded
                           : Icons.today_rounded,
                       size: 18,
                     ),
-                    label: Text(showTodayOnly ? '查看全周' : '查看今日'),
+                    label: Text(state.showTodayOnly ? '查看全周' : '查看今日'),
                   ),
                 ),
                 const SizedBox(height: 16),
-                showTodayOnly
-                    ? AnimeGrid(animeList: todayAnime, isTop: false)
-                    : _buildWeekSchedule(),
+                state.showTodayOnly
+                    ? AnimeGrid(animeList: snapshot.todayAnime, isTop: false)
+                    : _buildWeekSchedule(snapshot),
                 const SizedBox(height: 32),
                 _buildSectionHeader(
                   icon: Icons.emoji_events_rounded,
@@ -281,7 +197,7 @@ class _HomePageState extends State<HomePage> {
                   iconColor: const Color(0xFFFF9F0A),
                 ),
                 const SizedBox(height: 16),
-                AnimeGrid(animeList: topAnime, isTop: true),
+                AnimeGrid(animeList: snapshot.topAnime, isTop: true),
                 const SizedBox(height: 40),
               ],
             ),
@@ -315,17 +231,29 @@ class _HomePageState extends State<HomePage> {
             ),
           if (hasBg)
             Positioned.fill(
-              child: ColoredBox(
-                color: isDark
-                    ? Colors.black.withValues(alpha: 0.46)
-                    : colors.surface.withValues(alpha: 0.24),
+              child: ClipRect(
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 6, sigmaY: 6),
+                  child: ColoredBox(
+                    color: isDark
+                        ? Colors.black.withValues(alpha: 0.46)
+                        : colors.surface.withValues(alpha: 0.24),
+                  ),
+                ),
               ),
             ),
           SafeArea(
             child: Column(
-              children: [
+              children: <Widget>[
                 const TopToolBar(),
-                Expanded(child: _buildContent()),
+                Expanded(
+                  child: AnimatedBuilder(
+                    animation: _viewModel,
+                    builder: (BuildContext context, Widget? child) {
+                      return _buildContent(_viewModel.state);
+                    },
+                  ),
+                ),
               ],
             ),
           ),

@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import '../api/bangumi_api.dart';
-import '../utils/image_request.dart';
+
 import '../models/anime.dart';
+import '../viewmodels/search_view_model.dart';
+import '../utils/image_request.dart';
+import '../widgets/skeleton.dart';
 import 'detail_page.dart';
 
 class SearchPage extends StatefulWidget {
@@ -15,26 +17,19 @@ class SearchPage extends StatefulWidget {
 }
 
 class _SearchPageState extends State<SearchPage> {
-  List<Anime> searchResults = [];
-  bool isLoading = true;
-  bool isLoadingMore = false;
-  bool hasMore = true;
-
-  int currentSubjectType = 2;
-  int currentStart = 0;
-  final int maxResults = 25;
-
+  late final SearchViewModel _viewModel;
   final ScrollController _scrollController = ScrollController();
 
   @override
   void initState() {
     super.initState();
-    _performSearch();
+    _viewModel = SearchViewModel();
+    _viewModel.search(widget.keyword);
 
     _scrollController.addListener(() {
       if (_scrollController.position.pixels >=
           _scrollController.position.maxScrollExtent - 200) {
-        _loadMore();
+        _viewModel.loadMore(widget.keyword);
       }
     });
   }
@@ -42,72 +37,29 @@ class _SearchPageState extends State<SearchPage> {
   @override
   void dispose() {
     _scrollController.dispose();
+    _viewModel.dispose();
     super.dispose();
   }
 
-  Future<void> _performSearch() async {
-    setState(() {
-      isLoading = true;
-      currentStart = 0;
-      hasMore = true;
-      searchResults.clear();
-    });
-
-    final rawResults = await BangumiApi.search(
-      widget.keyword,
-      type: currentSubjectType,
-      start: currentStart,
-      maxResults: maxResults,
-    );
-
-    if (mounted) {
-      setState(() {
-        searchResults = rawResults.map((e) => Anime.fromJson(e)).toList();
-        isLoading = false;
-        if (rawResults.length < maxResults) {
-          hasMore = false;
-        }
-      });
+  void _switchSubjectType(int type) {
+    if (type == _viewModel.state.currentSubjectType) {
+      return;
     }
+    if (_scrollController.hasClients) {
+      _scrollController.jumpTo(0);
+    }
+    _viewModel.setSubjectType(type);
+    _viewModel.search(widget.keyword);
   }
 
-  Future<void> _loadMore() async {
-    if (isLoading || isLoadingMore || !hasMore) return;
-
-    setState(() => isLoadingMore = true);
-    currentStart += maxResults;
-
-    final rawResults = await BangumiApi.search(
-      widget.keyword,
-      type: currentSubjectType,
-      start: currentStart,
-      maxResults: maxResults,
-    );
-
-    if (mounted) {
-      setState(() {
-        if (rawResults.isEmpty) {
-          hasMore = false;
-        } else {
-          searchResults.addAll(
-            rawResults.map((e) => Anime.fromJson(e)).toList(),
-          );
-          if (rawResults.length < maxResults) {
-            hasMore = false;
-          }
-        }
-        isLoadingMore = false;
-      });
-    }
-  }
-
-  Widget _buildProgressIndicator() {
-    if (isLoadingMore) {
+  Widget _buildProgressIndicator(SearchViewState state) {
+    if (state.isLoadingMore) {
       return const Padding(
         padding: EdgeInsets.all(16.0),
         child: Center(child: CircularProgressIndicator()),
       );
-    } else if (!hasMore && searchResults.isNotEmpty) {
+    }
+    if (!state.hasMore && state.results.isNotEmpty) {
       return const Padding(
         padding: EdgeInsets.all(16.0),
         child: Center(
@@ -129,131 +81,172 @@ class _SearchPageState extends State<SearchPage> {
         actions: [
           Padding(
             padding: const EdgeInsets.only(right: 16.0),
-            child: SegmentedButton<int>(
-              showSelectedIcon: false,
-              segments: const <ButtonSegment<int>>[
-                ButtonSegment<int>(
-                  value: 2,
-                  icon: Icon(Icons.tv_rounded, size: 16),
-                  label: Text('番剧'),
-                ),
-                ButtonSegment<int>(
-                  value: 1,
-                  icon: Icon(Icons.menu_book_rounded, size: 16),
-                  label: Text('书籍'),
-                ),
-              ],
-              selected: <int>{currentSubjectType},
-              onSelectionChanged: (Set<int> value) {
-                if (isLoading) return;
-                setState(() => currentSubjectType = value.first);
-                _performSearch();
+            child: AnimatedBuilder(
+              animation: _viewModel,
+              builder: (BuildContext context, Widget? child) {
+                return SegmentedButton<int>(
+                  showSelectedIcon: false,
+                  segments: const <ButtonSegment<int>>[
+                    ButtonSegment<int>(
+                      value: 2,
+                      icon: Icon(Icons.tv_rounded, size: 16),
+                      label: Text('番剧'),
+                    ),
+                    ButtonSegment<int>(
+                      value: 1,
+                      icon: Icon(Icons.menu_book_rounded, size: 16),
+                      label: Text('书籍'),
+                    ),
+                  ],
+                  selected: <int>{_viewModel.state.currentSubjectType},
+                  onSelectionChanged: (Set<int> value) =>
+                      _switchSubjectType(value.first),
+                );
               },
             ),
           ),
         ],
       ),
-      body: isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : searchResults.isEmpty
-          ? Center(
+      body: AnimatedBuilder(
+        animation: _viewModel,
+        builder: (BuildContext context, Widget? child) {
+          final SearchViewState state = _viewModel.state;
+
+          if (state.isLoading) {
+            return const Center(child: SkeletonBlock(width: 200, height: 32));
+          }
+
+          if (state.errorMessage != null && state.results.isEmpty) {
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.all(32.0),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    const Icon(
+                      Icons.error_outline,
+                      size: 48,
+                      color: Colors.redAccent,
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      state.errorMessage!,
+                      style: const TextStyle(color: Colors.grey),
+                    ),
+                    const SizedBox(height: 16),
+                    ElevatedButton(
+                      onPressed: () => _viewModel.search(widget.keyword),
+                      child: const Text('重试'),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }
+
+          if (state.results.isEmpty) {
+            return Center(
               child: Text(
-                currentSubjectType == 2
+                state.currentSubjectType == 2
                     ? '未找到相关番剧\n请尝试更换搜索词'
                     : '未找到相关书籍\n请尝试更换搜索词',
                 textAlign: TextAlign.center,
                 style: const TextStyle(fontSize: 16, color: Colors.grey),
               ),
-            )
-          : ListView.builder(
-              controller: _scrollController,
-              padding: const EdgeInsets.all(16.0),
-              itemCount: searchResults.length + 1,
-              itemBuilder: (context, index) {
-                if (index == searchResults.length) {
-                  return _buildProgressIndicator();
-                }
-                final anime = searchResults[index];
-                final String secureUrl = normalizeImageUrl(anime.imageUrl);
+            );
+          }
 
-                return Card(
-                  margin: const EdgeInsets.only(bottom: 10),
-                  child: ListTile(
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 8,
-                    ),
-                    leading: secureUrl.isNotEmpty
-                        ? ClipRRect(
-                            borderRadius: BorderRadius.circular(10),
-                            child: CachedNetworkImage(
-                              imageUrl: secureUrl,
-                              width: 50,
-                              height: 70,
-                              fit: BoxFit.cover,
-                              httpHeaders: buildImageHeaders(secureUrl),
-                              placeholder: (context, url) => Container(
-                                width: 50,
-                                height: 70,
-                                color: Theme.of(
-                                  context,
-                                ).colorScheme.surfaceContainerHighest,
-                              ),
-                              errorWidget: (context, url, error) => Container(
-                                width: 50,
-                                height: 70,
-                                color: Theme.of(
-                                  context,
-                                ).colorScheme.surfaceContainerHighest,
-                                child: const Icon(
-                                  Icons.broken_image,
-                                  color: Colors.grey,
-                                ),
-                              ),
-                            ),
-                          )
-                        : Container(
+          return ListView.builder(
+            controller: _scrollController,
+            padding: const EdgeInsets.all(16.0),
+            itemCount: state.results.length + 1,
+            itemBuilder: (BuildContext context, int index) {
+              if (index == state.results.length) {
+                return _buildProgressIndicator(state);
+              }
+              final Anime anime = state.results[index];
+              final String secureUrl = normalizeImageUrl(anime.imageUrl);
+
+              return Card(
+                margin: const EdgeInsets.only(bottom: 10),
+                child: ListTile(
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
+                  leading: secureUrl.isNotEmpty
+                      ? ClipRRect(
+                          borderRadius: BorderRadius.circular(10),
+                          child: CachedNetworkImage(
+                            imageUrl: secureUrl,
                             width: 50,
                             height: 70,
-                            decoration: BoxDecoration(
+                            fit: BoxFit.cover,
+                            httpHeaders: buildImageHeaders(secureUrl),
+                            placeholder: (context, url) => Container(
+                              width: 50,
+                              height: 70,
                               color: Theme.of(
                                 context,
                               ).colorScheme.surfaceContainerHighest,
-                              borderRadius: BorderRadius.circular(10),
                             ),
-                            child: const Icon(
-                              Icons.image_not_supported,
-                              color: Colors.grey,
+                            errorWidget: (context, url, error) => Container(
+                              width: 50,
+                              height: 70,
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.surfaceContainerHighest,
+                              child: const Icon(
+                                Icons.broken_image,
+                                color: Colors.grey,
+                              ),
                             ),
                           ),
-                    title: Text(
-                      anime.displayName,
-                      style: const TextStyle(fontWeight: FontWeight.bold),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    subtitle: Text(
-                      anime.name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    trailing: const Icon(Icons.chevron_right_rounded),
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => DetailPage(
-                            animeId: anime.id,
-                            initialName: anime.displayName,
-                            subjectType: currentSubjectType,
+                        )
+                      : Container(
+                          width: 50,
+                          height: 70,
+                          decoration: BoxDecoration(
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.surfaceContainerHighest,
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: const Icon(
+                            Icons.image_not_supported,
+                            color: Colors.grey,
                           ),
                         ),
-                      );
-                    },
+                  title: Text(
+                    anime.displayName,
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
                   ),
-                );
-              },
-            ),
+                  subtitle: Text(
+                    anime.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (BuildContext context) => DetailPage(
+                          animeId: anime.id,
+                          initialName: anime.displayName,
+                          subjectType: state.currentSubjectType,
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              );
+            },
+          );
+        },
+      ),
     );
   }
 }

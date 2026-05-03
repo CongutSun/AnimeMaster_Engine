@@ -242,6 +242,9 @@ class _CollectionPageState extends State<CollectionPage> {
                         child: DropdownButtonHideUnderline(
                           child: DropdownButton<int>(
                             value: currentType,
+                            borderRadius: BorderRadius.circular(18),
+                            dropdownColor: colors.surface,
+                            menuMaxHeight: 320,
                             items: typeMap.entries.map((e) {
                               return DropdownMenuItem<int>(
                                 value: e.key,

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import 'api/dio_client.dart';
 import 'managers/download_manager.dart';
 import 'providers/settings_provider.dart';
 import 'screens/home_page.dart';
@@ -22,6 +23,14 @@ class AnimeMasterApp extends StatelessWidget {
       child: Consumer<SettingsProvider>(
         builder:
             (BuildContext context, SettingsProvider settings, Widget? child) {
+              // Register 401 auto-refresh callback once settings are loaded.
+              if (settings.isLoaded) {
+                DioClient.setAuthTokenRefresher(
+                  () => settings.ensureBangumiAccessToken(forceRefresh: true)
+                      .then((bool ok) => ok ? settings.bgmToken : null),
+                );
+              }
+
               final String currentTheme = settings.themeMode.toLowerCase();
               final bool isDark =
                   currentTheme.contains('dark') ||

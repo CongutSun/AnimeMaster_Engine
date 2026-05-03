@@ -179,7 +179,10 @@ class SettingsProvider with ChangeNotifier {
 
     final SharedPreferences prefs = await SharedPreferences.getInstance();
     await prefs.setString('bgm_acc', _bgmAcc);
+    // Token stored ONLY in encrypted secure storage.
     await _secureStorage.write(key: 'bgm_token', value: _bgmToken);
+    // Purge any legacy plain‑text token.
+    await prefs.remove('bgm_token');
 
     notifyListeners();
   }

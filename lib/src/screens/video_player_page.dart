@@ -348,8 +348,22 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
-      unawaited(_syncPictureInPictureSetting());
+    switch (state) {
+      case AppLifecycleState.resumed:
+        unawaited(_syncPictureInPictureSetting());
+        break;
+      case AppLifecycleState.inactive:
+      case AppLifecycleState.paused:
+      case AppLifecycleState.hidden:
+        unawaited(_savePlaybackProgress(force: true));
+        _cancelControlsAutoHide();
+        _pauseCountdownPrompts();
+        _syncPictureInPicturePlaybackState();
+        break;
+      case AppLifecycleState.detached:
+        unawaited(_savePlaybackProgress(force: true));
+        _syncPictureInPicturePlaybackState();
+        break;
     }
   }
 
@@ -2292,15 +2306,20 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
 
   @override
   void dispose() {
+    // ── best-effort progress save before teardown ──
+    try { unawaited(_savePlaybackProgress(force: true)); } catch (_) {}
+
     WidgetsBinding.instance.removeObserver(this);
-    unawaited(_savePlaybackProgress(force: true));
-    unawaited(PictureInPictureService.setPlaybackActive(false));
-    unawaited(PictureInPictureService.setAutoEnter(false));
-    unawaited(_onlineSourceSubscription?.cancel());
-    unawaited(
-      ScreenBrightnessPlatform.instance.resetApplicationScreenBrightness(),
-    );
-    VolumeController.instance.showSystemUI = true;
+    try { unawaited(PictureInPictureService.setPlaybackActive(false)); } catch (_) {}
+    try { unawaited(PictureInPictureService.setAutoEnter(false)); } catch (_) {}
+    try { unawaited(_onlineSourceSubscription?.cancel()); } catch (_) {}
+    try {
+      unawaited(
+        ScreenBrightnessPlatform.instance.resetApplicationScreenBrightness(),
+      );
+    } catch (_) {}
+    try { VolumeController.instance.showSystemUI = true; } catch (_) {}
+
     _cancelControlsAutoHide();
     _cancelAutoNextCountdown();
     _sliderSeekThrottle?.cancel();
@@ -2308,21 +2327,24 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
     _gestureIndicatorTimer?.cancel();
     _progressSaveTimer?.cancel();
     for (final StreamSubscription<dynamic> subscription in _subscriptions) {
-      subscription.cancel();
+      try { subscription.cancel(); } catch (_) {}
     }
     if (_isMagnet) {
-      _coordinator.removeListener(_onStateChanged);
-      _coordinator.reset();
+      try { _coordinator.removeListener(_onStateChanged); } catch (_) {}
+      try { _coordinator.reset(); } catch (_) {}
     }
+
+    // ── stop media before disposing native resources ──
     if (_ownsPlayer) {
-      widget.streamServer?.stop();
+      try { widget.streamServer?.stop(); } catch (_) {}
+      try { _player.stop(); } catch (_) {}
     }
-    _onlineSourcesNotifier.dispose();
-    _onlineSourceSearchingNotifier.dispose();
+    try { _onlineSourcesNotifier.dispose(); } catch (_) {}
+    try { _onlineSourceSearchingNotifier.dispose(); } catch (_) {}
     if (_ownsPlayer) {
-      _player.dispose();
+      try { _player.dispose(); } catch (_) {}
     }
-    _exitPlayerMode();
+    try { _exitPlayerMode(); } catch (_) {}
     super.dispose();
   }
 

@@ -1,10 +1,16 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:dio/dio.dart';
 import 'package:html/dom.dart' as dom;
 import 'package:html/parser.dart' as parser;
 import 'package:flutter/foundation.dart';
+
+import 'api_cache_manager.dart';
+import 'api_exceptions.dart';
 import 'dio_client.dart';
+import '../repositories/anime_repository.dart';
+import '../utils/episode_helpers.dart';
 
 class _ApiConfig {
   static const String apiBase = 'https://api.bgm.tv';
@@ -15,31 +21,50 @@ class _ApiConfig {
 
 class BangumiApi {
   static final Dio _dio = DioClient().dio;
+  static final AnimeRepository _animeRepository = AnimeRepository.instance;
 
-  static final Map<int, Map<String, dynamic>> _animeDetailCache = {};
-  static final Map<int, List<dynamic>> _charactersCache = {};
-  static final Map<int, List<dynamic>> _personsCache = {};
-  static final Map<int, List<dynamic>> _relationsCache = {};
-  static final Map<int, List<Map<String, String>>> _commentsCache = {};
-  static final Map<int, List<Map<String, String>>> _episodeCommentsCache = {};
-  static final Map<String, List<dynamic>> _searchCache = {};
-  static final Map<String, List<Map<String, dynamic>>> _tagSubjectsCache = {};
-  static final Map<int, List<dynamic>> _characterSubjectsCache = {};
-  static final Map<int, List<dynamic>> _personSubjectsCache = {};
-  static final Map<int, List<Map<String, dynamic>>> _subjectEpisodesCache = {};
-  static final Map<String, int?> _episodeIdResolveCache = {};
-  static List<dynamic>? _calendarCache;
-  static List<Map<String, dynamic>>? _yearTopCache;
+  // ── TTL caches replacing 16 ad‑hoc static Maps ──
+  static final ApiCacheManager<Map<String, dynamic>> _animeDetailCache =
+      ApiCacheManager<Map<String, dynamic>>(maxSize: 60);
+  static final ApiCacheManager<List<dynamic>> _charactersCache =
+      ApiCacheManager<List<dynamic>>(maxSize: 60);
+  static final ApiCacheManager<List<dynamic>> _personsCache =
+      ApiCacheManager<List<dynamic>>(maxSize: 60);
+  static final ApiCacheManager<List<dynamic>> _relationsCache =
+      ApiCacheManager<List<dynamic>>(maxSize: 60);
+  static final ApiCacheManager<List<Map<String, String>>> _commentsCache =
+      ApiCacheManager<List<Map<String, String>>>(maxSize: 60);
+  static final ApiCacheManager<List<Map<String, String>>>
+  _episodeCommentsCache = ApiCacheManager<List<Map<String, String>>>(
+    maxSize: 120,
+  );
+  static final ApiCacheManager<List<dynamic>> _searchCache =
+      ApiCacheManager<List<dynamic>>(maxSize: 80);
+  static final ApiCacheManager<List<Map<String, dynamic>>> _tagSubjectsCache =
+      ApiCacheManager<List<Map<String, dynamic>>>(maxSize: 80);
+  static final ApiCacheManager<List<dynamic>> _characterSubjectsCache =
+      ApiCacheManager<List<dynamic>>(maxSize: 80);
+  static final ApiCacheManager<List<dynamic>> _personSubjectsCache =
+      ApiCacheManager<List<dynamic>>(maxSize: 80);
+  static final ApiCacheManager<List<Map<String, dynamic>>>
+  _subjectEpisodesCache = ApiCacheManager<List<Map<String, dynamic>>>(
+    maxSize: 80,
+  );
+  static final ApiCacheManager<int?> _episodeIdResolveCache =
+      ApiCacheManager<int?>(maxSize: 120);
+
+  // Calendar cache is time‑sensitive — invalidate after 1 hour
+  static final ApiCacheManager<List<dynamic>> _calendarCache =
+      ApiCacheManager<List<dynamic>>(
+        maxSize: 1,
+        defaultTtl: const Duration(hours: 1),
+      );
+  static final ApiCacheManager<List<Map<String, dynamic>>> _yearTopCache =
+      ApiCacheManager<List<Map<String, dynamic>>>(
+        maxSize: 1,
+        defaultTtl: const Duration(hours: 6),
+      );
   static int? _yearTopCacheYear;
-
-  static void _trimCache(Map cache, {int maxSize = 50}) {
-    if (cache.length > maxSize) {
-      final keysToRemove = cache.keys.take(cache.length - maxSize).toList();
-      for (var key in keysToRemove) {
-        cache.remove(key);
-      }
-    }
-  }
 
   static List<Map<String, String>> _parseSubjectCommentsDocument(
     dom.Document document,
@@ -91,34 +116,84 @@ class BangumiApi {
   ) {
     final List<Map<String, String>> comments = <Map<String, String>>[];
 
-    final List<dom.Element> items = document
-        .querySelectorAll('#comment_list > .row_reply, #comment_list > .item')
-        .toList();
-
-    final Iterable<dom.Element> roots = items.isNotEmpty
-        ? items
-        : document.querySelectorAll('#comment_list .row_reply');
+    final Iterable<dom.Element> roots = _episodeCommentRoots(document);
 
     for (final dom.Element item in roots) {
       final Map<String, String>? comment = _parseEpisodeCommentElement(item);
       if (comment != null) {
         comments.add(comment);
       }
-
-      for (final dom.Element reply in item.querySelectorAll(
-        '.topic_sub_reply .sub_reply_bg, .topic_sub_reply .row_reply, .topic_sub_reply .item',
-      )) {
-        final Map<String, String>? subReply = _parseEpisodeCommentElement(
-          reply,
-          isReply: true,
-        );
-        if (subReply != null) {
-          comments.add(subReply);
-        }
-      }
+      _collectNestedReplies(item, comments);
     }
 
     return _dedupeEpisodeComments(comments);
+  }
+
+  static Iterable<dom.Element> _episodeCommentRoots(dom.Document document) {
+    final dom.Element? commentList = document.querySelector('#comment_list');
+    if (commentList == null) {
+      return const <dom.Element>[];
+    }
+
+    final List<dom.Element> directItems = commentList.children
+        .where(_isTopLevelCommentContainer)
+        .toList(growable: false);
+    if (directItems.isNotEmpty) {
+      return directItems;
+    }
+
+    return commentList
+        .querySelectorAll('.row_reply, .item')
+        .where((dom.Element item) => !_hasCommentContainerAncestor(item));
+  }
+
+  static bool _isTopLevelCommentContainer(dom.Element item) {
+    return item.classes.contains('row_reply') || item.classes.contains('item');
+  }
+
+  static bool _hasCommentContainerAncestor(dom.Element item) {
+    dom.Element? parent = item.parent;
+    while (parent != null && parent.id != 'comment_list') {
+      if (parent.classes.contains('row_reply') ||
+          parent.classes.contains('item') ||
+          parent.classes.contains('sub_reply_bg')) {
+        return true;
+      }
+      parent = parent.parent;
+    }
+    return false;
+  }
+
+  /// Walk nested reply chains once. `querySelectorAll` already returns deep
+  /// descendants, so recursing here would duplicate楼中楼 replies.
+  static void _collectNestedReplies(
+    dom.Element parent,
+    List<Map<String, String>> out,
+  ) {
+    List<dom.Element> replies = parent
+        .querySelectorAll(
+          '.topic_sub_reply .sub_reply_bg, '
+          '.sub_reply .sub_reply_bg, '
+          '.sub_reply_bg',
+        )
+        .toList(growable: false);
+    if (replies.isEmpty) {
+      replies = parent
+          .querySelectorAll(
+            '.topic_sub_reply .row_reply, .topic_sub_reply .item',
+          )
+          .toList(growable: false);
+    }
+
+    for (final dom.Element reply in replies) {
+      final Map<String, String>? subReply = _parseEpisodeCommentElement(
+        reply,
+        isReply: true,
+      );
+      if (subReply != null) {
+        out.add(subReply);
+      }
+    }
   }
 
   static Map<String, String>? _parseEpisodeCommentElement(
@@ -248,14 +323,34 @@ class BangumiApi {
   static List<Map<String, String>> _dedupeEpisodeComments(
     List<Map<String, String>> comments,
   ) {
-    final Set<String> seen = <String>{};
+    final Map<String, int> contentIndex = <String, int>{};
+    final Set<String> exactSeen = <String>{};
     final List<Map<String, String>> result = <Map<String, String>>[];
     for (final Map<String, String> comment in comments) {
-      final String key =
+      final String exactKey =
           '${comment['type']}|${comment['author']}|${comment['time']}|${comment['content']}';
-      if (seen.add(key)) {
-        result.add(comment);
+      if (!exactSeen.add(exactKey)) {
+        continue;
       }
+
+      final String author = comment['author'] ?? '';
+      final String contentKey =
+          '${comment['type']}|${_compactText(comment['content'] ?? '')}';
+      final int? existingIndex = contentIndex[contentKey];
+      if (existingIndex != null) {
+        final Map<String, String> existing = result[existingIndex];
+        final bool existingIsFallback = existing['author'] == '网络用户';
+        final bool currentIsFallback = author == '网络用户';
+        if (existingIsFallback || currentIsFallback) {
+          if (existingIsFallback && !currentIsFallback) {
+            result[existingIndex] = comment;
+          }
+          continue;
+        }
+      }
+
+      contentIndex.putIfAbsent(contentKey, () => result.length);
+      result.add(comment);
     }
     return result;
   }
@@ -305,9 +400,8 @@ class BangumiApi {
     int maxResults = 25,
   }) async {
     final String cacheKey = '${keyword.trim()}|$type|$start|$maxResults';
-    if (_searchCache.containsKey(cacheKey)) {
-      return _searchCache[cacheKey]!;
-    }
+    final List<dynamic>? cached = _searchCache.get(cacheKey);
+    if (cached != null) return cached;
 
     try {
       final response = await _dio.get(
@@ -322,12 +416,11 @@ class BangumiApi {
         final List<dynamic> results = response.data['list'] is List
             ? response.data['list']
             : <dynamic>[];
-        _searchCache[cacheKey] = results;
-        _trimCache(_searchCache, maxSize: 80);
+        _searchCache.set(cacheKey, results);
         return results;
       }
     } catch (e) {
-      debugPrint('[BangumiApi.search] Exception: $e');
+      debugPrint('[BangumiApi.search] ${e.runtimeType}: $e');
     }
     return [];
   }
@@ -338,8 +431,8 @@ class BangumiApi {
     int page = 1,
   }) async {
     final String cacheKey = '${tag.trim()}|$type|$page';
-    if (_tagSubjectsCache.containsKey(cacheKey)) {
-      return _tagSubjectsCache[cacheKey]!;
+    if (_tagSubjectsCache.get(cacheKey) != null) {
+      return _tagSubjectsCache.get(cacheKey)!;
     }
 
     try {
@@ -355,8 +448,8 @@ class BangumiApi {
           utf8.decode(response.data),
           24,
         );
-        _tagSubjectsCache[cacheKey] = results;
-        _trimCache(_tagSubjectsCache, maxSize: 80);
+        _tagSubjectsCache.set(cacheKey, results);
+        // cache eviction handled internally by ApiCacheManager
         return results;
       }
     } catch (e) {
@@ -366,9 +459,8 @@ class BangumiApi {
   }
 
   static Future<List<dynamic>> getCharacterSubjects(int characterId) async {
-    if (_characterSubjectsCache.containsKey(characterId)) {
-      return _characterSubjectsCache[characterId]!;
-    }
+    final List<dynamic>? cached = _characterSubjectsCache.get(characterId);
+    if (cached != null) return cached;
 
     try {
       final response = await _dio.get(
@@ -378,20 +470,18 @@ class BangumiApi {
         final List<dynamic> results = response.data is List
             ? response.data
             : <dynamic>[];
-        _characterSubjectsCache[characterId] = results;
-        _trimCache(_characterSubjectsCache, maxSize: 80);
+        _characterSubjectsCache.set(characterId, results);
         return results;
       }
     } catch (e) {
-      debugPrint('[BangumiApi.getCharacterSubjects] Exception: $e');
+      debugPrint('[BangumiApi.getCharacterSubjects] ${e.runtimeType}: $e');
     }
     return [];
   }
 
   static Future<List<dynamic>> getPersonSubjects(int personId) async {
-    if (_personSubjectsCache.containsKey(personId)) {
-      return _personSubjectsCache[personId]!;
-    }
+    final List<dynamic>? cached = _personSubjectsCache.get(personId);
+    if (cached != null) return cached;
 
     try {
       final response = await _dio.get(
@@ -401,39 +491,37 @@ class BangumiApi {
         final List<dynamic> results = response.data is List
             ? response.data
             : <dynamic>[];
-        _personSubjectsCache[personId] = results;
-        _trimCache(_personSubjectsCache, maxSize: 80);
+        _personSubjectsCache.set(personId, results);
         return results;
       }
     } catch (e) {
-      debugPrint('[BangumiApi.getPersonSubjects] Exception: $e');
+      debugPrint('[BangumiApi.getPersonSubjects] ${e.runtimeType}: $e');
     }
     return [];
   }
 
   static Future<List<dynamic>> getCalendar() async {
-    final List<dynamic>? cached = _calendarCache;
-    if (cached != null) {
-      return cached;
-    }
+    final List<dynamic>? cached = _calendarCache.get('calendar');
+    if (cached != null) return cached;
+
     try {
       final response = await _dio.get('${_ApiConfig.apiBase}/calendar');
       if (response.statusCode == 200 && response.data is List) {
-        _calendarCache = response.data as List<dynamic>;
-        return _calendarCache!;
+        final List<dynamic> results = response.data as List<dynamic>;
+        _calendarCache.set('calendar', results);
+        return results;
       }
     } catch (e) {
-      debugPrint('[BangumiApi.getCalendar] Exception: $e');
+      debugPrint('[BangumiApi.getCalendar] ${e.runtimeType}: $e');
     }
     return [];
   }
 
   static Future<List<Map<String, dynamic>>> getYearTop() async {
-    final year = DateTime.now().year;
-    final List<Map<String, dynamic>>? cached = _yearTopCache;
-    if (_yearTopCacheYear == year && cached != null) {
-      return cached;
-    }
+    final int year = DateTime.now().year;
+    final List<Map<String, dynamic>>? cached = _yearTopCache.get('yearTop');
+    if (_yearTopCacheYear == year && cached != null) return cached;
+
     try {
       var response = await _dio.get(
         '${_ApiConfig.webBase}/anime/browser/airtime/$year',
@@ -454,12 +542,12 @@ class BangumiApi {
           utf8.decode(response.data),
           10,
         );
-        _yearTopCache = results;
+        _yearTopCache.set('yearTop', results);
         _yearTopCacheYear = year;
         return results;
       }
     } catch (e) {
-      debugPrint('[BangumiApi.getYearTop] Exception: $e');
+      debugPrint('[BangumiApi.getYearTop] ${e.runtimeType}: $e');
     }
     return [];
   }
@@ -467,12 +555,11 @@ class BangumiApi {
   static Future<List<Map<String, dynamic>>> getSubjectEpisodes(
     int subjectId,
   ) async {
-    if (subjectId <= 0) {
-      return <Map<String, dynamic>>[];
-    }
-    if (_subjectEpisodesCache.containsKey(subjectId)) {
-      return _subjectEpisodesCache[subjectId]!;
-    }
+    if (subjectId <= 0) return <Map<String, dynamic>>[];
+    final List<Map<String, dynamic>>? cached = _subjectEpisodesCache.get(
+      subjectId,
+    );
+    if (cached != null) return cached;
 
     final List<Map<String, dynamic>> episodes = <Map<String, dynamic>>[];
     int offset = 0;
@@ -513,10 +600,17 @@ class BangumiApi {
       }
     } catch (e) {
       debugPrint('[BangumiApi.getSubjectEpisodes] Exception: $e');
+      final List<Map<String, dynamic>> cachedEpisodes = await _animeRepository
+          .loadEpisodes(subjectId);
+      if (cachedEpisodes.isNotEmpty) {
+        return cachedEpisodes;
+      }
     }
 
-    _subjectEpisodesCache[subjectId] = episodes;
-    _trimCache(_subjectEpisodesCache, maxSize: 80);
+    if (episodes.isNotEmpty) {
+      unawaited(_animeRepository.upsertEpisodes(subjectId, episodes));
+    }
+    _subjectEpisodesCache.set(subjectId, episodes);
     return episodes;
   }
 
@@ -533,9 +627,8 @@ class BangumiApi {
 
     final String cacheKey =
         '$subjectId|${subjectTitle.trim()}|${episodeLabel.trim()}|${displayTitle.trim()}';
-    if (_episodeIdResolveCache.containsKey(cacheKey)) {
-      return _episodeIdResolveCache[cacheKey];
-    }
+    final int? cachedId = _episodeIdResolveCache.get(cacheKey);
+    if (cachedId != null) return cachedId;
 
     int resolvedSubjectId = subjectId;
     if (resolvedSubjectId <= 0) {
@@ -547,7 +640,7 @@ class BangumiApi {
     }
 
     if (resolvedSubjectId <= 0) {
-      _episodeIdResolveCache[cacheKey] = null;
+      _episodeIdResolveCache.set(cacheKey, null);
       return null;
     }
 
@@ -555,7 +648,7 @@ class BangumiApi {
       resolvedSubjectId,
     );
     if (episodes.isEmpty) {
-      _episodeIdResolveCache[cacheKey] = null;
+      _episodeIdResolveCache.set(cacheKey, null);
       return null;
     }
 
@@ -579,8 +672,7 @@ class BangumiApi {
     final int? resolvedEpisodeId = match == null
         ? null
         : int.tryParse(match['id']?.toString() ?? '');
-    _episodeIdResolveCache[cacheKey] = resolvedEpisodeId;
-    _trimCache(_episodeIdResolveCache, maxSize: 100);
+    _episodeIdResolveCache.set(cacheKey, resolvedEpisodeId);
     return resolvedEpisodeId;
   }
 
@@ -632,47 +724,29 @@ class BangumiApi {
   }
 
   static Future<Map<String, dynamic>?> getAnimeDetail(int id) async {
-    if (_animeDetailCache.containsKey(id)) return _animeDetailCache[id];
+    final Map<String, dynamic>? cached = _animeDetailCache.get(id);
+    if (cached != null) return cached;
+
     try {
       final response = await _dio.get('${_ApiConfig.apiBase}/v0/subjects/$id');
       if (response.statusCode == 200 && response.data is Map) {
-        _animeDetailCache[id] = response.data;
-        _trimCache(_animeDetailCache);
-        return response.data;
+        final Map<String, dynamic> detail = Map<String, dynamic>.from(
+          response.data as Map,
+        );
+        _animeDetailCache.set(id, detail);
+        unawaited(_animeRepository.upsertSubject(detail));
+        return detail;
       }
     } catch (e) {
-      debugPrint('[BangumiApi.getAnimeDetail] Exception: $e');
+      debugPrint('[BangumiApi.getAnimeDetail] ${e.runtimeType}: $e');
     }
-    return null;
+    return _animeRepository.loadSubject(id);
   }
 
-  static int? _extractEpisodeNumber(String value) {
-    final List<RegExp> patterns = <RegExp>[
-      RegExp(r'\bS\d{1,2}E(\d{1,3})\b', caseSensitive: false),
-      RegExp(r'\bEP?\s*\.?\s*(\d{1,3})\b', caseSensitive: false),
-      RegExp(r'第\s*(\d{1,3})\s*[话話集回]'),
-      RegExp(r'(?<!\d)(\d{1,3})(?!\d)'),
-    ];
+  static int? _extractEpisodeNumber(String value) =>
+      extractEpisodeNumber(value);
 
-    for (final RegExp pattern in patterns) {
-      final RegExpMatch? match = pattern.firstMatch(value);
-      final int? number = int.tryParse(match?.group(1) ?? '');
-      if (number != null && number > 0) {
-        return number;
-      }
-    }
-    return null;
-  }
-
-  static int? _numberValue(dynamic value) {
-    if (value is int) {
-      return value;
-    }
-    if (value is num) {
-      return value.round();
-    }
-    return int.tryParse(value?.toString() ?? '');
-  }
+  static int? _numberValue(dynamic value) => safeInt(value);
 
   static String _sanitizeSubjectKeyword(String value) {
     final String cleaned = value
@@ -796,7 +870,8 @@ class BangumiApi {
   }
 
   static Future<List<Map<String, String>>> getSubjectComments(int id) async {
-    if (_commentsCache.containsKey(id)) return _commentsCache[id]!;
+    final List<Map<String, String>>? cached = _commentsCache.get(id);
+    if (cached != null) return cached;
     final List<Map<String, String>> comments = <Map<String, String>>[];
 
     for (final String base in _ApiConfig.htmlBases) {
@@ -845,8 +920,7 @@ class BangumiApi {
     }
 
     if (comments.isNotEmpty) {
-      _commentsCache[id] = comments;
-      _trimCache(_commentsCache);
+      _commentsCache.set(id, comments);
     }
     return comments;
   }
@@ -857,9 +931,10 @@ class BangumiApi {
     if (episodeId <= 0) {
       return <Map<String, String>>[];
     }
-    if (_episodeCommentsCache.containsKey(episodeId)) {
-      return _episodeCommentsCache[episodeId]!;
-    }
+    final List<Map<String, String>>? cachedComments = _episodeCommentsCache.get(
+      episodeId,
+    );
+    if (cachedComments != null) return cachedComments;
 
     final List<Map<String, String>> comments = <Map<String, String>>[];
     for (final String base in _ApiConfig.htmlBases) {
@@ -884,59 +959,58 @@ class BangumiApi {
     }
 
     if (comments.isNotEmpty) {
-      _episodeCommentsCache[episodeId] = comments;
-      _trimCache(_episodeCommentsCache, maxSize: 120);
+      _episodeCommentsCache.set(episodeId, comments);
     }
     return comments;
   }
 
   static Future<List<dynamic>> getSubjectCharacters(int id) async {
-    if (_charactersCache.containsKey(id)) return _charactersCache[id]!;
+    final List<dynamic>? cachedChars = _charactersCache.get(id);
+    if (cachedChars != null) return cachedChars;
     try {
       final response = await _dio.get(
         '${_ApiConfig.apiBase}/v0/subjects/$id/characters',
       );
       if (response.statusCode == 200 && response.data is List) {
-        _charactersCache[id] = response.data;
-        _trimCache(_charactersCache);
-        return _charactersCache[id]!;
+        _charactersCache.set(id, response.data);
+        return _charactersCache.get(id)!;
       }
     } catch (e) {
-      debugPrint('[BangumiApi.getSubjectCharacters] Exception: $e');
+      debugPrint('[BangumiApi.getSubjectCharacters] ${e.runtimeType}: $e');
     }
     return [];
   }
 
   static Future<List<dynamic>> getSubjectPersons(int id) async {
-    if (_personsCache.containsKey(id)) return _personsCache[id]!;
+    final List<dynamic>? cachedPersons = _personsCache.get(id);
+    if (cachedPersons != null) return cachedPersons;
     try {
       final response = await _dio.get(
         '${_ApiConfig.apiBase}/v0/subjects/$id/persons',
       );
       if (response.statusCode == 200 && response.data is List) {
-        _personsCache[id] = response.data;
-        _trimCache(_personsCache);
-        return _personsCache[id]!;
+        _personsCache.set(id, response.data);
+        return _personsCache.get(id)!;
       }
     } catch (e) {
-      debugPrint('[BangumiApi.getSubjectPersons] Exception: $e');
+      debugPrint('[BangumiApi.getSubjectPersons] ${e.runtimeType}: $e');
     }
     return [];
   }
 
   static Future<List<dynamic>> getSubjectRelations(int id) async {
-    if (_relationsCache.containsKey(id)) return _relationsCache[id]!;
+    final List<dynamic>? cachedRelations = _relationsCache.get(id);
+    if (cachedRelations != null) return cachedRelations;
     try {
       final response = await _dio.get(
         '${_ApiConfig.apiBase}/v0/subjects/$id/subjects',
       );
       if (response.statusCode == 200 && response.data is List) {
-        _relationsCache[id] = response.data;
-        _trimCache(_relationsCache);
-        return _relationsCache[id]!;
+        _relationsCache.set(id, response.data);
+        return _relationsCache.get(id)!;
       }
     } catch (e) {
-      debugPrint('[BangumiApi.getSubjectRelations] Exception: $e');
+      debugPrint('[BangumiApi.getSubjectRelations] ${e.runtimeType}: $e');
     }
     return [];
   }

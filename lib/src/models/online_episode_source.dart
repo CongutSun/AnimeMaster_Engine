@@ -1,3 +1,5 @@
+import '../utils/episode_helpers.dart';
+
 class OnlineEpisodeQuery {
   final int bangumiSubjectId;
   final int bangumiEpisodeId;
@@ -19,32 +21,12 @@ class OnlineEpisodeQuery {
     if (episodeNumber <= 0) {
       return episodeTitle.trim();
     }
-    final String title = _stripRedundantEpisodePrefix(
+    final String title = stripRedundantEpisodePrefix(
       episodeTitle.trim(),
       episodeNumber,
     );
     return title.isEmpty ? '第$episodeNumber集' : '第$episodeNumber集 · $title';
   }
-}
-
-String _stripRedundantEpisodePrefix(String title, int episodeNumber) {
-  if (episodeNumber <= 0 || title.isEmpty) {
-    return title;
-  }
-  final String padded = episodeNumber.toString().padLeft(2, '0');
-  final List<RegExp> patterns = <RegExp>[
-    RegExp('^第\\s*0?$episodeNumber\\s*[集话話]\\s*[:：.．、-]?\\s*'),
-    RegExp('^0?$episodeNumber\\s*[:：.．、-]+\\s*'),
-    RegExp('^0?$episodeNumber\\s+(?=\\D)'),
-    RegExp('^$padded\\s*[:：.．、-]?\\s*'),
-  ];
-  for (final RegExp pattern in patterns) {
-    final String stripped = title.replaceFirst(pattern, '').trim();
-    if (stripped != title && stripped.isNotEmpty) {
-      return stripped;
-    }
-  }
-  return title;
 }
 
 class OnlineEpisodeSourceResult {

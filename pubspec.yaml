@@ -1,6 +1,6 @@
 name: animemaster
 description: "A professional commercial-grade Flutter FFI plugin engine for AnimeMaster."
-version: 0.0.1
+version: 2.3.1
 homepage:
 
 environment:
@@ -21,7 +21,7 @@ dependencies:
   
   # 网络、通信与下载 (Networking & Downloading)
   dio: ^5.9.2
-  dtorrent_parser: any  
+  dtorrent_parser: any
   dtorrent_task: ^0.4.1
   
   # 数据解析与状态管理 (Data Parsing & State Management)
@@ -50,6 +50,9 @@ dependencies:
   flutter_web_auth_2: ^5.0.2
   screen_brightness_platform_interface: ^2.1.0
   volume_controller: ^3.4.4
+  drift: ^2.32.1
+  sqlite3_flutter_libs: ^0.6.0+eol
+  shimmer: ^3.0.0
   
   # 热更新 (Hot Update)
 
@@ -58,6 +61,8 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
+  drift_dev: ^2.32.1
+  build_runner: ^2.15.0
 
 flutter:
   plugin:

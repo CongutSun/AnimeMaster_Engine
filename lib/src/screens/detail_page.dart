@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
@@ -10,7 +11,9 @@ import 'magnet_config_page.dart';
 import 'category_result_page.dart';
 import 'episode_watch_page.dart';
 import 'role_subjects_page.dart';
+import '../utils/episode_helpers.dart';
 import '../utils/image_request.dart';
+import '../widgets/selection_dialog.dart';
 
 Widget _buildSafeImage({
   required String imageUrl,
@@ -72,6 +75,20 @@ class DetailPage extends StatefulWidget {
 class _DetailPageState extends State<DetailPage>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
+  final ScrollController _scrollController = ScrollController();
+  final GlobalKey _heroHeaderKey = GlobalKey();
+  double _heroHeaderExtent = 0;
+  int _activeTabIndex = 0;
+  bool _restorePinnedAfterTabChange = false;
+
+  // ── Epic 1: Episode chunking ──
+  static const int _episodeChunkSize = 100;
+  List<Map<String, dynamic>> _allEpisodes = [];
+  List<List<Map<String, dynamic>>> _episodeChunks = const [];
+  int _currentChunkIndex = 0;
+  final ValueNotifier<Set<int>> _watchedEpisodeIds = ValueNotifier<Set<int>>(
+    const <int>{},
+  );
 
   Map<String, dynamic>? detailData;
   List<Map<String, String>> realComments = [];
@@ -130,20 +147,91 @@ class _DetailPageState extends State<DetailPage>
   void initState() {
     super.initState();
     _tabController = TabController(length: _hasEpisodeTab ? 4 : 3, vsync: this);
-    _tabController.addListener(() {
-      if (!_tabController.indexIsChanging) {
-        _loadTabDataIfNeeded(_tabController.index);
-      }
-      if (mounted) setState(() {});
-    });
+    _tabController.addListener(_handleTabControllerTick);
     WidgetsBinding.instance.addPostFrameCallback((_) => _loadAllData());
   }
 
   @override
   void dispose() {
+    _scrollController.dispose();
     _tabController.dispose();
     commentController.dispose();
+    _watchedEpisodeIds.dispose();
     super.dispose();
+  }
+
+  void _handleTabControllerTick() {
+    if (_tabController.indexIsChanging || !mounted) {
+      return;
+    }
+
+    final int index = _tabController.index;
+    _loadTabDataIfNeeded(index);
+    if (index == _activeTabIndex) {
+      return;
+    }
+
+    _activeTabIndex = index;
+    setState(() {});
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _restorePinnedTabOffsetIfNeeded();
+    });
+  }
+
+  void _prepareTabSwitch(int targetIndex) {
+    if (targetIndex == _tabController.index) {
+      return;
+    }
+    _restorePinnedAfterTabChange = _isTabHeaderPinned;
+  }
+
+  bool get _isTabHeaderPinned {
+    if (!_scrollController.hasClients) {
+      return false;
+    }
+    return _scrollController.offset >= _tabPinnedOffset - 1;
+  }
+
+  double get _tabPinnedOffset {
+    if (_heroHeaderExtent > 0) {
+      return _heroHeaderExtent;
+    }
+    final double topInset = MediaQuery.paddingOf(context).top;
+    return topInset + kToolbarHeight + 180;
+  }
+
+  double get _stableTabFooterExtent {
+    return _tabPinnedOffset + MediaQuery.paddingOf(context).bottom + 24;
+  }
+
+  void _restorePinnedTabOffsetIfNeeded() {
+    if (!_restorePinnedAfterTabChange || !_scrollController.hasClients) {
+      _restorePinnedAfterTabChange = false;
+      return;
+    }
+    _restorePinnedAfterTabChange = false;
+    final ScrollPosition position = _scrollController.position;
+    final double target = _tabPinnedOffset.clamp(
+      position.minScrollExtent,
+      position.maxScrollExtent,
+    );
+    if ((_scrollController.offset - target).abs() > 0.5) {
+      _scrollController.jumpTo(target);
+    }
+  }
+
+  void _scheduleHeroHeaderMeasure() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+      final RenderBox? box =
+          _heroHeaderKey.currentContext?.findRenderObject() as RenderBox?;
+      if (box == null || !box.hasSize) {
+        return;
+      }
+      _heroHeaderExtent = box.size.height;
+    });
   }
 
   Future<void> _loadAllData() async {
@@ -285,8 +373,18 @@ class _DetailPageState extends State<DetailPage>
       return;
     }
 
+    // ── Epic 1: Chunk episodes by 100 ──
+    _allEpisodes = episodes;
+    final List<List<Map<String, dynamic>>> chunks =
+        <List<Map<String, dynamic>>>[];
+    for (int i = 0; i < episodes.length; i += _episodeChunkSize) {
+      final int end = (i + _episodeChunkSize).clamp(0, episodes.length);
+      chunks.add(episodes.sublist(i, end));
+    }
     setState(() {
-      episodesData = episodes;
+      episodesData = chunks.isNotEmpty ? chunks[0] : <Map<String, dynamic>>[];
+      _episodeChunks = chunks;
+      _currentChunkIndex = 0;
       isEpisodesLoading = false;
     });
   }
@@ -311,55 +409,42 @@ class _DetailPageState extends State<DetailPage>
                 : int.tryParse(actor['id']?.toString() ?? ''))
           : null;
 
-      showDialog(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Text(
-            '选择查看对象',
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+      showSelectionSheet(
+        context,
+        title: '选择查看对象',
+        items: <SelectionItem>[
+          SelectionItem(
+            label: '角色: $name',
+            onTap: () {
+              if (id != null) {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) =>
+                        RoleSubjectsPage(id: id, name: name, isCharacter: true),
+                  ),
+                );
+              }
+            },
           ),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
+          SelectionItem(
+            label: '声优: $actorName',
+            onTap: () {
+              if (actorId != null) {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => RoleSubjectsPage(
+                      id: actorId,
+                      name: actorName,
+                      isCharacter: false,
+                    ),
+                  ),
+                );
+              }
+            },
           ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.pop(ctx);
-                if (id != null) {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => RoleSubjectsPage(
-                        id: id,
-                        name: name,
-                        isCharacter: true,
-                      ),
-                    ),
-                  );
-                }
-              },
-              child: Text('角色: $name'),
-            ),
-            TextButton(
-              onPressed: () {
-                Navigator.pop(ctx);
-                if (actorId != null) {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => RoleSubjectsPage(
-                        id: actorId,
-                        name: actorName,
-                        isCharacter: false,
-                      ),
-                    ),
-                  );
-                }
-              },
-              child: Text('声优: $actorName'),
-            ),
-          ],
-        ),
+        ],
       );
     } else {
       if (id != null) {
@@ -436,26 +521,7 @@ class _DetailPageState extends State<DetailPage>
   }
 
   List<String> _extractAliases(String cnName, String originalName) {
-    Set<String> aliases = {
-      if (cnName.isNotEmpty) cnName,
-      if (originalName.isNotEmpty) originalName,
-    };
-    if (detailData?['infobox'] is List) {
-      for (var item in detailData!['infobox']) {
-        if (item is Map && item['key'] == '别名') {
-          if (item['value'] is List) {
-            aliases.addAll(
-              (item['value'] as List).whereType<Map>().map(
-                (v) => v['v'].toString(),
-              ),
-            );
-          } else if (item['value'] is String) {
-            aliases.add(item['value'].toString());
-          }
-        }
-      }
-    }
-    return aliases.where((e) => e.trim().isNotEmpty).toList();
+    return extractAliases(cnName, originalName, detailData);
   }
 
   Widget _buildDropdownRow(
@@ -477,22 +543,36 @@ class _DetailPageState extends State<DetailPage>
             height: 32,
             padding: const EdgeInsets.symmetric(horizontal: 8),
             decoration: BoxDecoration(
-              border: Border.all(color: Theme.of(context).dividerColor),
-              borderRadius: BorderRadius.circular(4),
+              border: Border.all(
+                color: Theme.of(context).colorScheme.outlineVariant,
+              ),
+              borderRadius: BorderRadius.circular(14),
             ),
-            child: DropdownButtonHideUnderline(
-              child: DropdownButton<String>(
-                value: value,
-                isExpanded: true,
-                items: items
-                    .map(
-                      (e) => DropdownMenuItem(
-                        value: e,
-                        child: Text(e, style: const TextStyle(fontSize: 13)),
-                      ),
-                    )
-                    .toList(),
-                onChanged: onChanged,
+            child: MenuTheme(
+              data: MenuThemeData(
+                style: MenuStyle(
+                  shape: WidgetStatePropertyAll<OutlinedBorder>(
+                    RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                ),
+              ),
+              child: DropdownButtonHideUnderline(
+                child: DropdownButton<String>(
+                  value: value,
+                  isExpanded: true,
+                  borderRadius: BorderRadius.circular(14),
+                  items: items
+                      .map(
+                        (e) => DropdownMenuItem(
+                          value: e,
+                          child: Text(e, style: const TextStyle(fontSize: 13)),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: onChanged,
+                ),
               ),
             ),
           ),
@@ -553,6 +633,7 @@ class _DetailPageState extends State<DetailPage>
     final String unit = widget.subjectType == 2 ? '集' : '话';
     final int total = _subjectEpisodeTotal();
     final int aired = _airedEpisodeCount();
+    final bool hasEpisodes = _allEpisodes.isNotEmpty || episodesData.isNotEmpty;
     final DateTime today = _today();
     final DateTime? startDate = _parseDate(detailData?['date']);
     final bool hasStarted = startDate == null || !startDate.isAfter(today);
@@ -561,18 +642,19 @@ class _DetailPageState extends State<DetailPage>
       return total > 0 ? '未开播 · 全$total$unit' : '未开播';
     }
 
-    if (episodesData.isNotEmpty) {
+    if (hasEpisodes) {
       if (total > 0) {
-        if (aired >= total && episodesData.length >= total) {
-          return '已完结 · 全$total$unit';
-        }
-        return aired > 0 ? '连载中 · 已出$aired/$total$unit' : '连载中 · 全$total$unit';
+        final int displayAired = aired > total ? total : aired;
+        return displayAired > 0
+            ? '连载中 · 已出$displayAired/$total$unit'
+            : '连载中 · 全$total$unit';
       }
       return aired > 0 ? '连载中 · 已出$aired$unit' : '连载中';
     }
 
-    if (total > 0) {
-      return '连载中 · 全$total$unit';
+    final int displayTotal = total > 0 ? total : _allEpisodes.length;
+    if (displayTotal > 0) {
+      return '连载中 · 全$displayTotal$unit';
     }
     return '连载中';
   }
@@ -591,7 +673,10 @@ class _DetailPageState extends State<DetailPage>
   int _airedEpisodeCount() {
     int count = 0;
     final DateTime today = _today();
-    for (final Map<String, dynamic> episode in episodesData) {
+    final List<Map<String, dynamic>> source = _allEpisodes.isNotEmpty
+        ? _allEpisodes
+        : episodesData;
+    for (final Map<String, dynamic> episode in source) {
       final DateTime? airdate = _parseDate(episode['airdate']);
       if (airdate != null && !airdate.isAfter(today)) {
         count += 1;
@@ -627,250 +712,287 @@ class _DetailPageState extends State<DetailPage>
     final theme = Theme.of(context);
     final Color highlightOrange = const Color(0xFFFF9F0A);
     final Color highlightBlue = theme.colorScheme.primary;
+    final double topInset = MediaQuery.paddingOf(context).top;
+    final SystemUiOverlayStyle overlayStyle =
+        theme.brightness == Brightness.dark
+        ? SystemUiOverlayStyle.light.copyWith(
+            statusBarColor: Colors.transparent,
+            systemNavigationBarColor: theme.colorScheme.surface,
+          )
+        : SystemUiOverlayStyle.dark.copyWith(
+            statusBarColor: Colors.transparent,
+            systemNavigationBarColor: theme.colorScheme.surface,
+          );
 
-    return Scaffold(
-      extendBodyBehindAppBar: true,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        iconTheme: const IconThemeData(color: Colors.white),
-      ),
-      body: isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : CustomScrollView(
-              slivers: [
-                SliverToBoxAdapter(
-                  child: Stack(
-                    children: [
-                      if (imageUrl.isNotEmpty)
-                        Positioned.fill(
-                          child: _buildSafeImage(
-                            imageUrl: imageUrl,
-                            fit: BoxFit.cover,
+    _scheduleHeroHeaderMeasure();
+
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: overlayStyle,
+      child: Scaffold(
+        body: isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : CustomScrollView(
+                controller: _scrollController,
+                slivers: [
+                  SliverToBoxAdapter(
+                    child: Stack(
+                      key: _heroHeaderKey,
+                      children: [
+                        if (imageUrl.isNotEmpty)
+                          Positioned.fill(
+                            child: _buildSafeImage(
+                              imageUrl: imageUrl,
+                              fit: BoxFit.cover,
+                            ),
                           ),
-                        ),
-                      if (imageUrl.isNotEmpty)
-                        Positioned.fill(
-                          child: ClipRect(
-                            child: BackdropFilter(
-                              filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
-                              child: Container(
-                                color: theme.scaffoldBackgroundColor.withValues(
-                                  alpha: 0.8,
+                        if (imageUrl.isNotEmpty)
+                          Positioned.fill(
+                            child: ClipRect(
+                              child: BackdropFilter(
+                                filter: ImageFilter.blur(
+                                  sigmaX: 25,
+                                  sigmaY: 25,
+                                ),
+                                child: Container(
+                                  color: theme.scaffoldBackgroundColor
+                                      .withValues(alpha: 0.8),
                                 ),
                               ),
                             ),
                           ),
-                        ),
-                      Padding(
-                        padding: EdgeInsets.fromLTRB(
-                          16,
-                          MediaQuery.of(context).padding.top +
-                              kToolbarHeight +
-                              10,
-                          16,
-                          20,
-                        ),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            ClipRRect(
-                              borderRadius: BorderRadius.circular(12),
-                              child: _buildSafeImage(
-                                imageUrl: imageUrl,
-                                width: 105,
-                                height: 150,
+                        Positioned(
+                          top: topInset + 12,
+                          left: 4,
+                          child: IconButton(
+                            tooltip: MaterialLocalizations.of(
+                              context,
+                            ).backButtonTooltip,
+                            onPressed: () => Navigator.maybePop(context),
+                            style: IconButton.styleFrom(
+                              backgroundColor: Colors.black.withValues(
+                                alpha: 0.18,
                               ),
+                              foregroundColor: Colors.white,
                             ),
-                            const SizedBox(width: 16),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    displayName,
-                                    style: const TextStyle(
-                                      fontSize: 18,
-                                      fontWeight: FontWeight.bold,
-                                      height: 1.2,
-                                    ),
-                                  ),
-                                  if (originalName.isNotEmpty &&
-                                      originalName != displayName)
+                            icon: const Icon(Icons.arrow_back_rounded),
+                          ),
+                        ),
+                        Padding(
+                          padding: EdgeInsets.fromLTRB(
+                            16,
+                            topInset + kToolbarHeight + 10,
+                            16,
+                            20,
+                          ),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              ClipRRect(
+                                borderRadius: BorderRadius.circular(12),
+                                child: _buildSafeImage(
+                                  imageUrl: imageUrl,
+                                  width: 105,
+                                  height: 150,
+                                ),
+                              ),
+                              const SizedBox(width: 16),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
                                     Text(
-                                      originalName,
+                                      displayName,
                                       style: const TextStyle(
-                                        fontSize: 12,
-                                        color: Colors.grey,
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.bold,
+                                        height: 1.2,
                                       ),
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis,
                                     ),
-                                  const SizedBox(height: 8),
-                                  Row(
-                                    children: [
-                                      const Icon(
-                                        Icons.star_rounded,
-                                        color: Colors.orange,
-                                        size: 18,
-                                      ),
-                                      const SizedBox(width: 4),
+                                    if (originalName.isNotEmpty &&
+                                        originalName != displayName)
                                       Text(
-                                        '${detailData?['rating']?['score'] ?? '暂无评分'}',
-                                        style: TextStyle(
-                                          fontSize: 15,
-                                          fontWeight: FontWeight.bold,
-                                          color: highlightOrange,
+                                        originalName,
+                                        style: const TextStyle(
+                                          fontSize: 12,
+                                          color: Colors.grey,
                                         ),
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
                                       ),
-                                    ],
-                                  ),
-                                  Text(
-                                    '首播: ${_formatAirDate()}\n状态: ${_broadcastStatusText()}',
-                                    style: const TextStyle(
-                                      fontSize: 11,
-                                      color: Colors.grey,
-                                      height: 1.5,
+                                    const SizedBox(height: 8),
+                                    Row(
+                                      children: [
+                                        const Icon(
+                                          Icons.star_rounded,
+                                          color: Colors.orange,
+                                          size: 18,
+                                        ),
+                                        const SizedBox(width: 4),
+                                        Text(
+                                          '${detailData?['rating']?['score'] ?? '暂无评分'}',
+                                          style: TextStyle(
+                                            fontSize: 15,
+                                            fontWeight: FontWeight.bold,
+                                            color: highlightOrange,
+                                          ),
+                                        ),
+                                      ],
                                     ),
-                                  ),
-                                  if (detailData?['tags'] is List)
-                                    Padding(
-                                      padding: const EdgeInsets.only(top: 8.0),
-                                      child: Wrap(
-                                        spacing: 6,
-                                        runSpacing: 6,
-                                        children: (detailData!['tags'] as List)
-                                            .take(5)
-                                            .map((tag) {
-                                              String tagName = tag is Map
-                                                  ? tag['name']?.toString() ??
-                                                        ''
-                                                  : tag.toString();
-                                              return InkWell(
-                                                onTap: () {
-                                                  Navigator.push(
-                                                    context,
-                                                    MaterialPageRoute(
-                                                      builder: (context) =>
-                                                          CategoryResultPage(
-                                                            title:
-                                                                '标签: $tagName',
-                                                            searchMode: 'tag',
-                                                            query: tagName,
-                                                            searchType: widget
-                                                                .subjectType,
-                                                          ),
-                                                    ),
-                                                  );
-                                                },
-                                                borderRadius:
-                                                    BorderRadius.circular(4),
-                                                child: Container(
-                                                  padding:
-                                                      const EdgeInsets.symmetric(
-                                                        horizontal: 6,
-                                                        vertical: 2,
+                                    Text(
+                                      '首播: ${_formatAirDate()}\n状态: ${_broadcastStatusText()}',
+                                      style: const TextStyle(
+                                        fontSize: 11,
+                                        color: Colors.grey,
+                                        height: 1.5,
+                                      ),
+                                    ),
+                                    if (detailData?['tags'] is List)
+                                      Padding(
+                                        padding: const EdgeInsets.only(
+                                          top: 8.0,
+                                        ),
+                                        child: Wrap(
+                                          spacing: 6,
+                                          runSpacing: 6,
+                                          children: (detailData!['tags'] as List)
+                                              .take(5)
+                                              .map((tag) {
+                                                String tagName = tag is Map
+                                                    ? tag['name']?.toString() ??
+                                                          ''
+                                                    : tag.toString();
+                                                return InkWell(
+                                                  onTap: () {
+                                                    Navigator.push(
+                                                      context,
+                                                      MaterialPageRoute(
+                                                        builder: (context) =>
+                                                            CategoryResultPage(
+                                                              title:
+                                                                  '标签: $tagName',
+                                                              searchMode: 'tag',
+                                                              query: tagName,
+                                                              searchType: widget
+                                                                  .subjectType,
+                                                            ),
                                                       ),
-                                                  decoration: BoxDecoration(
-                                                    color: highlightBlue
-                                                        .withValues(
-                                                          alpha: 0.15,
+                                                    );
+                                                  },
+                                                  borderRadius:
+                                                      BorderRadius.circular(4),
+                                                  child: Container(
+                                                    padding:
+                                                        const EdgeInsets.symmetric(
+                                                          horizontal: 6,
+                                                          vertical: 2,
                                                         ),
-                                                    borderRadius:
-                                                        BorderRadius.circular(
-                                                          4,
-                                                        ),
-                                                    border: Border.all(
+                                                    decoration: BoxDecoration(
                                                       color: highlightBlue
                                                           .withValues(
-                                                            alpha: 0.3,
+                                                            alpha: 0.15,
                                                           ),
+                                                      borderRadius:
+                                                          BorderRadius.circular(
+                                                            4,
+                                                          ),
+                                                      border: Border.all(
+                                                        color: highlightBlue
+                                                            .withValues(
+                                                              alpha: 0.3,
+                                                            ),
+                                                      ),
+                                                    ),
+                                                    child: Text(
+                                                      tagName,
+                                                      style: TextStyle(
+                                                        fontSize: 10,
+                                                        color: highlightBlue,
+                                                      ),
                                                     ),
                                                   ),
-                                                  child: Text(
-                                                    tagName,
-                                                    style: TextStyle(
-                                                      fontSize: 10,
-                                                      color: highlightBlue,
-                                                    ),
-                                                  ),
-                                                ),
-                                              );
-                                            })
-                                            .toList(),
+                                                );
+                                              })
+                                              .toList(),
+                                        ),
                                       ),
-                                    ),
-                                ],
+                                  ],
+                                ),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
-                ),
-                SliverPersistentHeader(
-                  pinned: true,
-                  delegate: _SliverAppBarDelegate(
-                    TabBar(
-                      controller: _tabController,
-                      splashFactory: NoSplash.splashFactory,
-                      overlayColor: WidgetStateProperty.all<Color>(
-                        Colors.transparent,
-                      ),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 6,
-                      ),
-                      indicatorPadding: const EdgeInsets.symmetric(vertical: 4),
-                      tabs: <Widget>[
-                        const Tab(text: '详情'),
-                        if (_hasEpisodeTab) const Tab(text: '剧集'),
-                        const Tab(text: '进度'),
-                        const Tab(text: '吐槽'),
                       ],
                     ),
                   ),
-                ),
-                _buildActiveTabSliver(highlightBlue, highlightOrange),
-              ],
-            ),
-      bottomNavigationBar: widget.subjectType == 1
-          ? null
-          : ClipRect(
-              child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.surface.withValues(
-                      alpha: theme.brightness == Brightness.dark ? 0.78 : 0.9,
-                    ),
-                    border: Border(
-                      top: BorderSide(color: theme.colorScheme.outlineVariant),
+                  SliverPersistentHeader(
+                    pinned: true,
+                    delegate: _SliverAppBarDelegate(
+                      TabBar(
+                        controller: _tabController,
+                        splashFactory: NoSplash.splashFactory,
+                        overlayColor: WidgetStateProperty.all<Color>(
+                          Colors.transparent,
+                        ),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 6,
+                        ),
+                        indicatorPadding: const EdgeInsets.symmetric(
+                          vertical: 4,
+                        ),
+                        tabs: <Widget>[
+                          const Tab(text: '详情'),
+                          if (_hasEpisodeTab) const Tab(text: '剧集'),
+                          const Tab(text: '进度'),
+                          const Tab(text: '吐槽'),
+                        ],
+                        onTap: _prepareTabSwitch,
+                      ),
+                      topInset: topInset,
                     ),
                   ),
-                  child: SafeArea(
-                    top: false,
-                    minimum: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-                    child: SizedBox(
-                      height: 52,
-                      child: FilledButton.icon(
-                        onPressed: () => Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => MagnetConfigPage(
-                              animeName: displayName,
-                              aliases: _extractAliases(cnName, originalName),
-                              bangumiSubjectId: widget.animeId,
+                  ..._buildActiveTabSlivers(highlightBlue, highlightOrange),
+                ],
+              ),
+        bottomNavigationBar: widget.subjectType == 1
+            ? null
+            : ClipRect(
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.surface.withValues(
+                        alpha: theme.brightness == Brightness.dark ? 0.78 : 0.9,
+                      ),
+                      border: Border(
+                        top: BorderSide(
+                          color: theme.colorScheme.outlineVariant,
+                        ),
+                      ),
+                    ),
+                    child: SafeArea(
+                      top: false,
+                      minimum: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+                      child: SizedBox(
+                        height: 52,
+                        child: FilledButton.icon(
+                          onPressed: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => MagnetConfigPage(
+                                animeName: displayName,
+                                aliases: _extractAliases(cnName, originalName),
+                                bangumiSubjectId: widget.animeId,
+                              ),
                             ),
                           ),
-                        ),
-                        icon: const Icon(Icons.download_rounded),
-                        label: const Text(
-                          '全网磁力检索',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
+                          icon: const Icon(Icons.download_rounded),
+                          label: const Text(
+                            '全网磁力检索',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                         ),
                       ),
@@ -878,25 +1000,41 @@ class _DetailPageState extends State<DetailPage>
                   ),
                 ),
               ),
-            ),
+      ),
     );
   }
 
-  Widget _buildActiveTabSliver(Color highlightBlue, Color highlightOrange) {
+  List<Widget> _buildActiveTabSlivers(
+    Color highlightBlue,
+    Color highlightOrange,
+  ) {
     final int index = _tabController.index;
     if (index == 0) {
-      return _buildDetailsSliver();
+      return _withStableTabFooter(<Widget>[_buildDetailsSliver()]);
     }
     if (_hasEpisodeTab && index == 1) {
-      return _buildEpisodesSliver(highlightBlue);
+      return _withStableTabFooter(_buildEpisodesSlivers(highlightBlue));
     }
     if (index == _progressTabIndex) {
-      return _buildProgressSliver(highlightBlue, highlightOrange);
+      return _withStableTabFooter(<Widget>[
+        _buildProgressSliver(highlightBlue, highlightOrange),
+      ]);
     }
     if (index == _commentsTabIndex) {
-      return _buildCommentsSliver(highlightOrange);
+      return _withStableTabFooter(<Widget>[
+        _buildCommentsSliver(highlightOrange),
+      ]);
     }
-    return const SliverToBoxAdapter(child: SizedBox.shrink());
+    return _withStableTabFooter(<Widget>[
+      const SliverToBoxAdapter(child: SizedBox.shrink()),
+    ]);
+  }
+
+  List<Widget> _withStableTabFooter(List<Widget> slivers) {
+    return <Widget>[
+      ...slivers,
+      SliverToBoxAdapter(child: SizedBox(height: _stableTabFooterExtent)),
+    ];
   }
 
   Widget _buildDetailsSliver() {
@@ -1006,7 +1144,7 @@ class _DetailPageState extends State<DetailPage>
     );
   }
 
-  Widget _buildEpisodesSliver(Color highlightBlue) {
+  List<Widget> _buildEpisodesSlivers(Color highlightBlue) {
     if (!hasRequestedEpisodes && !isEpisodesLoading) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted && !hasRequestedEpisodes && !isEpisodesLoading) {
@@ -1016,68 +1154,239 @@ class _DetailPageState extends State<DetailPage>
     }
 
     if (isEpisodesLoading) {
-      return const SliverToBoxAdapter(
-        child: Padding(
-          padding: EdgeInsets.all(32.0),
-          child: Center(child: CircularProgressIndicator()),
+      return <Widget>[
+        const SliverToBoxAdapter(
+          child: Padding(
+            padding: EdgeInsets.all(32.0),
+            child: Center(child: CircularProgressIndicator()),
+          ),
         ),
-      );
+      ];
     }
 
     if (episodesData.isEmpty) {
-      return const SliverToBoxAdapter(
-        child: Padding(
-          padding: EdgeInsets.all(32.0),
-          child: Center(
-            child: Text('暂无剧集数据。', style: TextStyle(color: Colors.grey)),
+      return <Widget>[
+        const SliverToBoxAdapter(
+          child: Padding(
+            padding: EdgeInsets.all(32.0),
+            child: Center(
+              child: Text('暂无剧集数据。', style: TextStyle(color: Colors.grey)),
+            ),
           ),
         ),
-      );
+      ];
     }
 
-    return SliverPadding(
-      padding: const EdgeInsets.fromLTRB(12, 12, 12, 96),
-      sliver: SliverList.separated(
-        itemCount: episodesData.length,
-        separatorBuilder: (BuildContext context, int index) =>
-            const SizedBox(height: 8),
-        itemBuilder: (BuildContext context, int index) {
-          final Map<String, dynamic> episode = episodesData[index];
-          final int episodeNumber = _episodeNumber(episode);
-          final bool watched = episodeNumber > 0 && episodeNumber <= currentEp;
-          return Card(
-            elevation: 0,
-            child: ListTile(
-              leading: CircleAvatar(
-                backgroundColor: watched
-                    ? Colors.green.withValues(alpha: 0.16)
-                    : highlightBlue.withValues(alpha: 0.12),
-                child: Text(
-                  episodeNumber > 0 ? '$episodeNumber' : '?',
-                  style: TextStyle(
-                    color: watched ? Colors.green.shade700 : highlightBlue,
-                    fontWeight: FontWeight.w700,
+    final bool useChunking = _allEpisodes.length > _episodeChunkSize;
+    final int chunkStart = _currentChunkIndex * _episodeChunkSize + 1;
+    final int displayEnd = ((_currentChunkIndex + 1) * _episodeChunkSize).clamp(
+      0,
+      _allEpisodes.length,
+    );
+
+    // ── Short series (≤100): simple dense list, no chunking ──
+    if (!useChunking) {
+      return <Widget>[
+        SliverPadding(
+          padding: const EdgeInsets.fromLTRB(12, 12, 12, 96),
+          sliver: SliverList.separated(
+            itemCount: episodesData.length,
+            separatorBuilder: (BuildContext context, int index) =>
+                const SizedBox(height: 6),
+            itemBuilder: (BuildContext context, int index) {
+              final Map<String, dynamic> episode = episodesData[index];
+              final int epNum = _episodeNumber(episode);
+              final bool watched = epNum > 0 && epNum <= currentEp;
+              return Card(
+                elevation: 0,
+                child: ListTile(
+                  dense: true,
+                  leading: CircleAvatar(
+                    radius: 18,
+                    backgroundColor: watched
+                        ? Colors.green.withValues(alpha: 0.16)
+                        : highlightBlue.withValues(alpha: 0.12),
+                    child: Text(
+                      epNum > 0 ? '$epNum' : '?',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: watched ? Colors.green.shade700 : highlightBlue,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
                   ),
+                  title: Text(
+                    _episodeTitle(episode),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 14,
+                    ),
+                  ),
+                  subtitle: Text(
+                    _episodeMeta(episode),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                  trailing: const Icon(Icons.chevron_right_rounded, size: 20),
+                  onTap: () => _openEpisodeWatchPage(episode),
+                ),
+              );
+            },
+          ),
+        ),
+      ];
+    }
+
+    // ── Long series (>100): separate selector header + grid ──
+    final double screenWidth = MediaQuery.of(context).size.width;
+    final int cols = screenWidth >= 720 ? 5 : (screenWidth >= 480 ? 4 : 3);
+
+    return <Widget>[
+      // ── Chunk selector (fixed above the grid) ──
+      SliverToBoxAdapter(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              SizedBox(
+                height: 36,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: _episodeChunks.length,
+                  separatorBuilder: (BuildContext context, int index) =>
+                      const SizedBox(width: 6),
+                  itemBuilder: (BuildContext context, int chunkIdx) {
+                    final int start = chunkIdx * _episodeChunkSize + 1;
+                    final int end = ((chunkIdx + 1) * _episodeChunkSize).clamp(
+                      0,
+                      _allEpisodes.length,
+                    );
+                    return ChoiceChip(
+                      selected: _currentChunkIndex == chunkIdx,
+                      label: Text('$start-$end'),
+                      labelStyle: const TextStyle(fontSize: 12),
+                      visualDensity: VisualDensity.compact,
+                      onSelected: (_) {
+                        setState(() {
+                          _currentChunkIndex = chunkIdx;
+                          episodesData = _episodeChunks[chunkIdx];
+                        });
+                      },
+                    );
+                  },
                 ),
               ),
-              title: Text(
-                _episodeTitle(episode),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontWeight: FontWeight.w700),
+              const SizedBox(height: 6),
+              Text(
+                '$chunkStart–$displayEnd / ${_allEpisodes.length} 话',
+                style: const TextStyle(fontSize: 12, color: Colors.grey),
               ),
-              subtitle: Text(
-                _episodeMeta(episode),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-              trailing: const Icon(Icons.chevron_right_rounded),
-              onTap: () => _openEpisodeWatchPage(episode),
-            ),
-          );
-        },
+            ],
+          ),
+        ),
       ),
-    );
+
+      // ── Episode grid ──
+      SliverPadding(
+        padding: const EdgeInsets.fromLTRB(12, 6, 12, 96),
+        sliver: SliverGrid(
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: cols,
+            childAspectRatio: 0.78,
+            crossAxisSpacing: 8,
+            mainAxisSpacing: 8,
+          ),
+          delegate: SliverChildBuilderDelegate((
+            BuildContext context,
+            int index,
+          ) {
+            if (index >= episodesData.length) return const SizedBox.shrink();
+            final Map<String, dynamic> episode = episodesData[index];
+            final int epNum = _episodeNumber(episode);
+            return ValueListenableBuilder<Set<int>>(
+              valueListenable: _watchedEpisodeIds,
+              builder:
+                  (BuildContext context, Set<int> watchedIds, Widget? child) {
+                    final bool watched =
+                        (epNum > 0 && epNum <= currentEp) ||
+                        watchedIds.contains(episodeId(episode));
+                    return Card(
+                      elevation: 0,
+                      clipBehavior: Clip.antiAlias,
+                      child: InkWell(
+                        onTap: () => _openEpisodeWatchPage(episode),
+                        child: Padding(
+                          padding: const EdgeInsets.all(10),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: <Widget>[
+                              Container(
+                                constraints: const BoxConstraints(minWidth: 32),
+                                height: 32,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 6,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: watched
+                                      ? Colors.green.withValues(alpha: 0.16)
+                                      : highlightBlue.withValues(alpha: 0.12),
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                alignment: Alignment.center,
+                                child: Text(
+                                  epNum > 0 ? '$epNum' : '?',
+                                  style: TextStyle(
+                                    fontSize: epNum >= 1000
+                                        ? 11
+                                        : (epNum >= 100 ? 14 : 16),
+                                    fontWeight: FontWeight.w800,
+                                    color: watched
+                                        ? Colors.green.shade700
+                                        : highlightBlue,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Expanded(
+                                child: Text(
+                                  _episodeTitle(episode),
+                                  maxLines: 3,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w700,
+                                    height: 1.3,
+                                  ),
+                                ),
+                              ),
+                              Text(
+                                episode['airdate']?.toString().isNotEmpty ==
+                                        true
+                                    ? episode['airdate'].toString()
+                                    : '',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontSize: 10,
+                                  color: Colors.grey,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+            );
+          }, childCount: episodesData.length),
+        ),
+      ),
+    ];
   }
 
   Future<void> _openEpisodeWatchPage(Map<String, dynamic> episode) async {
@@ -1097,50 +1406,9 @@ class _DetailPageState extends State<DetailPage>
     );
   }
 
-  int _episodeNumber(Map<String, dynamic> episode) {
-    final dynamic ep = episode['ep'] ?? episode['sort'];
-    if (ep is int) {
-      return ep;
-    }
-    if (ep is num) {
-      return ep.round();
-    }
-    return int.tryParse(ep?.toString() ?? '') ?? 0;
-  }
+  int _episodeNumber(Map<String, dynamic> episode) => episodeNumber(episode);
 
-  String _episodeTitle(Map<String, dynamic> episode) {
-    final int number = _episodeNumber(episode);
-    final String nameCn = episode['name_cn']?.toString().trim() ?? '';
-    final String name = episode['name']?.toString().trim() ?? '';
-    final String title = _stripRedundantEpisodePrefix(
-      nameCn.isNotEmpty ? nameCn : name,
-      number,
-    );
-    if (title.isEmpty) {
-      return number > 0 ? '第$number集' : '未命名剧集';
-    }
-    return title;
-  }
-
-  String _stripRedundantEpisodePrefix(String title, int episodeNumber) {
-    if (episodeNumber <= 0 || title.isEmpty) {
-      return title;
-    }
-    final String padded = episodeNumber.toString().padLeft(2, '0');
-    final List<RegExp> patterns = <RegExp>[
-      RegExp('^第\\s*0?$episodeNumber\\s*[集话話]\\s*[:：.．、-]?\\s*'),
-      RegExp('^0?$episodeNumber\\s*[:：.．、-]+\\s*'),
-      RegExp('^0?$episodeNumber\\s+(?=\\D)'),
-      RegExp('^$padded\\s*[:：.．、-]?\\s*'),
-    ];
-    for (final RegExp pattern in patterns) {
-      final String stripped = title.replaceFirst(pattern, '').trim();
-      if (stripped != title && stripped.isNotEmpty) {
-        return stripped;
-      }
-    }
-    return title;
-  }
+  String _episodeTitle(Map<String, dynamic> episode) => episodeTitle(episode);
 
   String _episodeMeta(Map<String, dynamic> episode) {
     final List<String> parts = <String>[
@@ -1155,12 +1423,14 @@ class _DetailPageState extends State<DetailPage>
   }
 
   Future<void> _setProgressToEpisode(int episodeNumber) async {
-    setState(() {
-      currentEp = episodeNumber;
-      if (currentStatus == '未收藏') {
-        currentStatus = '在看';
-      }
-    });
+    // ── Epic 1: local-only refresh via ValueNotifier ──
+    currentEp = episodeNumber;
+    if (currentStatus == '未收藏') {
+      setState(() => currentStatus = '在看');
+    } else {
+      // Notify only episode cards to rebuild for watched-state visual update.
+      _watchedEpisodeIds.value = <int>{..._watchedEpisodeIds.value};
+    }
     await _syncToCloud();
   }
 
@@ -1333,11 +1603,15 @@ class _DetailPageState extends State<DetailPage>
 
 class _SliverAppBarDelegate extends SliverPersistentHeaderDelegate {
   final TabBar tabBar;
-  _SliverAppBarDelegate(this.tabBar);
+  final double topInset;
+  _SliverAppBarDelegate(this.tabBar, {required this.topInset});
+
   @override
-  double get minExtent => tabBar.preferredSize.height;
+  double get minExtent => tabBar.preferredSize.height + topInset;
+
   @override
-  double get maxExtent => tabBar.preferredSize.height;
+  double get maxExtent => tabBar.preferredSize.height + topInset;
+
   @override
   Widget build(
     BuildContext context,
@@ -1349,20 +1623,35 @@ class _SliverAppBarDelegate extends SliverPersistentHeaderDelegate {
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
         child: Container(
+          alignment: Alignment.bottomCenter,
           decoration: BoxDecoration(
-            color: theme.colorScheme.surface.withValues(
-              alpha: theme.brightness == Brightness.dark ? 0.82 : 0.9,
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: <Color>[
+                theme.colorScheme.surface.withValues(
+                  alpha: theme.brightness == Brightness.dark ? 0.70 : 0.76,
+                ),
+                theme.colorScheme.surface.withValues(
+                  alpha: theme.brightness == Brightness.dark ? 0.86 : 0.92,
+                ),
+              ],
             ),
             border: Border(
               bottom: BorderSide(color: theme.colorScheme.outlineVariant),
             ),
           ),
-          child: tabBar,
+          child: Padding(
+            padding: EdgeInsets.only(top: topInset),
+            child: tabBar,
+          ),
         ),
       ),
     );
   }
 
   @override
-  bool shouldRebuild(covariant _SliverAppBarDelegate oldDelegate) => false;
+  bool shouldRebuild(covariant _SliverAppBarDelegate oldDelegate) {
+    return oldDelegate.tabBar != tabBar || oldDelegate.topInset != topInset;
+  }
 }

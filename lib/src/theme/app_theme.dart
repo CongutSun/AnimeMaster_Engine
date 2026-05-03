@@ -177,6 +177,27 @@ class AppTheme {
         foregroundColor: scheme.onPrimary,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
       ),
+      dialogTheme: DialogThemeData(
+        elevation: 0,
+        backgroundColor: surface,
+        surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      ),
+      bottomSheetTheme: BottomSheetThemeData(
+        elevation: 0,
+        modalElevation: 0,
+        backgroundColor: surface,
+        modalBackgroundColor: surface,
+        surfaceTintColor: Colors.transparent,
+        showDragHandle: true,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+      ),
+      popupMenuTheme: PopupMenuThemeData(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      ),
+      progressIndicatorTheme: ProgressIndicatorThemeData(color: scheme.primary),
       segmentedButtonTheme: SegmentedButtonThemeData(
         style: SegmentedButton.styleFrom(
           backgroundColor: elevatedSurface,
@@ -229,7 +250,7 @@ class AppTheme {
             ? const Color(0xFF2C2C2E)
             : const Color(0xFF1D1D1F),
         contentTextStyle: const TextStyle(color: Colors.white),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       ),
     );
   }

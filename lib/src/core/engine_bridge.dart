@@ -84,26 +84,23 @@ class EngineBridge {
   Map<String, dynamic> parseMagnet(String uri) {
     final DynamicLibrary? dylib = _loadLibrary();
     if (_isCoreReady && dylib != null) {
-      Pointer<Utf8>? uriPtr;
       try {
         final parseFunc = dylib
             .lookupFunction<_ParseMagnetLinkC, _ParseMagnetLinkDart>(
               'ParseMagnetLink',
             );
-        uriPtr = uri.toNativeUtf8();
-
-        final Pointer<Utf8> resultPtr = parseFunc(uriPtr);
-        final String jsonStr = resultPtr.toDartString();
-        final dynamic decoded = jsonDecode(jsonStr);
-        if (decoded is Map) {
-          return Map<String, dynamic>.from(decoded);
-        }
+        return using((Arena arena) {
+          final Pointer<Utf8> uriPtr = uri.toNativeUtf8(allocator: arena);
+          final Pointer<Utf8> resultPtr = parseFunc(uriPtr);
+          final String jsonStr = resultPtr.toDartString();
+          final dynamic decoded = jsonDecode(jsonStr);
+          if (decoded is Map) {
+            return Map<String, dynamic>.from(decoded);
+          }
+          return _parseMagnetFallback(uri);
+        });
       } catch (e) {
         debugPrint('[EngineBridge] Native magnet parse failed: $e');
-      } finally {
-        if (uriPtr != null) {
-          malloc.free(uriPtr);
-        }
       }
     }
 
@@ -113,26 +110,23 @@ class EngineBridge {
   Map<String, dynamic> scanLocalDirectory(String path) {
     final DynamicLibrary? dylib = _loadLibrary();
     if (_isCoreReady && dylib != null) {
-      Pointer<Utf8>? pathPtr;
       try {
         final scanFunc = dylib
             .lookupFunction<_ScanLocalDirectoryC, _ScanLocalDirectoryDart>(
               'ScanLocalDirectory',
             );
-        pathPtr = path.toNativeUtf8();
-
-        final Pointer<Utf8> resultPtr = scanFunc(pathPtr);
-        final String jsonStr = resultPtr.toDartString();
-        final dynamic decoded = jsonDecode(jsonStr);
-        if (decoded is Map) {
-          return Map<String, dynamic>.from(decoded);
-        }
+        return using((Arena arena) {
+          final Pointer<Utf8> pathPtr = path.toNativeUtf8(allocator: arena);
+          final Pointer<Utf8> resultPtr = scanFunc(pathPtr);
+          final String jsonStr = resultPtr.toDartString();
+          final dynamic decoded = jsonDecode(jsonStr);
+          if (decoded is Map) {
+            return Map<String, dynamic>.from(decoded);
+          }
+          return _scanDirectoryFallback(path);
+        });
       } catch (e) {
         debugPrint('[EngineBridge] Native directory scan failed: $e');
-      } finally {
-        if (pathPtr != null) {
-          malloc.free(pathPtr);
-        }
       }
     }
 

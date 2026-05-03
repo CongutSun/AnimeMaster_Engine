@@ -9,8 +9,24 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/download_task_info.dart';
+import '../repositories/download_task_repository.dart';
 import '../services/background_download_service.dart';
 import '../utils/tracker_pool.dart';
+
+List<DownloadTaskInfo> _decodeLegacyDownloadTasks(String tasksJson) {
+  final Object? decoded = jsonDecode(tasksJson);
+  if (decoded is! List) {
+    return <DownloadTaskInfo>[];
+  }
+
+  return decoded
+      .whereType<Map>()
+      .map(
+        (Map<dynamic, dynamic> item) =>
+            DownloadTaskInfo.fromJson(Map<String, dynamic>.from(item)),
+      )
+      .toList(growable: false);
+}
 
 class DownloadManager extends ChangeNotifier {
   static final DownloadManager _instance = DownloadManager._internal();
@@ -47,6 +63,8 @@ class DownloadManager extends ChangeNotifier {
   bool _isScheduling = false;
   Timer? _speedTimer;
   Timer? _maintenanceTimer;
+  final DownloadTaskRepository _taskRepository =
+      DownloadTaskRepository.instance;
 
   DownloadManager._internal() {
     _speedTimer = Timer.periodic(_speedSampleInterval, _calculateSpeeds);
@@ -60,19 +78,18 @@ class DownloadManager extends ChangeNotifier {
   bool hasTask(String hash) => _activeTasks.containsKey(hash);
 
   Future<void> initPersistedTasks() async {
-    final SharedPreferences prefs = await SharedPreferences.getInstance();
-    final String? tasksJson = prefs.getString('anime_saved_tasks');
+    final List<DownloadTaskInfo> persistedTasks =
+        await _loadPersistedTaskConfigs();
     bool hasMigratedTask = false;
 
-    if (tasksJson == null) {
+    if (persistedTasks.isEmpty) {
       return;
     }
 
-    final List<dynamic> decodedList = jsonDecode(tasksJson);
-    for (final dynamic item in decodedList) {
-      DownloadTaskInfo info = DownloadTaskInfo.fromJson(item);
+    for (DownloadTaskInfo info in persistedTasks) {
       final File torrentFile = File('${info.savePath}/meta.torrent');
       if (!await torrentFile.exists()) {
+        await _taskRepository.deleteByHash(info.hash);
         continue;
       }
 
@@ -113,19 +130,50 @@ class DownloadManager extends ChangeNotifier {
     }
 
     if (hasMigratedTask) {
-      await _saveTasksToPrefs();
+      await _persistAllTasks();
     }
     await _enforceConcurrency();
     _syncBackgroundService();
     notifyListeners();
   }
 
-  Future<void> _saveTasksToPrefs() async {
+  Future<List<DownloadTaskInfo>> _loadPersistedTaskConfigs() async {
+    final List<DownloadTaskInfo> databaseTasks = await _taskRepository
+        .loadAll();
+    if (databaseTasks.isNotEmpty) {
+      return databaseTasks;
+    }
+
     final SharedPreferences prefs = await SharedPreferences.getInstance();
-    final List<Map<String, dynamic>> tasksList = _taskConfigs.values
-        .map((DownloadTaskInfo task) => task.toJson())
-        .toList();
-    await prefs.setString('anime_saved_tasks', jsonEncode(tasksList));
+    final String? legacyJson = prefs.getString('anime_saved_tasks');
+    if (legacyJson == null || legacyJson.trim().isEmpty) {
+      return <DownloadTaskInfo>[];
+    }
+
+    try {
+      final List<DownloadTaskInfo> legacyTasks = await compute(
+        _decodeLegacyDownloadTasks,
+        legacyJson,
+      );
+      await _taskRepository.upsertAll(legacyTasks);
+      await prefs.remove('anime_saved_tasks');
+      return legacyTasks;
+    } catch (error) {
+      debugPrint('Failed to migrate legacy download tasks: $error');
+      return <DownloadTaskInfo>[];
+    }
+  }
+
+  Future<void> _persistTask(String hash) async {
+    final DownloadTaskInfo? task = _taskConfigs[hash];
+    if (task == null) {
+      return;
+    }
+    await _taskRepository.upsert(task);
+  }
+
+  Future<void> _persistAllTasks() {
+    return _taskRepository.upsertAll(_taskConfigs.values);
   }
 
   void _calculateSpeeds(Timer timer) {
@@ -154,7 +202,7 @@ class DownloadManager extends ChangeNotifier {
         _peerWarmupTimers.remove(hash)?.cancel();
         _currentSpeeds[hash] = 0.0;
         _currentUploadSpeeds[hash] = _uploadSpeedInKb(task);
-        unawaited(_saveTasksToPrefs());
+        unawaited(_persistTask(hash));
         unawaited(_enforceConcurrency());
         shouldNotify |= _markVisibleTransferChange(
           hash,
@@ -257,7 +305,7 @@ class DownloadManager extends ChangeNotifier {
         _pausedStates[info.hash] = false;
         _queuedStates[info.hash] = false;
         await _startOrResumeTask(info.hash, preferred: streamOptimized);
-        await _saveTasksToPrefs();
+        await _persistTask(info.hash);
         notifyListeners();
       }
       return;
@@ -300,7 +348,7 @@ class DownloadManager extends ChangeNotifier {
     _lastNotifiedUploadSpeeds[info.hash] = 0.0;
 
     await _startOrResumeTask(info.hash, preferred: streamOptimized);
-    await _saveTasksToPrefs();
+    await _persistTask(info.hash);
     _syncBackgroundService();
     notifyListeners();
   }
@@ -357,7 +405,7 @@ class DownloadManager extends ChangeNotifier {
     _taskConfigs[hash]?.isPaused = false;
     _queuedStates[hash] = false;
     await _startOrResumeTask(hash, preferred: true);
-    await _saveTasksToPrefs();
+    await _persistTask(hash);
   }
 
   void prioritizePlaybackRange(
@@ -940,7 +988,7 @@ class DownloadManager extends ChangeNotifier {
       _currentUploadSpeeds[hash] = 0.0;
       await _enforceConcurrency();
     }
-    await _saveTasksToPrefs();
+    await _persistTask(hash);
     _syncBackgroundService();
     notifyListeners();
   }
@@ -977,7 +1025,7 @@ class DownloadManager extends ChangeNotifier {
       } catch (_) {}
     }
 
-    await _saveTasksToPrefs();
+    await _taskRepository.deleteByHash(hash);
     await _enforceConcurrency();
     _syncBackgroundService();
     notifyListeners();

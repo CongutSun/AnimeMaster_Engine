@@ -136,6 +136,88 @@ class _SettingsPageState extends State<SettingsPage> {
     });
   }
 
+  String get _resumeBehaviorLabel {
+    return switch (resumePlaybackBehavior) {
+      'auto' => '自动续播',
+      'never' => '始终从头播放',
+      _ => '播放前询问',
+    };
+  }
+
+  Future<void> _showResumeBehaviorSheet() async {
+    final String? selected = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      useSafeArea: true,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (BuildContext sheetContext) {
+        final ThemeData theme = Theme.of(sheetContext);
+        final ColorScheme colors = theme.colorScheme;
+        return SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  '继续播放',
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '打开视频时如何处理上次的观看进度',
+                  style: TextStyle(color: colors.onSurfaceVariant),
+                ),
+                const SizedBox(height: 16),
+                _ThemeModeOption(
+                  icon: Icons.help_outline_rounded,
+                  title: '播放前询问',
+                  subtitle: '每次打开视频都询问是否从上次位置继续',
+                  selected: resumePlaybackBehavior == 'ask',
+                  onTap: () => Navigator.pop(sheetContext, 'ask'),
+                ),
+                const SizedBox(height: 10),
+                _ThemeModeOption(
+                  icon: Icons.skip_next_rounded,
+                  title: '自动续播',
+                  subtitle: '自动从上一次的观看进度继续播放',
+                  selected: resumePlaybackBehavior == 'auto',
+                  onTap: () => Navigator.pop(sheetContext, 'auto'),
+                ),
+                const SizedBox(height: 10),
+                _ThemeModeOption(
+                  icon: Icons.replay_rounded,
+                  title: '始终从头播放',
+                  subtitle: '每次打开视频都从头开始，不记忆进度',
+                  selected: resumePlaybackBehavior == 'never',
+                  onTap: () => Navigator.pop(sheetContext, 'never'),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+
+    if (!mounted || selected == null || selected == resumePlaybackBehavior) {
+      return;
+    }
+    setState(() => resumePlaybackBehavior = selected);
+    unawaited(
+      context.read<SettingsProvider>().updatePlaybackOptions(
+        enablePictureInPicture: enablePictureInPicture,
+        resumePlaybackBehavior: selected,
+      ),
+    );
+  }
+
   Future<void> _pickAndCropImage() async {
     final ImagePicker picker = ImagePicker();
     final XFile? pickedFile = await picker.pickImage(
@@ -826,10 +908,21 @@ class _SettingsPageState extends State<SettingsPage> {
               readOnly: true,
               decoration: InputDecoration(
                 labelText: '首页背景',
-                hintText: '仅首页使用这张背景图',
-                suffixIcon: IconButton(
-                  onPressed: _pickAndCropImage,
-                  icon: const Icon(Icons.image_outlined),
+                hintText: '留空则使用纯色背景',
+                suffixIcon: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    if (bgController.text.isNotEmpty)
+                      IconButton(
+                        tooltip: '恢复纯色背景',
+                        onPressed: () => setState(() => bgController.clear()),
+                        icon: const Icon(Icons.close_rounded),
+                      ),
+                    IconButton(
+                      onPressed: _pickAndCropImage,
+                      icon: const Icon(Icons.image_outlined),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -905,28 +998,64 @@ class _SettingsPageState extends State<SettingsPage> {
               },
             ),
             const Divider(height: 18),
-            DropdownButtonFormField<String>(
-              initialValue: resumePlaybackBehavior,
-              decoration: const InputDecoration(labelText: '继续播放'),
-              items: const <DropdownMenuItem<String>>[
-                DropdownMenuItem(value: 'ask', child: Text('每次询问')),
-                DropdownMenuItem(value: 'auto', child: Text('自动继续')),
-                DropdownMenuItem(value: 'never', child: Text('从头播放')),
-              ],
-              onChanged: (String? value) {
-                if (value == null) {
-                  return;
-                }
-                setState(() {
-                  resumePlaybackBehavior = value;
-                });
-                unawaited(
-                  context.read<SettingsProvider>().updatePlaybackOptions(
-                    enablePictureInPicture: enablePictureInPicture,
-                    resumePlaybackBehavior: value,
+            Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: _showResumeBehaviorSheet,
+                borderRadius: BorderRadius.circular(18),
+                child: Ink(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 12,
                   ),
-                );
-              },
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.surfaceContainerHighest
+                        .withValues(
+                          alpha: Theme.of(context).brightness == Brightness.dark
+                              ? 0.48
+                              : 0.7,
+                        ),
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(
+                      color: Theme.of(context).colorScheme.outlineVariant,
+                    ),
+                  ),
+                  child: Row(
+                    children: <Widget>[
+                      const _SettingsIconBadge(
+                        icon: Icons.replay_rounded,
+                        compact: true,
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: <Widget>[
+                            const Text(
+                              '继续播放',
+                              style: TextStyle(fontWeight: FontWeight.w700),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              _resumeBehaviorLabel,
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .onSurfaceVariant,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Icon(
+                        Icons.keyboard_arrow_down_rounded,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             ),
             const SizedBox(height: 10),
             SwitchListTile(

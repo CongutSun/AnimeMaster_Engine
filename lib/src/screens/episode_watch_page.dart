@@ -17,6 +17,8 @@ import '../services/picture_in_picture_service.dart';
 import '../utils/cached_media_playback.dart';
 import '../utils/media_duration_probe.dart';
 import '../utils/playback_progress_store.dart';
+import '../utils/episode_helpers.dart';
+import '../utils/format_helpers.dart';
 import '../utils/task_title_parser.dart';
 import '../widgets/playback_action_prompt.dart';
 import 'video_player_page.dart';
@@ -198,23 +200,30 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
 
   @override
   void dispose() {
+    try { unawaited(_savePlaybackProgress(force: true)); } catch (_) {}
+
     WidgetsBinding.instance.removeObserver(this);
-    unawaited(_savePlaybackProgress(force: true));
-    unawaited(PictureInPictureService.setPlaybackActive(false));
-    unawaited(PictureInPictureService.setAutoEnter(false));
-    unawaited(_onlineSubscription?.cancel());
-    _cachedSession?.streamServer?.stop();
+    try { unawaited(PictureInPictureService.setPlaybackActive(false)); } catch (_) {}
+    try { unawaited(PictureInPictureService.setAutoEnter(false)); } catch (_) {}
+    try { unawaited(_onlineSubscription?.cancel()); } catch (_) {}
+
+    // ── stop streaming before native resource teardown ──
+    try { _cachedSession?.streamServer?.stop(); } catch (_) {}
+
     _progressSaveTimer?.cancel();
     _inlineGestureTimer?.cancel();
     _cancelAutoNextCountdown();
     for (final StreamSubscription<dynamic> subscription
         in _playerSubscriptions) {
-      subscription.cancel();
+      try { subscription.cancel(); } catch (_) {}
     }
-    _onlineSourcesNotifier.dispose();
-    _onlineSourceSearchingNotifier.dispose();
-    _tabController.dispose();
-    _player.dispose();
+    try { _onlineSourcesNotifier.dispose(); } catch (_) {}
+    try { _onlineSourceSearchingNotifier.dispose(); } catch (_) {}
+    try { _tabController.dispose(); } catch (_) {}
+
+    // ── stop player before disposing native codecs ──
+    try { _player.stop(); } catch (_) {}
+    try { _player.dispose(); } catch (_) {}
     super.dispose();
   }
 
@@ -1163,7 +1172,7 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
     _showInlineGestureIndicator(
       icon: forward ? Icons.fast_forward_rounded : Icons.fast_rewind_rounded,
       text:
-          '${_formatInlineDuration(target)} / ${_formatInlineDuration(duration)}',
+          '${formatDuration(target)} / ${formatDuration(duration)}',
       progress: progress.clamp(0.0, 1.0).toDouble(),
       autoHide: false,
     );
@@ -1229,62 +1238,17 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
     return sorted.first;
   }
 
-  int _episodeNumber(Map<String, dynamic> episode) {
-    final dynamic ep = episode['ep'] ?? episode['sort'];
-    if (ep is int) {
-      return ep;
-    }
-    if (ep is num) {
-      return ep.round();
-    }
-    return int.tryParse(ep?.toString() ?? '') ?? 0;
-  }
+  int _episodeNumber(Map<String, dynamic> episode) => episodeNumber(episode);
 
-  int _episodeId(Map<String, dynamic> episode) {
-    return int.tryParse(episode['id']?.toString() ?? '') ?? 0;
-  }
+  int _episodeId(Map<String, dynamic> episode) => episodeId(episode);
 
-  String _episodePlainTitle(Map<String, dynamic> episode) {
-    final String nameCn = episode['name_cn']?.toString().trim() ?? '';
-    final String name = episode['name']?.toString().trim() ?? '';
-    return nameCn.isNotEmpty ? nameCn : name;
-  }
+  String _episodePlainTitle(Map<String, dynamic> episode) =>
+      episodePlainTitle(episode);
 
-  String _episodeTitle(Map<String, dynamic> episode) {
-    final int number = _episodeNumber(episode);
-    final String title = _stripRedundantEpisodePrefix(
-      _episodePlainTitle(episode),
-      number,
-    );
-    if (title.isEmpty) {
-      return number > 0 ? '第$number集' : '未命名剧集';
-    }
-    return title;
-  }
+  String _episodeTitle(Map<String, dynamic> episode) => episodeTitle(episode);
 
-  String _stripRedundantEpisodePrefix(String title, int episodeNumber) {
-    if (episodeNumber <= 0 || title.isEmpty) {
-      return title;
-    }
-    final String padded = episodeNumber.toString().padLeft(2, '0');
-    final List<RegExp> patterns = <RegExp>[
-      RegExp('^第\\s*0?$episodeNumber\\s*[集话話]\\s*[:：.．、-]?\\s*'),
-      RegExp('^0?$episodeNumber\\s*[:：.．、-]+\\s*'),
-      RegExp('^0?$episodeNumber\\s+(?=\\D)'),
-      RegExp('^$padded\\s*[:：.．、-]?\\s*'),
-    ];
-    for (final RegExp pattern in patterns) {
-      final String stripped = title.replaceFirst(pattern, '').trim();
-      if (stripped != title && stripped.isNotEmpty) {
-        return stripped;
-      }
-    }
-    return title;
-  }
-
-  String _episodeDescription(Map<String, dynamic> episode) {
-    return episode['desc']?.toString().trim() ?? '';
-  }
+  String _episodeDescription(Map<String, dynamic> episode) =>
+      episodeDescription(episode);
 
   String _subjectDisplayName() {
     final String originalName =
@@ -1295,25 +1259,7 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
   }
 
   List<String> _extractAliases(String cnName, String originalName) {
-    final Set<String> aliases = <String>{
-      if (cnName.isNotEmpty) cnName,
-      if (originalName.isNotEmpty) originalName,
-    };
-    if (widget.detailData?['infobox'] is List) {
-      for (final Object? item in widget.detailData!['infobox'] as List) {
-        if (item is Map && item['key'] == '别名') {
-          final Object? value = item['value'];
-          if (value is List) {
-            aliases.addAll(
-              value.whereType<Map>().map((Map value) => value['v'].toString()),
-            );
-          } else if (value is String) {
-            aliases.add(value);
-          }
-        }
-      }
-    }
-    return aliases.where((String value) => value.trim().isNotEmpty).toList();
+    return extractAliases(cnName, originalName, widget.detailData);
   }
 
   OnlineEpisodeQuery _buildOnlineEpisodeQuery(Map<String, dynamic> episode) {
@@ -1440,7 +1386,7 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
     if (resume != null) {
       return PlaybackActionPrompt(
         icon: Icons.restore_rounded,
-        title: '上次看到 ${_formatInlineDuration(resume.position)}',
+        title: '上次看到 ${formatDuration(resume.position)}',
         subtitle: '是否从历史进度继续播放？',
         primaryLabel: '继续播放',
         onPrimary: () => unawaited(_continueFromResumeProgress(resume)),
@@ -1915,7 +1861,7 @@ class _InlinePlayerBar extends StatelessWidget {
               ),
             ),
             Text(
-              '${_formatInlineDuration(position)} / ${_formatInlineDuration(duration)}',
+              '${formatDuration(position)} / ${formatDuration(duration)}',
               style: const TextStyle(color: Colors.white70, fontSize: 11),
             ),
             IconButton(
@@ -1929,17 +1875,6 @@ class _InlinePlayerBar extends StatelessWidget {
       ),
     );
   }
-}
-
-String _formatInlineDuration(Duration value) {
-  final int totalSeconds = value.inSeconds;
-  final int minutes = (totalSeconds % 3600) ~/ 60;
-  final int seconds = totalSeconds % 60;
-  final int hours = totalSeconds ~/ 3600;
-  if (hours > 0) {
-    return '$hours:${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
-  }
-  return '$minutes:${seconds.toString().padLeft(2, '0')}';
 }
 
 class _SourceCard extends StatelessWidget {
