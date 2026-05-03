@@ -300,7 +300,7 @@ class _SettingsPageState extends State<SettingsPage> {
     });
 
     final SettingsProvider provider = context.read<SettingsProvider>();
-    final AppUpdateService updateService = locator<AppUpdateService>();
+    final AppUpdateService updateService = ServiceLocator.appUpdateService;
     final AppUpdateCheckResult result = await updateService
         .checkForUpdates(provider.appUpdateFeedUrl);
 

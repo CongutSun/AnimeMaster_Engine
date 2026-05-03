@@ -17,7 +17,7 @@ class DownloadCenterPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final DownloadManager manager = locator<DownloadManager>();
+    final DownloadManager manager = ServiceLocator.downloadManager;
     return ListenableBuilder(
       listenable: manager,
       builder: (BuildContext context, Widget? child) {

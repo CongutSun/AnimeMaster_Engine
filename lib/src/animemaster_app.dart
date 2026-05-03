@@ -19,7 +19,7 @@ class AnimeMasterApp extends StatelessWidget {
         ChangeNotifierProvider<SettingsProvider>(
           create: (_) => SettingsProvider(),
         ),
-        ChangeNotifierProvider<DownloadManager>.value(value: locator<DownloadManager>()),
+        ChangeNotifierProvider<DownloadManager>.value(value: ServiceLocator.downloadManager),
       ],
       child: Consumer<SettingsProvider>(
         builder:
@@ -107,7 +107,7 @@ class _StartupUpdateProbeState extends State<_StartupUpdateProbe> {
     }
     _isChecking = true;
     try {
-      final AppUpdateService updateService = locator<AppUpdateService>();
+      final AppUpdateService updateService = ServiceLocator.appUpdateService;
       final AppUpdateCheckResult result = await updateService
           .checkForUpdates(feedUrl);
       if (!mounted || !result.updateAvailable) {

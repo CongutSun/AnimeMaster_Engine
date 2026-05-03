@@ -42,7 +42,7 @@ class _AboutPageState extends State<AboutPage> {
       _isCheckingUpdate = true;
     });
 
-    final AppUpdateService updateService = locator<AppUpdateService>();
+    final AppUpdateService updateService = ServiceLocator.appUpdateService;
     final AppUpdateCheckResult result = await updateService
         .checkForUpdates(settings.appUpdateFeedUrl);
 

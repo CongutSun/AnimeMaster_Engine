@@ -13,10 +13,10 @@ void main() async {
   MediaKit.ensureInitialized();
 
   // 初始化 DI 容器
-  setupServiceLocator();
+  ServiceLocator.setup();
 
   // 恢复持久化的下载任务列表
-  await locator<DownloadManager>().initPersistedTasks();
+  await ServiceLocator.downloadManager.initPersistedTasks();
 
   // 启动来自引擎的完整业务 App
   runApp(const AnimeMasterApp());

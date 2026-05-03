@@ -21,7 +21,7 @@ dependencies:
   
   # 网络、通信与下载 (Networking & Downloading)
   dio: ^5.9.2
-  dtorrent_parser: ^0.4.1
+  dtorrent_parser: ^1.0.0
   dtorrent_task: ^0.4.1
   
   # 数据解析与状态管理 (Data Parsing & State Management)
@@ -54,9 +54,6 @@ dependencies:
   sqlite3_flutter_libs: ^0.6.0
   shimmer: ^3.0.0
   
-  # DI (Dependency Injection)
-  get_it: ^8.0.3
-
   # 热更新 (Hot Update)
 
 dev_dependencies:
