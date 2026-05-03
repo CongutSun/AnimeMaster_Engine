@@ -13,8 +13,8 @@ const RESOURCE_PROXY_ALLOWED_HOSTS = new Set([
 ]);
 const ALLOWED_BROWSER_ORIGINS = new Set(['https://auth.congutsun.com']);
 const APP_UPDATE_MANIFEST = {
-  version: '2.2.9',
-  build: 26,
+  version: '2.3.2',
+  build: 32,
   apkUrl: 'https://auth.congutsun.com/download/apk/universal',
   apkUrls: {
     'android-arm64': 'https://auth.congutsun.com/download/apk/android-arm64',
@@ -22,25 +22,31 @@ const APP_UPDATE_MANIFEST = {
     'android-x64': 'https://auth.congutsun.com/download/apk/android-x64',
     universal: 'https://auth.congutsun.com/download/apk/universal',
   },
+  sha256: {
+    universal: '',
+  },
   notes: [
-    '移除首页搜索栏冗余的蓝色箭头按钮，搜索改由键盘搜索动作提交，减少误触和视觉负担。',
-    '修复系统设置概览中长版本信息溢出圆角标签的问题。',
-    '主题模式选择改为圆角底部面板，和新版设置页整体 UI 保持一致。',
-    '补齐应用内更新日志，并同步自动检查更新清单。',
-    '优化拖动进度和倍速切换后的弹幕同步，长按 2.0x 与恢复原倍速时会重新对齐当前播放位置。',
+    '工程基础设施：GitHub Actions CI 流水线，12 条新 lint 规则。',
+    '在线源适配器重构：共享基类消除 200 行重复，60+ 站点 JSON 数据驱动。',
+    'API 层优化：泛型缓存 helper，类型化异常体系。',
+    'DI 容器：get_it 服务定位器，核心服务统一管理。',
+    '亮色主题适配：语义化 colorScheme 迁移。',
+    '新增 ErrorStateWidget 错误组件，骨架屏断点对齐修复。',
+    '测试覆盖：24 → 73+ 用例。',
+    '安全：APK SHA256 校验支持。',
   ],
-  publishedAt: '2026-05-02T19:35:27+08:00',
+  publishedAt: '2026-05-04T08:00:00+08:00',
   forceUpdate: false,
 };
 const APK_DOWNLOAD_URLS = {
   'android-arm64':
-    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.2.9/app-arm64-v8a-release.apk',
+    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.3.2/app-arm64-v8a-release.apk',
   'android-arm':
-    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.2.9/app-armeabi-v7a-release.apk',
+    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.3.2/app-armeabi-v7a-release.apk',
   'android-x64':
-    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.2.9/app-x86_64-release.apk',
+    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.3.2/app-x86_64-release.apk',
   universal:
-    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.2.9/app-release.apk',
+    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.3.2/app-release.apk',
 };
 
 function applyCors(headers, request, methods = 'GET,POST,OPTIONS') {
