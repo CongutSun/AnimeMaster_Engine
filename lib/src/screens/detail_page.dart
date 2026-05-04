@@ -1448,7 +1448,6 @@ class _DetailPageState extends State<DetailPage>
   }
 
   Future<void> _openEpisodeWatchPage(Map<String, dynamic> episode) async {
-    maybeHaptic(context);
     await Navigator.push(
       context,
       MaterialPageRoute<void>(

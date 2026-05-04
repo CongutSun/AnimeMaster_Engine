@@ -260,7 +260,6 @@ class _SearchPageState extends State<SearchPage> {
                     ],
                   ),
                   onTap: () {
-                    maybeHaptic(context);
                     Navigator.push(
                       context,
                       MaterialPageRoute(

@@ -32,7 +32,6 @@ class AnimeCard extends StatelessWidget {
         child: InkWell(
           borderRadius: BorderRadius.circular(16),
           onTap: () {
-            maybeHaptic(context);
             Navigator.push(
               context,
               MaterialPageRoute(
