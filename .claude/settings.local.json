@@ -16,7 +16,8 @@
       "Bash(gh release *)",
       "Bash(git commit *)",
       "Bash(sed -i 's/version: 2.3.2/version: 2.3.3/' pubspec.yaml)",
-      "Bash(sed -i 's/version: 2.3.2+32/version: 2.3.3+33/' example/pubspec.yaml)"
+      "Bash(sed -i 's/version: 2.3.2+32/version: 2.3.3+33/' example/pubspec.yaml)",
+      "Bash(git revert *)"
     ]
   }
 }
