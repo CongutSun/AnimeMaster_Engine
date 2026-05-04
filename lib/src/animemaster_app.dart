@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import 'api/dio_client.dart';
-import 'app_shell.dart';
+import 'screens/home_page.dart';
 import 'core/service_locator.dart';
 import 'managers/download_manager.dart';
 import 'providers/settings_provider.dart';
@@ -46,7 +46,7 @@ class AnimeMasterApp extends StatelessWidget {
                 darkTheme: AppTheme.dark(),
                 home: _StartupUpdateProbe(
                   settings: settings,
-                  child: const AppShell(),
+                  child: const HomePage(),
                 ),
               );
             },

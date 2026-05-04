@@ -1,6 +1,6 @@
 {
-  "version": "2.3.3",
-  "build": 33,
+  "version": "2.3.4",
+  "build": 34,
   "apkUrl": "https://auth.congutsun.com/download/apk/universal",
   "apkUrls": {
     "android-arm64": "https://auth.congutsun.com/download/apk/android-arm64",
@@ -8,18 +8,22 @@
     "android-x64": "https://auth.congutsun.com/download/apk/android-x64",
     "universal": "https://auth.congutsun.com/download/apk/universal"
   },
-  "sha256": {},
+  "sha256": {
+    "android-arm64": "bde16d412af42d7df776ab4b17186fe6a47d4003d1fcddb5e6259f56964a1ba4",
+    "android-arm": "8c34d2587f2518bc5ec1ebd94a650e6b28407699f1598408bdb9de2add4763c2",
+    "android-x64": "6f7b59b37591e4d4fe0c32d1eb3d6dfb8207b828db03e6498c893becf71c6c94",
+    "universal": "33060fa1ce0b78a469bf9049c7983fed4a5d1338cb9702145cb6f1fdef2315e8"
+  },
   "notes": [
-    "修复暂停视频后弹幕继续飘动的问题。",
-    "修复用户自定义更新源地址被忽略的 bug。",
-    "修复滚轮监听缺少 hasClients 守卫导致的潜在 crash。",
-    "下载中心 FutureBuilder 增加 error 分支处理。",
-    "评论空状态文案优化，增加下拉重试引导。",
-    "在线源错误区分超时/连接失败/其他，各有不同的用户提示。",
-    "Dodo 动漫 HTTP → HTTPS。",
-    "弹幕性能优化：缓存文本宽度计算，跳过冗余 Opacity 包裹。",
-    "在线源远程热更新：Worker 每 6 小时自动探活，客户端拉取合并。"
+    "安全加固：替换第三方 CORS 代理为自有 Worker 代理端点，修复异常信息泄漏。",
+    "废弃直连 OAuth 路径（client_secret 不再内嵌客户端），统一推荐网关登录。",
+    "性能优化：弹幕缓存增加 LRU 容量限制，下载引擎空闲时自动暂停后台定时器。",
+    "工程改进：BangumiApi 重构为实例化类，AppStrings 集中管理全部文案。",
+    "UI 升级：底部主导航栏（首页 / 收藏 / 下载 / 设置），统一区块标题组件。",
+    "用户体验：搜索结果展示评分，RSS 删除增加确认框，详情页无封面渐变占位。",
+    "交互改进：角色点击统一弹出框，工具栏双击刷新，导航栏触觉反馈。",
+    "新增首次启动引导页，详情页剧集分片阈值 100→30 集。"
   ],
-  "publishedAt": "2026-05-04T08:00:00+08:00",
+  "publishedAt": "2026-05-04T22:00:00+08:00",
   "forceUpdate": false
 }

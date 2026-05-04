@@ -83,7 +83,7 @@ class _DetailPageState extends State<DetailPage>
   bool _restorePinnedAfterTabChange = false;
 
   // ── Epic 1: Episode chunking ──
-  static const int _episodeChunkSize = 30;
+  static const int _episodeChunkSize = 100;
   List<Map<String, dynamic>> _allEpisodes = [];
   List<List<Map<String, dynamic>>> _episodeChunks = const [];
   int _currentChunkIndex = 0;
@@ -1123,8 +1123,7 @@ class _DetailPageState extends State<DetailPage>
         ),
         SizedBox(
           height: 105,
-          child: Stack(
-            children: <Widget>[
+          child: 
               ListView.builder(
                 key: PageStorageKey<String>('detail_${isCharacter ? "characters" : "staff"}'),
                 scrollDirection: Axis.horizontal,
@@ -1176,31 +1175,8 @@ class _DetailPageState extends State<DetailPage>
               );
             },
           ),
-          // Right-edge fade gradient — signals more items exist (U3)
-          Positioned(
-            right: 0,
-            top: 0,
-            bottom: 0,
-            width: 24,
-            child: IgnorePointer(
-              child: Container(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.centerRight,
-                    end: Alignment.centerLeft,
-                    colors: <Color>[
-                      Theme.of(context).scaffoldBackgroundColor,
-                      Theme.of(context).scaffoldBackgroundColor.withValues(alpha: 0),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    ),
-  ],
+        ),
+      ],
     );
   }
 
