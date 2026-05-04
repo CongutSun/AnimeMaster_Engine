@@ -115,7 +115,7 @@ class SettingsProvider with ChangeNotifier {
     if (storedUpdateFeedUrl != _appUpdateFeedUrl) {
       await prefs.setString('app_update_feed_url', _appUpdateFeedUrl);
     }
-    _autoCheckUpdates = prefs.getBool('app_auto_check_updates') ?? true;
+    _autoCheckUpdates = prefs.getBool('app_auto_check_updates') ?? false;
     _enablePictureInPicture =
         prefs.getBool('playback_enable_picture_in_picture') ?? false;
     _resumePlaybackBehavior = _normalizeResumePlaybackBehavior(
@@ -124,7 +124,7 @@ class SettingsProvider with ChangeNotifier {
     _autoPlayNextEpisode =
         prefs.getBool('playback_auto_play_next_episode') ?? false;
     _enableHapticFeedback =
-        prefs.getBool('ui_enable_haptic_feedback') ?? true;
+        prefs.getBool('ui_enable_haptic_feedback') ?? false;
     _bgmNickname = prefs.getString('bgm_nickname') ?? '';
     _bgmAvatarUrl = prefs.getString('bgm_avatar_url') ?? '';
     _bgmBio = prefs.getString('bgm_bio') ?? '';

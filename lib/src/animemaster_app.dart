@@ -9,6 +9,7 @@ import 'screens/home_page.dart';
 import 'screens/onboarding_page.dart';
 import 'services/app_update_service.dart';
 import 'theme/app_theme.dart';
+import 'utils/haptic_helper.dart';
 
 class AnimeMasterApp extends StatelessWidget {
   const AnimeMasterApp({super.key});
@@ -39,9 +40,11 @@ class AnimeMasterApp extends StatelessWidget {
                   settings.themeMode.contains('深色') ||
                   settings.themeMode.contains('暗');
 
+              HapticNavigatorObserver.syncFromSettings(settings.enableHapticFeedback);
               return MaterialApp(
                 title: 'AnimeMaster',
                 debugShowCheckedModeBanner: false,
+                navigatorObservers: <NavigatorObserver>[HapticNavigatorObserver()],
                 themeMode: isDark ? ThemeMode.dark : ThemeMode.light,
                 theme: AppTheme.light(),
                 darkTheme: AppTheme.dark(),

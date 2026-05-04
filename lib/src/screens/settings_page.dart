@@ -136,9 +136,14 @@ class _SettingsPageState extends State<SettingsPage> {
     if (!mounted || selected == null || selected == themeMode) {
       return;
     }
-    setState(() {
-      themeMode = selected;
-    });
+    setState(() => themeMode = selected);
+    unawaited(
+      context.read<SettingsProvider>().updateAppearance(
+        context.read<SettingsProvider>().closeAction,
+        selected!,
+        bgController.text,
+      ),
+    );
   }
 
   String get _resumeBehaviorLabel {
@@ -254,6 +259,8 @@ class _SettingsPageState extends State<SettingsPage> {
     setState(() {
       bgController.text = croppedFile.path;
     });
+    final SettingsProvider p = context.read<SettingsProvider>();
+    unawaited(p.updateAppearance(p.closeAction, themeMode, croppedFile.path));
   }
 
   Future<void> _saveSettings() async {
@@ -481,7 +488,7 @@ class _SettingsPageState extends State<SettingsPage> {
     return Scaffold(
       appBar: AppBar(title: const Text('系统设置')),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 104),
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
         children: <Widget>[
           _buildSettingsOverview(provider),
           const SizedBox(height: 18),
@@ -529,33 +536,6 @@ class _SettingsPageState extends State<SettingsPage> {
           const SizedBox(height: 12),
           _buildAboutCard(provider),
         ],
-      ),
-      bottomNavigationBar: ClipRect(
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-          child: Container(
-            decoration: BoxDecoration(
-              color: colors.surface.withValues(
-                alpha: theme.brightness == Brightness.dark ? 0.78 : 0.9,
-              ),
-              border: Border(top: BorderSide(color: colors.outlineVariant)),
-            ),
-            child: SafeArea(
-              minimum: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-              child: FilledButton.icon(
-                onPressed: isSaving ? null : _saveSettings,
-                icon: isSaving
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.check_rounded),
-                label: Text(isSaving ? '保存中...' : '保存设置'),
-              ),
-            ),
-          ),
-        ),
       ),
     );
   }
@@ -1245,9 +1225,8 @@ class _SettingsPageState extends State<SettingsPage> {
               subtitle: const Text('开启后，应用启动时会自动读取内置更新清单。'),
               value: autoCheckUpdates,
               onChanged: (bool value) {
-                setState(() {
-                  autoCheckUpdates = value;
-                });
+                setState(() => autoCheckUpdates = value);
+                unawaited(context.read<SettingsProvider>().updateDistribution(value));
               },
             ),
             const SizedBox(height: 12),
