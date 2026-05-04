@@ -83,7 +83,7 @@ class _DetailPageState extends State<DetailPage>
   bool _restorePinnedAfterTabChange = false;
 
   // ── Epic 1: Episode chunking ──
-  static const int _episodeChunkSize = 100;
+  static const int _episodeChunkSize = 30;
   List<Map<String, dynamic>> _allEpisodes = [];
   List<List<Map<String, dynamic>>> _episodeChunks = const [];
   int _currentChunkIndex = 0;
@@ -1206,7 +1206,14 @@ class _DetailPageState extends State<DetailPage>
           child: Padding(
             padding: EdgeInsets.all(32.0),
             child: Center(
-              child: Text('暂无剧集数据。', style: TextStyle(color: Colors.grey)),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: const <Widget>[
+                  Icon(Icons.videocam_off_rounded, size: 36, color: Colors.grey),
+                  SizedBox(height: 12),
+                  Text('暂无剧集数据。', style: TextStyle(color: Colors.grey)),
+                ],
+              ),
             ),
           ),
         ),

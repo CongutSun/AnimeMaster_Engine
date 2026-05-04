@@ -2,10 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import 'api/dio_client.dart';
-import 'screens/home_page.dart';
 import 'core/service_locator.dart';
 import 'managers/download_manager.dart';
 import 'providers/settings_provider.dart';
+import 'screens/home_page.dart';
+import 'screens/onboarding_page.dart';
 import 'services/app_update_service.dart';
 import 'theme/app_theme.dart';
 
@@ -68,6 +69,20 @@ class _StartupUpdateProbe extends StatefulWidget {
 class _StartupUpdateProbeState extends State<_StartupUpdateProbe> {
   String _checkedFeedUrl = '';
   bool _isChecking = false;
+  bool _showOnboarding = false;
+  bool _onboardingChecked = false;
+
+  @override
+  void initState() {
+    super.initState();
+    OnboardingPage.hasCompleted().then((bool completed) {
+      if (!mounted) return;
+      setState(() {
+        _showOnboarding = !completed;
+        _onboardingChecked = true;
+      });
+    });
+  }
 
   @override
   void didChangeDependencies() {
@@ -126,6 +141,14 @@ class _StartupUpdateProbeState extends State<_StartupUpdateProbe> {
 
   @override
   Widget build(BuildContext context) {
+    if (!_onboardingChecked) {
+      return const SizedBox.shrink();
+    }
+    if (_showOnboarding) {
+      return OnboardingPage(
+        onComplete: () => setState(() => _showOnboarding = false),
+      );
+    }
     return widget.child;
   }
 }

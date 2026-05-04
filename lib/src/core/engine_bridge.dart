@@ -21,7 +21,7 @@ class EngineBridge {
   DynamicLibrary? _dylib;
   bool _didAttemptLoad = false;
   bool _isCoreReady = false;
-  String _engineVersion = 'AnimeMaster Engine (Dart fallback)';
+  String _engineVersion = 'AnimeMaster Engine v2.3.4 (Dart fallback)';
   String? _lastLoadError;
 
   String get engineVersion => _engineVersion;
@@ -57,7 +57,7 @@ class EngineBridge {
     final DynamicLibrary? dylib = _loadLibrary();
     if (dylib == null) {
       _isCoreReady = false;
-      _engineVersion = 'AnimeMaster Engine (Dart fallback)';
+      _engineVersion = 'AnimeMaster Engine v2.3.4 (Dart fallback)';
       return;
     }
 
@@ -76,7 +76,7 @@ class EngineBridge {
       debugPrint('[EngineBridge] $_engineVersion | Core Status: $_isCoreReady');
     } catch (e) {
       _isCoreReady = false;
-      _engineVersion = 'AnimeMaster Engine (Dart fallback)';
+      _engineVersion = 'AnimeMaster Engine v2.3.4 (Dart fallback)';
       debugPrint('[EngineBridge] Wakeup error, fallback to Dart: $e');
     }
   }

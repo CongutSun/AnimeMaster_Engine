@@ -39,6 +39,7 @@ class SettingsProvider with ChangeNotifier {
   bool _enablePictureInPicture = false;
   String _resumePlaybackBehavior = 'ask';
   bool _autoPlayNextEpisode = false;
+  bool _enableHapticFeedback = true;
 
   final FlutterSecureStorage _secureStorage = const FlutterSecureStorage();
 
@@ -95,6 +96,7 @@ class SettingsProvider with ChangeNotifier {
   bool get enablePictureInPicture => _enablePictureInPicture;
   String get resumePlaybackBehavior => _resumePlaybackBehavior;
   bool get autoPlayNextEpisode => _autoPlayNextEpisode;
+  bool get enableHapticFeedback => _enableHapticFeedback;
 
   SettingsProvider() {
     EngineBridge().wakeUpEngine();
@@ -121,6 +123,8 @@ class SettingsProvider with ChangeNotifier {
     );
     _autoPlayNextEpisode =
         prefs.getBool('playback_auto_play_next_episode') ?? false;
+    _enableHapticFeedback =
+        prefs.getBool('ui_enable_haptic_feedback') ?? true;
     _bgmNickname = prefs.getString('bgm_nickname') ?? '';
     _bgmAvatarUrl = prefs.getString('bgm_avatar_url') ?? '';
     _bgmBio = prefs.getString('bgm_bio') ?? '';
@@ -330,6 +334,13 @@ class SettingsProvider with ChangeNotifier {
     notifyListeners();
   }
 
+
+  Future<void> updateHapticFeedback(bool enabled) async {
+    _enableHapticFeedback = enabled;
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('ui_enable_haptic_feedback', enabled);
+    notifyListeners();
+  }
   Future<void> updateDistribution(bool autoCheckUpdates) async {
     _appUpdateFeedUrl = _normalizeAppUpdateFeedUrl();
     _autoCheckUpdates = autoCheckUpdates;

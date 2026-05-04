@@ -115,6 +115,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   subtitle: '清爽明亮，适合白天使用',
                   selected: themeMode == 'Light',
                   onTap: () => Navigator.pop(sheetContext, 'Light'),
+                  previewColor: const Color(0xFF007AFF),
                 ),
                 const SizedBox(height: 10),
                 _ThemeModeOption(
@@ -123,6 +124,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   subtitle: '降低夜间亮度，更贴近沉浸播放',
                   selected: themeMode == 'Dark',
                   onTap: () => Navigator.pop(sheetContext, 'Dark'),
+                  previewColor: const Color(0xFF0A84FF),
                 ),
               ],
             ),
@@ -1081,6 +1083,18 @@ class _SettingsPageState extends State<SettingsPage> {
             const SizedBox(height: 10),
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
+              title: const Text('触觉反馈'),
+              subtitle: const Text('开启后，切换标签页和点击按钮时会有轻微的震动反馈。'),
+              value: context.watch<SettingsProvider>().enableHapticFeedback,
+              onChanged: (bool value) {
+                unawaited(
+                  context.read<SettingsProvider>().updateHapticFeedback(value),
+                );
+              },
+            ),
+            const Divider(height: 18),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
               title: const Text('自动播放下一集'),
               subtitle: const Text('接近片尾或播放结束后显示倒计时，可手动取消。'),
               value: autoPlayNextEpisode,
@@ -1261,6 +1275,7 @@ class _ThemeModeOption extends StatelessWidget {
   final String subtitle;
   final bool selected;
   final VoidCallback onTap;
+  final Color? previewColor;
 
   const _ThemeModeOption({
     required this.icon,
@@ -1268,6 +1283,7 @@ class _ThemeModeOption extends StatelessWidget {
     required this.subtitle,
     required this.selected,
     required this.onTap,
+    this.previewColor,
   });
 
   @override
@@ -1295,6 +1311,18 @@ class _ThemeModeOption extends StatelessWidget {
           child: Row(
             children: <Widget>[
               _SettingsIconBadge(icon: icon, compact: true),
+              if (previewColor != null) ...[
+                const SizedBox(width: 10),
+                Container(
+                  width: 20,
+                  height: 20,
+                  decoration: BoxDecoration(
+                    color: previewColor,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: colors.outlineVariant),
+                  ),
+                ),
+              ],
               const SizedBox(width: 12),
               Expanded(
                 child: Column(

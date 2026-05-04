@@ -46,13 +46,14 @@ class AnimeCard extends StatelessWidget {
               child: Container(
                 width: double.infinity,
                 decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: colors.outlineVariant),
+                  borderRadius: (theme.cardTheme.shape as RoundedRectangleBorder?)?.borderRadius ?? BorderRadius.circular(14),
+                  border: Border.all(
+                    color: colors.outlineVariant,
+                    width: 0.5,
+                  ),
                   boxShadow: <BoxShadow>[
                     BoxShadow(
-                      color: Colors.black.withValues(
-                        alpha: isDarkMode ? 0.36 : 0.14,
-                      ),
+                      color: colors.shadow.withValues(alpha: isDarkMode ? 0.5 : 0.18),
                       blurRadius: 18,
                       offset: const Offset(0, 10),
                     ),
