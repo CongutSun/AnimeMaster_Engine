@@ -8,17 +8,18 @@
     "android-x64": "https://auth.congutsun.com/download/apk/android-x64",
     "universal": "https://auth.congutsun.com/download/apk/universal"
   },
-  "sha256": {},
   "notes": [
-    "修复暂停视频后弹幕继续飘动的问题。",
-    "修复用户自定义更新源地址被忽略的 bug。",
-    "修复滚轮监听缺少 hasClients 守卫导致的潜在 crash。",
-    "下载中心 FutureBuilder 增加 error 分支处理。",
-    "评论空状态文案优化，增加下拉重试引导。",
-    "在线源错误区分超时/连接失败/其他，各有不同的用户提示。",
-    "Dodo 动漫 HTTP → HTTPS。",
-    "弹幕性能优化：缓存文本宽度计算，跳过冗余 Opacity 包裹。",
-    "在线源远程热更新：Worker 每 6 小时自动探活，客户端拉取合并。"
+    "2.3.3：修复暂停视频后弹幕继续飘动的问题。",
+    "2.3.3：修复用户自定义更新源地址被忽略的 bug。",
+    "2.3.3：修复滚轮监听缺少 hasClients 守卫导致的潜在 crash。",
+    "2.3.3：在线源错误区分超时/连接失败/其他，各有提示。",
+    "2.3.3：Dodo 动漫 HTTP → HTTPS，弹幕性能优化。",
+    "2.3.3：在线源远程热更新，Worker 每 6 小时自动探活。",
+    "2.3.2：GitHub Actions CI 流水线，12 条新 lint 规则。",
+    "2.3.2：在线源适配器重构，60+ 站点 JSON 数据驱动。",
+    "2.3.2：DI 容器引入，API 泛型缓存 helper，类型化异常体系。",
+    "2.3.2：亮色主题适配，骨架屏断点对齐，ErrorStateWidget 组件。",
+    "2.3.2：测试覆盖 24 → 73+，APK SHA256 校验支持。"
   ],
   "publishedAt": "2026-05-04T08:00:00+08:00",
   "forceUpdate": false
