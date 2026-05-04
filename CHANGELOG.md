@@ -1,3 +1,17 @@
+## 2.3.3
+
+* 修复暂停视频后弹幕继续飘动的问题（_DanmakuBullet AnimationController 未响应暂停状态）。
+* 修复用户自定义更新源地址被忽略的 bug（_normalizeAppUpdateFeedUrl 错误丢弃参数）。
+* 修复 category_result_page 滚轮监听缺少 hasClients 守卫导致的潜在 crash。
+* 修复下载中心 FutureBuilder 缺少 error 分支，任务标签加载失败时静默消失。
+* 评论/吐槽空状态文案优化，增加"下拉重试"引导。
+* 剧集列表等水平滚轮新增 PageStorageKey，切换 Tab 后保持滚动位置。
+* 在线源搜索错误区分超时/连接失败/其他，各有不同的用户提示。
+* Dodo 动漫适配器 HTTP → HTTPS，消除明文传输风险。
+* 弹幕子弹 text.runes.length 移至 initState 缓存，避免每帧重算。
+* 滚动弹幕（mode=1 且透明度 100%）跳过 Opacity 包裹，避免多余 saveLayer。
+* 在线源远程热更新：Cloudflare Worker 每 6 小时自动探活所有站点，客户端启动时拉取合并，本地打包 JSON 作兜底。
+
 ## 2.3.2
 
 * 工程基础设施：引入 GitHub Actions CI 流水线（lint + test + build），开启 12 条新 lint 规则提升代码质量。

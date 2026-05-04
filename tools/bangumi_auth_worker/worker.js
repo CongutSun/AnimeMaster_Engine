@@ -13,8 +13,8 @@ const RESOURCE_PROXY_ALLOWED_HOSTS = new Set([
 ]);
 const ALLOWED_BROWSER_ORIGINS = new Set(['https://auth.congutsun.com']);
 const APP_UPDATE_MANIFEST = {
-  version: '2.3.2',
-  build: 32,
+  version: '2.3.3',
+  build: 33,
   apkUrl: 'https://auth.congutsun.com/download/apk/universal',
   apkUrls: {
     'android-arm64': 'https://auth.congutsun.com/download/apk/android-arm64',
@@ -23,33 +23,31 @@ const APP_UPDATE_MANIFEST = {
     universal: 'https://auth.congutsun.com/download/apk/universal',
   },
   sha256: {
-    'android-arm64': '85ac26ca3250656a4b9e07f578aac88d1798dccf935956a64cac50f735ee6e29',
-    'android-arm': 'f11711a07762e88dba997091ab5265d4c32eb9cf2647df9355d6cf105c362b4c',
-    'android-x64': '02cb970276da1199f88335bfb0edaa487dc3a46c1a501fa54a0e91336df61f51',
-    universal: '',
+    'android-arm64': 'ed5bd84d70b95e2b27dbc0e8fd0dba860df43d5ce7a5ec36c323f84d5ac706d6',
+    'android-arm': '523d369f73185db1b82d4d2170a6951d1f4f75f898d4156ea55344efeec1f26a',
+    'android-x64': '760d61b2e8666b7eac09e9ad344806f7846cf574844fa7a1f71b6724106f37a5',
+    universal: '29850f8233ce1c59c210ec75ea5e7abf3835170381253dc49def6b744119305d',
   },
   notes: [
-    '工程基础设施：GitHub Actions CI 流水线，12 条新 lint 规则。',
-    '在线源适配器重构：共享基类消除 200 行重复，60+ 站点 JSON 数据驱动。',
-    'API 层优化：泛型缓存 helper，类型化异常体系。',
-    'DI 容器：get_it 服务定位器，核心服务统一管理。',
-    '亮色主题适配：语义化 colorScheme 迁移。',
-    '新增 ErrorStateWidget 错误组件，骨架屏断点对齐修复。',
-    '测试覆盖：24 → 73+ 用例。',
-    '安全：APK SHA256 校验支持。',
+    '修复暂停视频后弹幕继续飘动的问题。',
+    '修复用户自定义更新源地址被忽略的 bug。',
+    '在线源错误区分超时/连接失败/其他，各有提示。',
+    'Dodo 动漫 HTTP → HTTPS。',
+    '弹幕性能优化。',
+    '在线源远程热更新：Worker 每 6 小时自动探活。',
   ],
   publishedAt: '2026-05-04T08:00:00+08:00',
   forceUpdate: false,
 };
 const APK_DOWNLOAD_URLS = {
   'android-arm64':
-    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.3.2/app-arm64-v8a-release.apk',
+    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.3.3/app-arm64-v8a-release.apk',
   'android-arm':
-    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.3.2/app-armeabi-v7a-release.apk',
+    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.3.3/app-armeabi-v7a-release.apk',
   'android-x64':
-    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.3.2/app-x86_64-release.apk',
+    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.3.3/app-x86_64-release.apk',
   universal:
-    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.3.2/app-release.apk',
+    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.3.3/app-release.apk',
 };
 
 function applyCors(headers, request, methods = 'GET,POST,OPTIONS') {

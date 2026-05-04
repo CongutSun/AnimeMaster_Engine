@@ -14,7 +14,9 @@
       "Bash(cp \"C:\\\\Users\\\\19277\\\\xwechat_files\\\\wxid_er8mxouo34rl12_d34d\\\\msg\\\\file\\\\2026-04\\\\animemaster-release.jks\" \"D:\\\\Coding\\\\AnimeMaster_Engine\\\\.claude\\\\worktrees\\\\sharp-shirley-a3c62f\\\\example\\\\android\\\\keystore\\\\animemaster-release.jks\")",
       "Bash(cp \"C:\\\\Users\\\\19277\\\\xwechat_files\\\\wxid_er8mxouo34rl12_d34d\\\\msg\\\\file\\\\2026-04\\\\key.properties\" \"D:\\\\Coding\\\\AnimeMaster_Engine\\\\.claude\\\\worktrees\\\\sharp-shirley-a3c62f\\\\example\\\\android\\\\key.properties\")",
       "Bash(gh release *)",
-      "Bash(git commit *)"
+      "Bash(git commit *)",
+      "Bash(sed -i 's/version: 2.3.2/version: 2.3.3/' pubspec.yaml)",
+      "Bash(sed -i 's/version: 2.3.2+32/version: 2.3.3+33/' example/pubspec.yaml)"
     ]
   }
 }

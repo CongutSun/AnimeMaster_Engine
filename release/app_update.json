@@ -1,6 +1,6 @@
 {
-  "version": "2.3.2",
-  "build": 32,
+  "version": "2.3.3",
+  "build": 33,
   "apkUrl": "https://auth.congutsun.com/download/apk/universal",
   "apkUrls": {
     "android-arm64": "https://auth.congutsun.com/download/apk/android-arm64",
@@ -8,22 +8,17 @@
     "android-x64": "https://auth.congutsun.com/download/apk/android-x64",
     "universal": "https://auth.congutsun.com/download/apk/universal"
   },
-  "sha256": {
-    "android-arm64": "85ac26ca3250656a4b9e07f578aac88d1798dccf935956a64cac50f735ee6e29",
-    "android-arm": "f11711a07762e88dba997091ab5265d4c32eb9cf2647df9355d6cf105c362b4c",
-    "android-x64": "02cb970276da1199f88335bfb0edaa487dc3a46c1a501fa54a0e91336df61f51"
-  },
+  "sha256": {},
   "notes": [
-    "工程基础设施：引入 GitHub Actions CI 流水线（lint + test + build），开启 12 条新 lint 规则提升代码质量。",
-    "增强更新安全性：APK 更新清单新增 SHA256 字段，更新对话框展示校验值供用户核对。",
-    "重构在线源适配器：抽象基类提取共享方法，消除约 200 行重复代码；60+ 站点配置迁移至 JSON 数据驱动，支持热更新。",
-    "API 层优化：新增泛型缓存 helper 消除模板代码；完善类型化异常体系。",
-    "DI 容器引入：集成 get_it 服务定位器，核心服务统一注册管理。",
-    "亮色主题适配：PlaybackActionPrompt、下载中心状态色迁移至语义化 colorScheme。",
-    "骨架屏断点与动画网格对齐，消除加载布局跳变。",
-    "顶部工具栏等硬编码中文迁移至 AppStrings 集中管理。",
-    "新增可复用 ErrorStateWidget 错误状态组件。",
-    "补充测试覆盖：测试用例从 24 增至 73+。"
+    "修复暂停视频后弹幕继续飘动的问题。",
+    "修复用户自定义更新源地址被忽略的 bug。",
+    "修复滚轮监听缺少 hasClients 守卫导致的潜在 crash。",
+    "下载中心 FutureBuilder 增加 error 分支处理。",
+    "评论空状态文案优化，增加下拉重试引导。",
+    "在线源错误区分超时/连接失败/其他，各有不同的用户提示。",
+    "Dodo 动漫 HTTP → HTTPS。",
+    "弹幕性能优化：缓存文本宽度计算，跳过冗余 Opacity 包裹。",
+    "在线源远程热更新：Worker 每 6 小时自动探活，客户端拉取合并。"
   ],
   "publishedAt": "2026-05-04T08:00:00+08:00",
   "forceUpdate": false
