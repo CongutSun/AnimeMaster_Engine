@@ -3,7 +3,6 @@ import 'dart:ui';
 
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
 import '../providers/settings_provider.dart';
@@ -37,22 +36,6 @@ class _HomePageState extends State<HomePage> {
     super.dispose();
   }
 
-  Future<void> _pickWallpaper() async {
-    final ImagePicker picker = ImagePicker();
-    final XFile? image = await picker.pickImage(source: ImageSource.gallery);
-    if (image == null || !mounted) return;
-    final SettingsProvider settings = context.read<SettingsProvider>();
-    await settings.updateAppearance(
-      settings.closeAction,
-      settings.themeMode,
-      image.path,
-    );
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('首页背景已更新')),
-      );
-    }
-  }
 
   Widget _buildWeekSchedule(HomeContentSnapshot snapshot) {
     final ColorScheme colors = Theme.of(context).colorScheme;
@@ -229,23 +212,6 @@ class _HomePageState extends State<HomePage> {
             child: Column(
               children: <Widget>[
                 const TopToolBar(),
-                // Wallpaper edit entry (V2) — small icon in the right gutter.
-                if (hasBg)
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: Padding(
-                      padding: const EdgeInsets.only(right: 16),
-                      child: IconButton.filledTonal(
-                        tooltip: '更换首页背景',
-                        onPressed: _pickWallpaper,
-                        icon: const Icon(Icons.wallpaper_rounded, size: 16),
-                        style: IconButton.styleFrom(
-                          minimumSize: const Size(32, 32),
-                          visualDensity: VisualDensity.compact,
-                        ),
-                      ),
-                    ),
-                  ),
                 Expanded(
                   child: AnimatedBuilder(
                     animation: _viewModel,
