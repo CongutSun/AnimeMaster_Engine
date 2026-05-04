@@ -2,24 +2,18 @@ import 'package:flutter/material.dart';
 
 /// A reusable modal bottom sheet / dialog for presenting a list of options
 /// to the user.  Replaces hand‑written [AlertDialog] instances across the app.
-///
-/// Example — choosing between a character and their voice actor:
-/// ```dart
-/// showSelectionSheet(
-///   context,
-///   title: '选择查看对象',
-///   items: [
-///     SelectionItem(label: '角色: 江户川柯南', onTap: () => ...),
-///     SelectionItem(label: '声优: 高山南', onTap: () => ...),
-///   ],
-/// );
-/// ```
 class SelectionItem {
   final String label;
   final VoidCallback onTap;
   final IconData? icon;
+  final bool enabled;
 
-  const SelectionItem({required this.label, required this.onTap, this.icon});
+  const SelectionItem({
+    required this.label,
+    required this.onTap,
+    this.icon,
+    this.enabled = true,
+  });
 }
 
 Future<void> showSelectionSheet(
@@ -58,10 +52,12 @@ Future<void> showSelectionSheet(
                   child: SizedBox(
                     width: double.infinity,
                     child: OutlinedButton(
-                      onPressed: () {
-                        Navigator.pop(sheetContext);
-                        item.onTap();
-                      },
+                      onPressed: item.enabled
+                          ? () {
+                              Navigator.pop(sheetContext);
+                              item.onTap();
+                            }
+                          : null,
                       style: OutlinedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 14),
                       ),
@@ -74,10 +70,14 @@ Future<void> showSelectionSheet(
                           Expanded(
                             child: Text(
                               item.label,
-                              style: const TextStyle(fontWeight: FontWeight.w600),
+                              style: TextStyle(
+                                fontWeight: FontWeight.w600,
+                                color: item.enabled ? null : theme.colorScheme.onSurfaceVariant,
+                              ),
                             ),
                           ),
-                          const Icon(Icons.chevron_right_rounded, size: 18),
+                          if (item.enabled)
+                            const Icon(Icons.chevron_right_rounded, size: 18),
                         ],
                       ),
                     ),

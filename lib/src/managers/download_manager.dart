@@ -43,6 +43,7 @@ class DownloadManager extends ChangeNotifier {
   static const Duration _maintenanceInterval = Duration(seconds: 20);
   static const Duration _peerRefreshCooldown = Duration(seconds: 35);
 
+  // ── Per-task state — see _ManagedTask for the target unified model ──
   final Map<String, TorrentTask> _activeTasks = <String, TorrentTask>{};
   final Map<String, DownloadTaskInfo> _taskConfigs =
       <String, DownloadTaskInfo>{};
@@ -67,11 +68,26 @@ class DownloadManager extends ChangeNotifier {
       DownloadTaskRepository.instance;
 
   DownloadManager._internal() {
+    _startTimersIfNeeded();
+  }
+
+  void _startTimersIfNeeded() {
+    _speedTimer?.cancel();
+    _maintenanceTimer?.cancel();
+    if (_activeTasks.isEmpty) return;
     _speedTimer = Timer.periodic(_speedSampleInterval, _calculateSpeeds);
     _maintenanceTimer = Timer.periodic(
       _maintenanceInterval,
       _maintainActiveTransfers,
     );
+  }
+
+  void _stopTimersIfIdle() {
+    if (_activeTasks.isNotEmpty) return;
+    _speedTimer?.cancel();
+    _speedTimer = null;
+    _maintenanceTimer?.cancel();
+    _maintenanceTimer = null;
   }
 
   List<DownloadTaskInfo> get allTasks => _taskConfigs.values.toList();
@@ -133,6 +149,7 @@ class DownloadManager extends ChangeNotifier {
       await _persistAllTasks();
     }
     await _enforceConcurrency();
+    _startTimersIfNeeded();
     _syncBackgroundService();
     notifyListeners();
   }
@@ -349,6 +366,7 @@ class DownloadManager extends ChangeNotifier {
 
     await _startOrResumeTask(info.hash, preferred: streamOptimized);
     await _persistTask(info.hash);
+    _startTimersIfNeeded();
     _syncBackgroundService();
     notifyListeners();
   }
@@ -1027,6 +1045,7 @@ class DownloadManager extends ChangeNotifier {
 
     await _taskRepository.deleteByHash(hash);
     await _enforceConcurrency();
+    _stopTimersIfIdle();
     _syncBackgroundService();
     notifyListeners();
   }
@@ -1066,4 +1085,27 @@ class DownloadManager extends ChangeNotifier {
     unawaited(BackgroundDownloadService.setActive(false));
     super.dispose();
   }
+}
+
+/// Bundled per-task mutable state — replaces scattered parallel Maps.
+class _ManagedTask {
+  _ManagedTask({
+    required this.torrentTask,
+    required this.config,
+    this.isPaused = false,
+    this.isQueued = false,
+  });
+
+  TorrentTask torrentTask;
+  DownloadTaskInfo config;
+  bool isPaused;
+  bool isQueued;
+  int lastDownloadedBytes = 0;
+  DateTime lastSpeedSampleTime = DateTime.now();
+  double currentSpeed = 0.0;
+  double currentUploadSpeed = 0.0;
+  double lastNotifiedProgress = 0.0;
+  double lastNotifiedSpeed = 0.0;
+  double lastNotifiedUploadSpeed = 0.0;
+  DateTime? lastPeerRefreshTime;
 }

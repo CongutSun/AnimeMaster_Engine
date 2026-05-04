@@ -3,12 +3,14 @@ import 'dart:ui';
 
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
 import '../providers/settings_provider.dart';
 import '../repositories/home_repository.dart';
 import '../viewmodels/home_view_model.dart';
 import '../widgets/anime_grid.dart';
+import '../widgets/section_header.dart';
 import '../widgets/skeleton.dart';
 import '../widgets/top_tool_bar.dart';
 
@@ -33,6 +35,23 @@ class _HomePageState extends State<HomePage> {
   void dispose() {
     _viewModel.dispose();
     super.dispose();
+  }
+
+  Future<void> _pickWallpaper() async {
+    final ImagePicker picker = ImagePicker();
+    final XFile? image = await picker.pickImage(source: ImageSource.gallery);
+    if (image == null || !mounted) return;
+    final SettingsProvider settings = context.read<SettingsProvider>();
+    await settings.updateAppearance(
+      settings.closeAction,
+      settings.themeMode,
+      image.path,
+    );
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('首页背景已更新')),
+      );
+    }
   }
 
   Widget _buildWeekSchedule(HomeContentSnapshot snapshot) {
@@ -71,42 +90,6 @@ class _HomePageState extends State<HomePage> {
             );
           })
           .toList(growable: false),
-    );
-  }
-
-  Widget _buildSectionHeader({
-    required IconData icon,
-    required String title,
-    Color? iconColor,
-    Widget? trailing,
-  }) {
-    final ThemeData theme = Theme.of(context);
-    final ColorScheme colors = theme.colorScheme;
-    final Color resolvedIconColor = iconColor ?? colors.primary;
-
-    return Row(
-      children: <Widget>[
-        Container(
-          width: 32,
-          height: 32,
-          decoration: BoxDecoration(
-            color: resolvedIconColor.withValues(alpha: 0.12),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Icon(icon, color: resolvedIconColor, size: 18),
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Text(
-            title,
-            style: theme.textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w800,
-            ),
-            overflow: TextOverflow.ellipsis,
-          ),
-        ),
-        ?trailing,
-      ],
     );
   }
 
@@ -170,7 +153,7 @@ class _HomePageState extends State<HomePage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
-                _buildSectionHeader(
+                SectionHeader(
                   icon: Icons.calendar_month_rounded,
                   title: state.showTodayOnly
                       ? '${snapshot.todayString} · 今日排期'
@@ -191,7 +174,7 @@ class _HomePageState extends State<HomePage> {
                     ? AnimeGrid(animeList: snapshot.todayAnime, isTop: false)
                     : _buildWeekSchedule(snapshot),
                 const SizedBox(height: 32),
-                _buildSectionHeader(
+                SectionHeader(
                   icon: Icons.emoji_events_rounded,
                   title: '本年度高分榜单',
                   iconColor: const Color(0xFFFF9F0A),
@@ -246,6 +229,23 @@ class _HomePageState extends State<HomePage> {
             child: Column(
               children: <Widget>[
                 const TopToolBar(),
+                // Wallpaper edit entry (V2) — small icon in the right gutter.
+                if (hasBg)
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: Padding(
+                      padding: const EdgeInsets.only(right: 16),
+                      child: IconButton.filledTonal(
+                        tooltip: '更换首页背景',
+                        onPressed: _pickWallpaper,
+                        icon: const Icon(Icons.wallpaper_rounded, size: 16),
+                        style: IconButton.styleFrom(
+                          minimumSize: const Size(32, 32),
+                          visualDensity: VisualDensity.compact,
+                        ),
+                      ),
+                    ),
+                  ),
                 Expanded(
                   child: AnimatedBuilder(
                     animation: _viewModel,

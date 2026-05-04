@@ -1,6 +1,6 @@
 name: animemaster
 description: "A professional commercial-grade Flutter FFI plugin engine for AnimeMaster."
-version: 2.3.3
+version: 2.4.0
 homepage:
 
 environment:

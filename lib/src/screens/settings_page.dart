@@ -4,12 +4,14 @@ import 'dart:ui';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_web_auth_2/flutter_web_auth_2.dart';
 import 'package:image_cropper/image_cropper.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
 import '../core/service_locator.dart';
+import '../utils/app_strings.dart';
 import '../providers/settings_provider.dart';
 import '../services/app_update_service.dart';
 import '../services/bangumi_auth_gateway_service.dart';
@@ -436,12 +438,29 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   void _deleteRss(SettingsProvider provider) {
-    if (selectedRssIndex >= 0) {
-      provider.removeRssSource(selectedRssIndex);
-      setState(() {
-        selectedRssIndex = -1;
-      });
-    }
+    if (selectedRssIndex < 0) return;
+    showDialog<bool>(
+      context: context,
+      builder: (BuildContext dialogContext) => AlertDialog(
+        title: const Text(AppStrings.deleteRssConfirm),
+        content: const Text(AppStrings.deleteRssMessage),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text(AppStrings.cancel),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text(AppStrings.deleteConfirm),
+          ),
+        ],
+      ),
+    ).then((bool? confirmed) {
+      if (confirmed == true && mounted) {
+        provider.removeRssSource(selectedRssIndex);
+        setState(() => selectedRssIndex = -1);
+      }
+    });
   }
 
   @override

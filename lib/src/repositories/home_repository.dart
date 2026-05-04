@@ -68,8 +68,8 @@ class HomeRepository {
   Future<HomeContentSnapshot> fetchNetworkSnapshot() async {
     final List<List<dynamic>> results =
         await Future.wait<List<dynamic>>(<Future<List<dynamic>>>[
-          BangumiApi.getCalendar(),
-          BangumiApi.getYearTop().then(
+          BangumiApi.instance.getCalendar(),
+          BangumiApi.instance.getYearTop().then(
             (List<Map<String, dynamic>> value) => List<dynamic>.from(value),
           ),
         ]);

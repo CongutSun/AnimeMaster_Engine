@@ -83,7 +83,7 @@ class _DetailPageState extends State<DetailPage>
   bool _restorePinnedAfterTabChange = false;
 
   // ── Epic 1: Episode chunking ──
-  static const int _episodeChunkSize = 100;
+  static const int _episodeChunkSize = 30;
   List<Map<String, dynamic>> _allEpisodes = [];
   List<List<Map<String, dynamic>>> _episodeChunks = const [];
   int _currentChunkIndex = 0;
@@ -238,7 +238,7 @@ class _DetailPageState extends State<DetailPage>
   Future<void> _loadAllData() async {
     final provider = Provider.of<SettingsProvider>(context, listen: false);
     final Future<Map<String, dynamic>?> detailFuture =
-        BangumiApi.getAnimeDetail(widget.animeId);
+        BangumiApi.instance.getAnimeDetail(widget.animeId);
     final Future<Map<String, dynamic>?> collectionFuture = () async {
       await provider.ensureBangumiAccessToken();
       final String bgmUsername = provider.bgmAcc;
@@ -246,7 +246,7 @@ class _DetailPageState extends State<DetailPage>
       if (bgmUsername.isEmpty || bgmToken.isEmpty) {
         return null;
       }
-      return BangumiApi.getUserCollection(
+      return BangumiApi.instance.getUserCollection(
         widget.animeId,
         bgmUsername,
         bgmToken,
@@ -317,7 +317,7 @@ class _DetailPageState extends State<DetailPage>
       unawaited(_loadEpisodes());
     }
     unawaited(
-      BangumiApi.getSubjectCharacters(widget.animeId).then((
+      BangumiApi.instance.getSubjectCharacters(widget.animeId).then((
         List<dynamic> data,
       ) {
         if (mounted) {
@@ -326,14 +326,14 @@ class _DetailPageState extends State<DetailPage>
       }),
     );
     unawaited(
-      BangumiApi.getSubjectPersons(widget.animeId).then((List<dynamic> data) {
+      BangumiApi.instance.getSubjectPersons(widget.animeId).then((List<dynamic> data) {
         if (mounted) {
           setState(() => staffData = data);
         }
       }),
     );
     unawaited(
-      BangumiApi.getSubjectRelations(widget.animeId).then((List<dynamic> data) {
+      BangumiApi.instance.getSubjectRelations(widget.animeId).then((List<dynamic> data) {
         if (mounted) {
           setState(() => relatedData = data);
         }
@@ -350,7 +350,7 @@ class _DetailPageState extends State<DetailPage>
       isCommentsLoading = true;
     });
     final List<Map<String, String>> comments =
-        await BangumiApi.getSubjectComments(widget.animeId);
+        await BangumiApi.instance.getSubjectComments(widget.animeId);
 
     if (!mounted) {
       return;
@@ -368,7 +368,7 @@ class _DetailPageState extends State<DetailPage>
       isEpisodesLoading = true;
     });
     final List<Map<String, dynamic>> episodes =
-        await BangumiApi.getSubjectEpisodes(widget.animeId);
+        await BangumiApi.instance.getSubjectEpisodes(widget.animeId);
 
     if (!mounted) {
       return;
@@ -448,15 +448,33 @@ class _DetailPageState extends State<DetailPage>
         ],
       );
     } else {
-      if (id != null) {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) =>
-                RoleSubjectsPage(id: id, name: name, isCharacter: isCharacter),
+      final String actorLabel = isCharacter ? AppStrings.noActorAssociated : '';
+      showSelectionSheet(
+        context,
+        title: '选择查看对象',
+        items: <SelectionItem>[
+          SelectionItem(
+            label: '${isCharacter ? "角色" : "制作人员"}: $name',
+            onTap: () {
+              if (id != null) {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) =>
+                        RoleSubjectsPage(id: id, name: name, isCharacter: isCharacter),
+                  ),
+                );
+              }
+            },
           ),
-        );
-      }
+          if (isCharacter)
+            SelectionItem(
+              label: '声优: $actorLabel',
+              onTap: () {},
+              enabled: false,
+            ),
+        ],
+      );
     }
   }
 
@@ -493,13 +511,13 @@ class _DetailPageState extends State<DetailPage>
       postData['comment'] = commentController.text;
     }
 
-    bool collectionSuccess = await BangumiApi.updateCollection(
+    bool collectionSuccess = await BangumiApi.instance.updateCollection(
       widget.animeId,
       bgmToken,
       postData,
     );
     bool episodeSuccess = widget.subjectType != 1 && collectionSuccess
-        ? await BangumiApi.updateEpisodeStatus(
+        ? await BangumiApi.instance.updateEpisodeStatus(
             widget.animeId,
             bgmToken,
             currentEp,
@@ -744,6 +762,21 @@ class _DetailPageState extends State<DetailPage>
                             child: _buildSafeImage(
                               imageUrl: imageUrl,
                               fit: BoxFit.cover,
+                            ),
+                          )
+                        else
+                          Positioned.fill(
+                            child: Container(
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                  colors: <Color>[
+                                    highlightBlue.withValues(alpha: 0.18),
+                                    highlightOrange.withValues(alpha: 0.14),
+                                  ],
+                                ),
+                              ),
                             ),
                           ),
                         if (imageUrl.isNotEmpty)
@@ -1090,11 +1123,13 @@ class _DetailPageState extends State<DetailPage>
         ),
         SizedBox(
           height: 105,
-          child: ListView.builder(
-            key: PageStorageKey<String>('detail_${isCharacter ? "characters" : "staff"}'),
-            scrollDirection: Axis.horizontal,
-            itemCount: items.length,
-            itemBuilder: (ctx, i) {
+          child: Stack(
+            children: <Widget>[
+              ListView.builder(
+                key: PageStorageKey<String>('detail_${isCharacter ? "characters" : "staff"}'),
+                scrollDirection: Axis.horizontal,
+                itemCount: items.length,
+                itemBuilder: (ctx, i) {
               final item = items[i];
               return InkWell(
                 onTap: () => _handlePersonTap(item, isCharacter),
@@ -1141,8 +1176,31 @@ class _DetailPageState extends State<DetailPage>
               );
             },
           ),
-        ),
-      ],
+          // Right-edge fade gradient — signals more items exist (U3)
+          Positioned(
+            right: 0,
+            top: 0,
+            bottom: 0,
+            width: 24,
+            child: IgnorePointer(
+              child: Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.centerRight,
+                    end: Alignment.centerLeft,
+                    colors: <Color>[
+                      Theme.of(context).scaffoldBackgroundColor,
+                      Theme.of(context).scaffoldBackgroundColor.withValues(alpha: 0),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    ),
+  ],
     );
   }
 

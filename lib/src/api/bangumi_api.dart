@@ -20,58 +20,61 @@ class _ApiConfig {
 }
 
 class BangumiApi {
-  static final Dio _dio = DioClient().dio;
-  static final AnimeRepository _animeRepository = AnimeRepository.instance;
+  BangumiApi._();
+  static final BangumiApi instance = BangumiApi._();
 
-  // ── TTL caches replacing 16 ad‑hoc static Maps ──
-  static final ApiCacheManager<Map<String, dynamic>> _animeDetailCache =
+  final Dio _dio = DioClient().dio;
+  final AnimeRepository _animeRepository = AnimeRepository.instance;
+
+  // ── TTL caches replacing 16 ad‑hoc Maps ──
+  final ApiCacheManager<Map<String, dynamic>> _animeDetailCache =
       ApiCacheManager<Map<String, dynamic>>(maxSize: 60);
-  static final ApiCacheManager<List<dynamic>> _charactersCache =
+  final ApiCacheManager<List<dynamic>> _charactersCache =
       ApiCacheManager<List<dynamic>>(maxSize: 60);
-  static final ApiCacheManager<List<dynamic>> _personsCache =
+  final ApiCacheManager<List<dynamic>> _personsCache =
       ApiCacheManager<List<dynamic>>(maxSize: 60);
-  static final ApiCacheManager<List<dynamic>> _relationsCache =
+  final ApiCacheManager<List<dynamic>> _relationsCache =
       ApiCacheManager<List<dynamic>>(maxSize: 60);
-  static final ApiCacheManager<List<Map<String, String>>> _commentsCache =
+  final ApiCacheManager<List<Map<String, String>>> _commentsCache =
       ApiCacheManager<List<Map<String, String>>>(maxSize: 60);
-  static final ApiCacheManager<List<Map<String, String>>>
+  final ApiCacheManager<List<Map<String, String>>>
   _episodeCommentsCache = ApiCacheManager<List<Map<String, String>>>(
     maxSize: 120,
   );
-  static final ApiCacheManager<List<dynamic>> _searchCache =
+  final ApiCacheManager<List<dynamic>> _searchCache =
       ApiCacheManager<List<dynamic>>(maxSize: 80);
-  static final ApiCacheManager<List<Map<String, dynamic>>> _tagSubjectsCache =
+  final ApiCacheManager<List<Map<String, dynamic>>> _tagSubjectsCache =
       ApiCacheManager<List<Map<String, dynamic>>>(maxSize: 80);
-  static final ApiCacheManager<List<dynamic>> _characterSubjectsCache =
+  final ApiCacheManager<List<dynamic>> _characterSubjectsCache =
       ApiCacheManager<List<dynamic>>(maxSize: 80);
-  static final ApiCacheManager<List<dynamic>> _personSubjectsCache =
+  final ApiCacheManager<List<dynamic>> _personSubjectsCache =
       ApiCacheManager<List<dynamic>>(maxSize: 80);
-  static final ApiCacheManager<List<Map<String, dynamic>>>
+  final ApiCacheManager<List<Map<String, dynamic>>>
   _subjectEpisodesCache = ApiCacheManager<List<Map<String, dynamic>>>(
     maxSize: 80,
   );
-  static final ApiCacheManager<int?> _episodeIdResolveCache =
+  final ApiCacheManager<int?> _episodeIdResolveCache =
       ApiCacheManager<int?>(maxSize: 120);
 
   // Calendar cache is time‑sensitive — invalidate after 1 hour
-  static final ApiCacheManager<List<dynamic>> _calendarCache =
+  final ApiCacheManager<List<dynamic>> _calendarCache =
       ApiCacheManager<List<dynamic>>(
         maxSize: 1,
         defaultTtl: const Duration(hours: 1),
       );
-  static final ApiCacheManager<List<Map<String, dynamic>>> _yearTopCache =
+  final ApiCacheManager<List<Map<String, dynamic>>> _yearTopCache =
       ApiCacheManager<List<Map<String, dynamic>>>(
         maxSize: 1,
         defaultTtl: const Duration(hours: 6),
       );
-  static int? _yearTopCacheYear;
+  int? _yearTopCacheYear;
 
   // ── Helpers to eliminate repeated try/cache/fetch/catch boilerplate ──
 
   /// Generic cached GET that returns a [List] result.
   /// Throws [NetworkException] on connectivity failure and [ServerException]
   /// on 5xx, so callers can distinguish errors from empty results.
-  static Future<List<dynamic>> _cachedListGet({
+  Future<List<dynamic>> _cachedListGet({
     required ApiCacheManager<List<dynamic>> cache,
     required dynamic cacheKey,
     required String url,
@@ -104,7 +107,7 @@ class BangumiApi {
   /// Generic cached GET that returns a [Map] result.
   /// Throws [NetworkException] on connectivity failure and [ServerException]
   /// on 5xx, so callers can distinguish errors from empty results.
-  static Future<Map<String, dynamic>?> _cachedMapGet({
+  Future<Map<String, dynamic>?> _cachedMapGet({
     required ApiCacheManager<Map<String, dynamic>> cache,
     required dynamic cacheKey,
     required String url,
@@ -137,7 +140,7 @@ class BangumiApi {
     return null;
   }
 
-  static List<Map<String, String>> _parseSubjectCommentsDocument(
+  List<Map<String, String>> _parseSubjectCommentsDocument(
     dom.Document document,
   ) {
     final List<Map<String, String>> comments = <Map<String, String>>[];
@@ -182,7 +185,7 @@ class BangumiApi {
     return comments;
   }
 
-  static List<Map<String, String>> _parseEpisodeCommentsDocument(
+  List<Map<String, String>> _parseEpisodeCommentsDocument(
     dom.Document document,
   ) {
     final List<Map<String, String>> comments = <Map<String, String>>[];
@@ -200,7 +203,7 @@ class BangumiApi {
     return _dedupeEpisodeComments(comments);
   }
 
-  static Iterable<dom.Element> _episodeCommentRoots(dom.Document document) {
+  Iterable<dom.Element> _episodeCommentRoots(dom.Document document) {
     final dom.Element? commentList = document.querySelector('#comment_list');
     if (commentList == null) {
       return const <dom.Element>[];
@@ -218,11 +221,11 @@ class BangumiApi {
         .where((dom.Element item) => !_hasCommentContainerAncestor(item));
   }
 
-  static bool _isTopLevelCommentContainer(dom.Element item) {
+  bool _isTopLevelCommentContainer(dom.Element item) {
     return item.classes.contains('row_reply') || item.classes.contains('item');
   }
 
-  static bool _hasCommentContainerAncestor(dom.Element item) {
+  bool _hasCommentContainerAncestor(dom.Element item) {
     dom.Element? parent = item.parent;
     while (parent != null && parent.id != 'comment_list') {
       if (parent.classes.contains('row_reply') ||
@@ -237,7 +240,7 @@ class BangumiApi {
 
   /// Walk nested reply chains once. `querySelectorAll` already returns deep
   /// descendants, so recursing here would duplicate楼中楼 replies.
-  static void _collectNestedReplies(
+  void _collectNestedReplies(
     dom.Element parent,
     List<Map<String, String>> out,
   ) {
@@ -267,7 +270,7 @@ class BangumiApi {
     }
   }
 
-  static Map<String, String>? _parseEpisodeCommentElement(
+  Map<String, String>? _parseEpisodeCommentElement(
     dom.Element item, {
     bool isReply = false,
   }) {
@@ -298,7 +301,7 @@ class BangumiApi {
     };
   }
 
-  static String _episodeCommentContent(
+  String _episodeCommentContent(
     dom.Element item, {
     required bool isReply,
   }) {
@@ -320,7 +323,7 @@ class BangumiApi {
     return _textWithoutNestedReplies(item);
   }
 
-  static String _firstText(dom.Element item, Iterable<String> selectors) {
+  String _firstText(dom.Element item, Iterable<String> selectors) {
     for (final String selector in selectors) {
       final String text = _compactText(
         item.querySelector(selector)?.text ?? '',
@@ -332,7 +335,7 @@ class BangumiApi {
     return '';
   }
 
-  static String _textWithoutNestedReplies(dom.Element element) {
+  String _textWithoutNestedReplies(dom.Element element) {
     final dom.Document document = parser.parse(element.outerHtml);
     for (final dom.Element nested in document.querySelectorAll(
       '.topic_sub_reply, .sub_reply',
@@ -344,14 +347,14 @@ class BangumiApi {
     );
   }
 
-  static String _compactText(String value) {
+  String _compactText(String value) {
     return value
         .replaceAll('\u00a0', ' ')
         .replaceAll(RegExp(r'\s+'), ' ')
         .trim();
   }
 
-  static String _decodeHtmlResponse(dynamic data) {
+  String _decodeHtmlResponse(dynamic data) {
     if (data is String) {
       return data;
     }
@@ -372,7 +375,7 @@ class BangumiApi {
     );
   }
 
-  static Future<dom.Document?> _getHtmlDocument(
+  Future<dom.Document?> _getHtmlDocument(
     String url, {
     String referer = _ApiConfig.webBase,
   }) async {
@@ -391,7 +394,7 @@ class BangumiApi {
     return parser.parse(html);
   }
 
-  static List<Map<String, String>> _dedupeEpisodeComments(
+  List<Map<String, String>> _dedupeEpisodeComments(
     List<Map<String, String>> comments,
   ) {
     final Map<String, int> contentIndex = <String, int>{};
@@ -427,7 +430,7 @@ class BangumiApi {
   }
 
   // 统一的 HTML 列表解析器，消除冗余代码
-  static List<Map<String, dynamic>> _parseBrowserItemList(
+  List<Map<String, dynamic>> _parseBrowserItemList(
     String html,
     int limit,
   ) {
@@ -464,7 +467,7 @@ class BangumiApi {
     return results;
   }
 
-  static Future<List<dynamic>> search(
+  Future<List<dynamic>> search(
     String keyword, {
     int type = 2,
     int start = 0,
@@ -496,7 +499,7 @@ class BangumiApi {
     return [];
   }
 
-  static Future<List<Map<String, dynamic>>> getSubjectsByTag(
+  Future<List<Map<String, dynamic>>> getSubjectsByTag(
     String tag, {
     int type = 2,
     int page = 1,
@@ -529,7 +532,7 @@ class BangumiApi {
     return [];
   }
 
-  static Future<List<dynamic>> getCharacterSubjects(int characterId) async {
+  Future<List<dynamic>> getCharacterSubjects(int characterId) async {
     final List<dynamic>? cached = _characterSubjectsCache.get(characterId);
     if (cached != null) return cached;
 
@@ -550,7 +553,7 @@ class BangumiApi {
     return [];
   }
 
-  static Future<List<dynamic>> getPersonSubjects(int personId) async {
+  Future<List<dynamic>> getPersonSubjects(int personId) async {
     final List<dynamic>? cached = _personSubjectsCache.get(personId);
     if (cached != null) return cached;
 
@@ -571,7 +574,7 @@ class BangumiApi {
     return [];
   }
 
-  static Future<List<dynamic>> getCalendar() async {
+  Future<List<dynamic>> getCalendar() async {
     final List<dynamic>? cached = _calendarCache.get('calendar');
     if (cached != null) return cached;
 
@@ -588,7 +591,7 @@ class BangumiApi {
     return [];
   }
 
-  static Future<List<Map<String, dynamic>>> getYearTop() async {
+  Future<List<Map<String, dynamic>>> getYearTop() async {
     final int year = DateTime.now().year;
     final List<Map<String, dynamic>>? cached = _yearTopCache.get('yearTop');
     if (_yearTopCacheYear == year && cached != null) return cached;
@@ -623,7 +626,7 @@ class BangumiApi {
     return [];
   }
 
-  static Future<List<Map<String, dynamic>>> getSubjectEpisodes(
+  Future<List<Map<String, dynamic>>> getSubjectEpisodes(
     int subjectId,
   ) async {
     if (subjectId <= 0) return <Map<String, dynamic>>[];
@@ -685,7 +688,7 @@ class BangumiApi {
     return episodes;
   }
 
-  static Future<int?> resolveEpisodeId({
+  Future<int?> resolveEpisodeId({
     int subjectId = 0,
     int episodeId = 0,
     String subjectTitle = '',
@@ -747,7 +750,7 @@ class BangumiApi {
     return resolvedEpisodeId;
   }
 
-  static Future<int?> _resolveSubjectIdByTitle(String rawTitle) async {
+  Future<int?> _resolveSubjectIdByTitle(String rawTitle) async {
     final String keyword = _sanitizeSubjectKeyword(rawTitle);
     if (keyword.length < 2) {
       return null;
@@ -794,7 +797,7 @@ class BangumiApi {
     }
   }
 
-  static Future<Map<String, dynamic>?> getAnimeDetail(int id) async {
+  Future<Map<String, dynamic>?> getAnimeDetail(int id) async {
     final Map<String, dynamic>? cached = _animeDetailCache.get(id);
     if (cached != null) return cached;
 
@@ -814,12 +817,12 @@ class BangumiApi {
     return _animeRepository.loadSubject(id);
   }
 
-  static int? _extractEpisodeNumber(String value) =>
+  int? _extractEpisodeNumber(String value) =>
       extractEpisodeNumber(value);
 
-  static int? _numberValue(dynamic value) => safeInt(value);
+  int? _numberValue(dynamic value) => safeInt(value);
 
-  static String _sanitizeSubjectKeyword(String value) {
+  String _sanitizeSubjectKeyword(String value) {
     final String cleaned = value
         .replaceAll(RegExp(r'^\[[^\]]+\]\s*'), ' ')
         .replaceAll(RegExp(r'\[[^\]]+\]'), ' ')
@@ -839,14 +842,14 @@ class BangumiApi {
     return cleaned.isNotEmpty ? cleaned : value.trim();
   }
 
-  static String _normalizeTitle(String value) {
+  String _normalizeTitle(String value) {
     return value
         .replaceAll(RegExp(r'\s+'), '')
         .replaceAll('　', '')
         .toLowerCase();
   }
 
-  static Future<Map<String, dynamic>?> getUserCollection(
+  Future<Map<String, dynamic>?> getUserCollection(
     int subjectId,
     String username,
     String token,
@@ -866,7 +869,7 @@ class BangumiApi {
     return null;
   }
 
-  static Future<List<dynamic>> getUserCollectionList(
+  Future<List<dynamic>> getUserCollectionList(
     String username, {
     int type = 3,
     int subjectType = 2,
@@ -890,7 +893,7 @@ class BangumiApi {
     return [];
   }
 
-  static Future<bool> updateCollection(
+  Future<bool> updateCollection(
     int subjectId,
     String token,
     Map<String, dynamic> postData,
@@ -916,7 +919,7 @@ class BangumiApi {
     return false;
   }
 
-  static Future<bool> updateEpisodeStatus(
+  Future<bool> updateEpisodeStatus(
     int subjectId,
     String token,
     int epStatus,
@@ -940,7 +943,7 @@ class BangumiApi {
     return false;
   }
 
-  static Future<List<Map<String, String>>> getSubjectComments(int id) async {
+  Future<List<Map<String, String>>> getSubjectComments(int id) async {
     final List<Map<String, String>>? cached = _commentsCache.get(id);
     if (cached != null) return cached;
     final List<Map<String, String>> comments = <Map<String, String>>[];
@@ -996,7 +999,7 @@ class BangumiApi {
     return comments;
   }
 
-  static Future<List<Map<String, String>>> getEpisodeComments(
+  Future<List<Map<String, String>>> getEpisodeComments(
     int episodeId,
   ) async {
     if (episodeId <= 0) {
@@ -1035,7 +1038,7 @@ class BangumiApi {
     return comments;
   }
 
-  static Future<List<dynamic>> getSubjectCharacters(int id) async {
+  Future<List<dynamic>> getSubjectCharacters(int id) async {
     return _cachedListGet(
       cache: _charactersCache,
       cacheKey: id,
@@ -1044,7 +1047,7 @@ class BangumiApi {
     );
   }
 
-  static Future<List<dynamic>> getSubjectPersons(int id) async {
+  Future<List<dynamic>> getSubjectPersons(int id) async {
     return _cachedListGet(
       cache: _personsCache,
       cacheKey: id,
@@ -1053,7 +1056,7 @@ class BangumiApi {
     );
   }
 
-  static Future<List<dynamic>> getSubjectRelations(int id) async {
+  Future<List<dynamic>> getSubjectRelations(int id) async {
     return _cachedListGet(
       cache: _relationsCache,
       cacheKey: id,

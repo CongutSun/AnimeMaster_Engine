@@ -7,7 +7,7 @@ class _CacheEntry<T> {
   const _CacheEntry(this.value, this.createdAt);
 }
 
-/// LRU + TTL cache that replaces the 16 ad‑hoc static [Map]s in BangumiApi.
+/// LRU + TTL cache that replaces the 16 ad‑hoc static [Map]s in BangumiApi.instance.
 ///
 /// Features:
 /// - Max entry count (LRU eviction of oldest entries)

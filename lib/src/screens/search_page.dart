@@ -228,7 +228,36 @@ class _SearchPageState extends State<SearchPage> {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
-                  trailing: const Icon(Icons.chevron_right_rounded),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: <Widget>[
+                      if (anime.score.isNotEmpty && anime.score != '暂无数据')
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFF9F0A).withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: <Widget>[
+                              const Icon(Icons.star_rounded, size: 13, color: Color(0xFFFF9F0A)),
+                              const SizedBox(width: 3),
+                              Text(
+                                anime.score,
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                  color: Color(0xFFFF9F0A),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      const SizedBox(width: 6),
+                      const Icon(Icons.chevron_right_rounded),
+                    ],
+                  ),
                   onTap: () {
                     Navigator.push(
                       context,

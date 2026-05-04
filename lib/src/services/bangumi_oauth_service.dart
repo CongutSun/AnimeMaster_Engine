@@ -6,6 +6,12 @@ import '../api/dio_client.dart';
 import '../models/bangumi_oauth_token.dart';
 import '../models/bangumi_user_profile.dart';
 
+/// Direct Bangumi OAuth service.
+///
+/// **Prefer [BangumiAuthGatewayService] for new integrations.**
+/// The gateway path keeps [clientSecret] server‑side, avoiding
+/// exposure in the client binary. Use this class only when the
+/// auth gateway is unavailable and you accept the security trade‑off.
 class BangumiOAuthService {
   static const String callbackScheme = 'animemasteroauth';
   static const String redirectUri = '$callbackScheme://callback';
@@ -34,12 +40,19 @@ class BangumiOAuthService {
     }).toString();
   }
 
+  /// Direct code exchange — the [clientSecret] is sent from the device.
+  /// For production, prefer the gateway path via [BangumiAuthGatewayService].
   Future<BangumiOAuthToken> exchangeCode({
     required String clientId,
     required String clientSecret,
     required String code,
     required String state,
   }) async {
+    assert(
+      clientSecret.isEmpty,
+      '[BangumiOAuthService] Direct OAuth sends client_secret from the device. '
+      'Prefer the auth gateway for production use.',
+    );
     final Response<dynamic> response = await _dio.post<dynamic>(
       'https://bgm.tv/oauth/access_token',
       data: <String, String>{

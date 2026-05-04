@@ -425,7 +425,7 @@ class TorrentMediaResolver {
 
     try {
       final List<Map<String, dynamic>> episodes =
-          await BangumiApi.getSubjectEpisodes(subjectId);
+          await BangumiApi.instance.getSubjectEpisodes(subjectId);
       if (episodes.isEmpty) {
         return const _ResolvedBangumiEpisode();
       }

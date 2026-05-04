@@ -48,6 +48,20 @@ class DioClient {
     'mikanime.tv',
   };
 
+  /// Shared Dio instance for proxy retries — avoids allocating a new one each time.
+  static Dio? _proxyDio;
+
+  static Dio get _proxyDioInstance {
+    _proxyDio ??= Dio(
+      BaseOptions(
+        connectTimeout: const Duration(seconds: 15),
+        receiveTimeout: const Duration(seconds: 15),
+        headers: const {'User-Agent': _userAgent},
+      ),
+    );
+    return _proxyDio!;
+  }
+
   late final Dio dio;
 
   DioClient._internal() {
@@ -74,15 +88,6 @@ class DioClient {
               try {
                 final String? freshToken = await _tokenRefresher?.call();
                 if (freshToken != null && freshToken.isNotEmpty) {
-                  final Options patchedOptions = error.requestOptions.extra
-                      .containsKey('_authRetry')
-                      ? Options(
-                          headers: <String, String>{
-                            ...?error.requestOptions.headers,
-                            'Authorization': 'Bearer $freshToken',
-                          },
-                        )
-                      : Options();
                   final RequestOptions patched = error.requestOptions
                     ..headers['Authorization'] = 'Bearer $freshToken';
                   final Response<dynamic> response = await dio.fetch<dynamic>(
@@ -120,18 +125,18 @@ class DioClient {
           if (_shouldRetryViaProxy(error)) {
             try {
               final Uri originalUri = error.requestOptions.uri;
+              final String resourceProxyBase =
+                  const String.fromEnvironment(
+                    'ANIMEMASTER_RESOURCE_PROXY_URL',
+                    defaultValue: 'https://auth.congutsun.com',
+                  ).trim().replaceAll(RegExp(r'/$'), '');
+              final String mode = originalUri.host == 'share.dmhy.org'
+                  ? 'torrent'
+                  : 'rss';
               final String proxyUrl =
-                  'https://api.allorigins.win/raw?url=${Uri.encodeComponent(originalUri.toString())}';
+                  '$resourceProxyBase/proxy/$mode?url=${Uri.encodeComponent(originalUri.toString())}';
 
-              final Dio retryDio = Dio(
-                BaseOptions(
-                  connectTimeout: const Duration(seconds: 15),
-                  receiveTimeout: const Duration(seconds: 15),
-                  headers: const {'User-Agent': _userAgent},
-                ),
-              );
-
-              final Response<dynamic> response = await retryDio.request(
+              final Response<dynamic> response = await _proxyDioInstance.request(
                 proxyUrl,
                 options: Options(
                   method: error.requestOptions.method,

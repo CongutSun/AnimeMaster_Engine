@@ -56,7 +56,7 @@ class _CollectionPageState extends State<CollectionPage> {
     ).bgmAcc;
 
     if (username.isNotEmpty) {
-      final rawResults = await BangumiApi.getUserCollectionList(
+      final rawResults = await BangumiApi.instance.getUserCollectionList(
         username,
         type: currentType,
         subjectType: currentSubjectType,
@@ -112,7 +112,7 @@ class _CollectionPageState extends State<CollectionPage> {
       );
     });
 
-    bool success = await BangumiApi.updateEpisodeStatus(
+    bool success = await BangumiApi.instance.updateEpisodeStatus(
       anime.id,
       token,
       currentEp + 1,
@@ -515,7 +515,7 @@ class _UpdateProgressSheetState extends State<_UpdateProgressSheet> {
   Future<void> _fetchCurrentStatus() async {
     final provider = Provider.of<SettingsProvider>(context, listen: false);
     await provider.ensureBangumiAccessToken();
-    final collectionData = await BangumiApi.getUserCollection(
+    final collectionData = await BangumiApi.instance.getUserCollection(
       widget.animeId,
       provider.bgmAcc,
       provider.bgmToken,
@@ -561,7 +561,7 @@ class _UpdateProgressSheetState extends State<_UpdateProgressSheet> {
       postData['comment'] = existingComment;
     }
 
-    bool success = await BangumiApi.updateCollection(
+    bool success = await BangumiApi.instance.updateCollection(
       widget.animeId,
       token,
       postData,

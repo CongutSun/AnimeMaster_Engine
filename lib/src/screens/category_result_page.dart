@@ -60,7 +60,7 @@ class _CategoryResultPageState extends State<CategoryResultPage> {
     List<dynamic> rawData = [];
     try {
       if (widget.searchMode == 'tag') {
-        rawData = await BangumiApi.getSubjectsByTag(
+        rawData = await BangumiApi.instance.getSubjectsByTag(
           widget.query.toString(),
           type: widget.searchType,
           page: currentPage,
@@ -69,18 +69,18 @@ class _CategoryResultPageState extends State<CategoryResultPage> {
       } else if (widget.searchMode == 'character') {
         if (currentPage == 1) {
           final qId = int.tryParse(widget.query.toString()) ?? 0;
-          rawData = await BangumiApi.getCharacterSubjects(qId);
+          rawData = await BangumiApi.instance.getCharacterSubjects(qId);
         }
         hasMore = false;
       } else if (widget.searchMode == 'person') {
         if (currentPage == 1) {
           final qId = int.tryParse(widget.query.toString()) ?? 0;
-          rawData = await BangumiApi.getPersonSubjects(qId);
+          rawData = await BangumiApi.instance.getPersonSubjects(qId);
         }
         hasMore = false;
       } else {
         if (currentPage == 1) {
-          rawData = await BangumiApi.search(
+          rawData = await BangumiApi.instance.search(
             widget.query.toString(),
             type: widget.searchType,
           );

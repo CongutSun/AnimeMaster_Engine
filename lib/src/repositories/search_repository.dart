@@ -10,7 +10,7 @@ class SearchRepository {
     required int start,
     required int maxResults,
   }) async {
-    final List<dynamic> rawResults = await BangumiApi.search(
+    final List<dynamic> rawResults = await BangumiApi.instance.search(
       keyword,
       type: type,
       start: start,

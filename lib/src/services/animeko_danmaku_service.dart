@@ -33,7 +33,7 @@ class AnimekoDanmakuService {
     int bangumiSubjectId = 0,
     int bangumiEpisodeId = 0,
   }) async {
-    final int? episodeId = await BangumiApi.resolveEpisodeId(
+    final int? episodeId = await BangumiApi.instance.resolveEpisodeId(
       subjectId: bangumiSubjectId,
       episodeId: bangumiEpisodeId,
       subjectTitle: subjectTitle,

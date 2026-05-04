@@ -2,7 +2,7 @@ import '../utils/episode_helpers.dart';
 
 /// A strongly‑typed Bangumi episode, replacing ad‑hoc [Map<String, dynamic>]
 /// used across detail_page, episode_watch_page, torrent_media_resolver, and
-/// BangumiApi.
+/// BangumiApi.instance.
 class Episode {
   final int id;
   final int subjectId;

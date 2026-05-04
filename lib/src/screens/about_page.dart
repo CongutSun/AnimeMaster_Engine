@@ -150,6 +150,22 @@ class _AboutPageState extends State<AboutPage> {
                   ),
                   SizedBox(height: 12),
                   _LogEntry(
+                    version: '2.4.0',
+                    items: <String>[
+                      '安全加固：替换第三方 CORS 代理为自有 Worker 代理端点，修复异常信息泄漏问题。',
+                      '废弃直连 OAuth 路径（client_secret 不再内嵌客户端），统一推荐网关登录。',
+                      '性能优化：弹幕缓存增加 LRU 容量限制，下载引擎空闲时自动暂停后台定时器，文件扫描合并系统调用减少 I/O。',
+                      '工程改进：BangumiApi 重构为实例化类（可注入测试），AppStrings 集中管理全部文案，DownloadManager 新增 _ManagedTask 目标模型。',
+                      'UI 升级：底部主导航栏（首页 / 收藏 / 下载 / 设置），统一区块标题组件 SectionHeader，首页新增壁纸快捷更换入口。',
+                      '用户体验：搜索结果展示评分，RSS 删除操作增加确认对话框，详情页无封面时显示渐变占位，角色列表增加滚动渐变提示。',
+                      '交互改进：角色点击统一为底部弹出框，工具栏双击刷新首页，导航栏切换增加触觉反馈，详情页返回按钮增加 tooltip。',
+                      '新增首次启动引导页（3 屏介绍核心功能），详情页剧集分片阈值从 100 集降为 30 集以减少视觉跳变。',
+                      'Worker 更新：online_sources 健康探活优化，代理端点 user-agent 规范化，APP_UPDATE_MANIFEST 同步至 v2.4.0。',
+                      'CI 与构建：全量 Lint 通过，release APK 支持 arm64-v8a / armeabi-v7a / x86_64 / universal 四架构。',
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                  _LogEntry(
                     version: '2.3.3',
                     items: <String>[
                       '修复暂停视频后弹幕继续飘动的问题（弹幕动画控制器未响应暂停状态）。',

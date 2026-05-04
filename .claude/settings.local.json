@@ -17,7 +17,9 @@
       "Bash(git commit *)",
       "Bash(sed -i 's/version: 2.3.2/version: 2.3.3/' pubspec.yaml)",
       "Bash(sed -i 's/version: 2.3.2+32/version: 2.3.3+33/' example/pubspec.yaml)",
-      "Bash(git revert *)"
+      "Bash(git revert *)",
+      "Bash(dart analyze *)",
+      "Bash(keytool -genkey -v -keystore key.jks -alias animemaster -keyalg RSA -keysize 2048 -validity 365 -storepass android -keypass android -dname \"CN=AnimeMaster, OU=Dev, O=AnimeMaster, L=Unknown, ST=Unknown, C=CN\")"
     ]
   }
 }

@@ -865,7 +865,7 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
     int episodeId = _episodeId(episode);
     if (episodeId <= 0) {
       episodeId =
-          await BangumiApi.resolveEpisodeId(
+          await BangumiApi.instance.resolveEpisodeId(
             subjectId: widget.animeId,
             episodeLabel: '第${_episodeNumber(episode)}集',
             displayTitle: _episodePlainTitle(episode),
@@ -876,7 +876,7 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
     if (episodeId <= 0) {
       return <Map<String, String>>[];
     }
-    return BangumiApi.getEpisodeComments(episodeId);
+    return BangumiApi.instance.getEpisodeComments(episodeId);
   }
 
   Map<String, dynamic>? _findEpisodeForQuery(OnlineEpisodeQuery? query) {

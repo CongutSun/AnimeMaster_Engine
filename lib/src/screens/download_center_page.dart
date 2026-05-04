@@ -290,7 +290,7 @@ class DownloadCenterPage extends StatelessWidget {
     }
 
     final List<Map<String, dynamic>> episodes =
-        await BangumiApi.getSubjectEpisodes(config.bangumiSubjectId);
+        await BangumiApi.instance.getSubjectEpisodes(config.bangumiSubjectId);
     if (episodes.isEmpty) {
       return config;
     }

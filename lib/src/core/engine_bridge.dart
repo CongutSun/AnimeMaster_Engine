@@ -194,9 +194,8 @@ class EngineBridge {
 
     for (final FileSystemEntity entity
         in directory.listSync(recursive: true, followLinks: false).take(500)) {
-      final FileSystemEntityType type = FileSystemEntity.typeSync(entity.path);
-      final bool isDirectory = type == FileSystemEntityType.directory;
-      final FileSystemEntity fileSystemEntity = entity;
+      final FileStat stat = entity.statSync();
+      final bool isDirectory = stat.type == FileSystemEntityType.directory;
       final String name = entity.uri.pathSegments.isEmpty
           ? entity.path
           : entity.uri.pathSegments.lastWhere((segment) => segment.isNotEmpty);
@@ -213,11 +212,8 @@ class EngineBridge {
         'isVideo':
             !isDirectory &&
             videoExtensions.any((extension) => lowerPath.endsWith(extension)),
-        'size': fileSystemEntity is File ? fileSystemEntity.lengthSync() : 0,
-        'modifiedAtEpochMs': fileSystemEntity
-            .statSync()
-            .modified
-            .millisecondsSinceEpoch,
+        'size': isDirectory ? 0 : stat.size,
+        'modifiedAtEpochMs': stat.modified.millisecondsSinceEpoch,
       });
     }
 

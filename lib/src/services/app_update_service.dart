@@ -1,12 +1,14 @@
 import 'dart:convert';
 import 'dart:ffi';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../api/dio_client.dart';
 import '../models/app_update_info.dart';
+import '../utils/app_strings.dart';
 
 class AppUpdateCheckResult {
   final PackageInfo packageInfo;
@@ -34,7 +36,7 @@ class AppUpdateService {
         packageInfo: packageInfo,
         latest: null,
         updateAvailable: false,
-        message: '尚未配置更新清单地址。',
+        message: AppStrings.updateManifestEmpty,
       );
     }
 
@@ -51,7 +53,7 @@ class AppUpdateService {
           packageInfo: packageInfo,
           latest: null,
           updateAvailable: false,
-          message: '更新清单缺少 version 或 apkUrl 字段。',
+          message: AppStrings.updateManifestInvalid,
         );
       }
 
@@ -66,14 +68,15 @@ class AppUpdateService {
         packageInfo: packageInfo,
         latest: latest,
         updateAvailable: updateAvailable,
-        message: updateAvailable ? '发现新版本。' : '当前已经是最新版本。',
+        message: updateAvailable ? AppStrings.updateAvailable : AppStrings.updateUpToDate,
       );
     } catch (error) {
+      debugPrint('[AppUpdateService] checkForUpdates failed: $error');
       return AppUpdateCheckResult(
         packageInfo: packageInfo,
         latest: null,
         updateAvailable: false,
-        message: '检查更新失败：$error',
+        message: AppStrings.updateCheckFailed,
       );
     }
   }
@@ -137,12 +140,12 @@ class AppUpdateService {
       await showDialog<void>(
         context: context,
         builder: (BuildContext dialogContext) => AlertDialog(
-          title: const Text('应用更新'),
+          title: const Text(AppStrings.updateDialogAppTitle),
           content: Text(result.message),
           actions: <Widget>[
             TextButton(
               onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('确定'),
+              child: const Text(AppStrings.confirm),
             ),
           ],
         ),
@@ -154,21 +157,21 @@ class AppUpdateService {
     await showDialog<void>(
       context: context,
       builder: (BuildContext dialogContext) => AlertDialog(
-        title: const Text('发现新版本'),
+        title: const Text(AppStrings.updateDialogTitle),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
-            Text('当前版本：${result.packageInfo.version}'),
+            Text('${AppStrings.updateDialogCurrent}：${result.packageInfo.version}'),
             const SizedBox(height: 6),
-            Text('最新版本：${latest.version}'),
+            Text('${AppStrings.updateDialogLatest}：${latest.version}'),
             if (latest.publishedAt.isNotEmpty) ...<Widget>[
               const SizedBox(height: 6),
-              Text('发布时间：${latest.publishedAt}'),
+              Text('${AppStrings.updateDialogPublished}：${latest.publishedAt}'),
             ],
             if (_resolveSha256(latest) case final String sha?) ...[
               const SizedBox(height: 12),
-              const Text('SHA256 校验', style: TextStyle(fontWeight: FontWeight.w700)),
+              const Text(AppStrings.updateDialogSha256, style: TextStyle(fontWeight: FontWeight.w700)),
               const SizedBox(height: 4),
               SelectableText(
                 sha,
@@ -177,13 +180,13 @@ class AppUpdateService {
             ],
             if (latest.changeLog.isNotEmpty) ...<Widget>[
               const SizedBox(height: 12),
-              const Text('更新内容', style: TextStyle(fontWeight: FontWeight.w700)),
+              const Text(AppStrings.updateDialogChangelog, style: TextStyle(fontWeight: FontWeight.w700)),
               const SizedBox(height: 6),
               Text(latest.changeLog),
             ],
             const SizedBox(height: 12),
             const Text(
-              '说明：Android 普通应用无法静默强制安装更新，系统会跳转到下载或安装流程，由用户确认覆盖安装。',
+              AppStrings.updateDialogNote,
               style: TextStyle(fontSize: 12, color: Colors.grey),
             ),
           ],
@@ -191,7 +194,7 @@ class AppUpdateService {
         actions: <Widget>[
           TextButton(
             onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('稍后'),
+            child: const Text(AppStrings.updateDialogLater),
           ),
           FilledButton(
             onPressed: () async {
@@ -202,10 +205,10 @@ class AppUpdateService {
               if (!launched && context.mounted) {
                 ScaffoldMessenger.of(
                   context,
-                ).showSnackBar(const SnackBar(content: Text('无法打开下载地址。')));
+                ).showSnackBar(const SnackBar(content: Text(AppStrings.cannotOpenDownloadUrl)));
               }
             },
-            child: const Text('下载更新'),
+            child: const Text(AppStrings.updateDialogDownload),
           ),
         ],
       ),

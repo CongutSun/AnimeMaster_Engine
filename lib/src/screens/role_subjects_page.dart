@@ -38,8 +38,8 @@ class _RoleSubjectsPageState extends State<RoleSubjectsPage> {
 
     try {
       final List<dynamic> data = widget.isCharacter
-          ? await BangumiApi.getCharacterSubjects(widget.id)
-          : await BangumiApi.getPersonSubjects(widget.id);
+          ? await BangumiApi.instance.getCharacterSubjects(widget.id)
+          : await BangumiApi.instance.getPersonSubjects(widget.id);
 
       if (!mounted) return;
 

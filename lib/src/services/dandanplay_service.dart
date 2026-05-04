@@ -1,3 +1,4 @@
+import 'dart:collection';
 import 'dart:convert';
 import 'dart:io';
 
@@ -9,12 +10,37 @@ import '../models/dandanplay_models.dart';
 class DandanplayService {
   static const String _baseUrl = 'https://api.dandanplay.net';
   static const int _chunkSize = 16 * 1024 * 1024;
-  static final Map<String, DandanplayMatchResult> _matchCache =
-      <String, DandanplayMatchResult>{};
-  static final Map<String, DandanplayMatchResult> _manualMatchCache =
-      <String, DandanplayMatchResult>{};
-  static final Map<int, List<DandanplayComment>> _commentCache =
-      <int, List<DandanplayComment>>{};
+  static const int _maxMatchCacheSize = 200;
+  static const int _maxCommentCacheSize = 50;
+
+  /// Bounded LRU caches to prevent unbounded memory growth.
+  static final LinkedHashMap<String, DandanplayMatchResult> _matchCache =
+      LinkedHashMap<String, DandanplayMatchResult>();
+  static final LinkedHashMap<String, DandanplayMatchResult> _manualMatchCache =
+      LinkedHashMap<String, DandanplayMatchResult>();
+  static final LinkedHashMap<int, List<DandanplayComment>> _commentCache =
+      LinkedHashMap<int, List<DandanplayComment>>();
+
+  static void _cacheMatch(String key, DandanplayMatchResult value) {
+    _matchCache[key] = value;
+    if (_matchCache.length > _maxMatchCacheSize) {
+      _matchCache.remove(_matchCache.keys.first);
+    }
+  }
+
+  static void _cacheManualMatch(String key, DandanplayMatchResult value) {
+    _manualMatchCache[key] = value;
+    if (_manualMatchCache.length > _maxMatchCacheSize) {
+      _manualMatchCache.remove(_manualMatchCache.keys.first);
+    }
+  }
+
+  static void _cacheComments(int episodeId, List<DandanplayComment> value) {
+    _commentCache[episodeId] = value;
+    if (_commentCache.length > _maxCommentCacheSize) {
+      _commentCache.remove(_commentCache.keys.first);
+    }
+  }
 
   final String appId;
   final String appSecret;
@@ -144,8 +170,8 @@ class DandanplayService {
       subjectTitle: subjectTitle,
       episodeLabel: episodeLabel,
     );
-    _manualMatchCache[cacheKey] = match;
-    _matchCache[cacheKey] = match;
+    _cacheManualMatch(cacheKey, match);
+    _cacheMatch(cacheKey, match);
   }
 
   String buildSuggestedAnimeKeyword({
@@ -203,7 +229,7 @@ class DandanplayService {
       throw Exception('未能在弹弹play 中匹配到对应节目。');
     }
 
-    _matchCache[cacheKey] = match;
+    _cacheMatch(cacheKey, match);
     return match;
   }
 
@@ -303,7 +329,7 @@ class DandanplayService {
                 left.appearAt.compareTo(right.appearAt),
           );
 
-    _commentCache[episodeId] = comments;
+    _cacheComments(episodeId, comments);
     return _applyShift(comments, shiftSeconds);
   }
 
