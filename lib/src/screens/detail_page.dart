@@ -174,6 +174,10 @@ class _DetailPageState extends State<DetailPage>
 
     _activeTabIndex = index;
     setState(() {});
+    final SettingsProvider settings = Provider.of<SettingsProvider>(context, listen: false);
+    if (settings.enableHapticFeedback) {
+      HapticFeedback.lightImpact();
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _restorePinnedTabOffsetIfNeeded();
     });

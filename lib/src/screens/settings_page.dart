@@ -289,6 +289,9 @@ class _SettingsPageState extends State<SettingsPage> {
     setState(() {
       isSaving = false;
     });
+    if (provider.enableHapticFeedback) {
+      HapticFeedback.mediumImpact();
+    }
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(const SnackBar(content: Text('设置已保存。')));
