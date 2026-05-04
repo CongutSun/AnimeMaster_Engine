@@ -23,10 +23,10 @@ const APP_UPDATE_MANIFEST = {
     universal: 'https://auth.congutsun.com/download/apk/universal',
   },
   sha256: {
-    'android-arm64': 'ed5bd84d70b95e2b27dbc0e8fd0dba860df43d5ce7a5ec36c323f84d5ac706d6',
-    'android-arm': '523d369f73185db1b82d4d2170a6951d1f4f75f898d4156ea55344efeec1f26a',
-    'android-x64': '760d61b2e8666b7eac09e9ad344806f7846cf574844fa7a1f71b6724106f37a5',
-    universal: '29850f8233ce1c59c210ec75ea5e7abf3835170381253dc49def6b744119305d',
+    'android-arm64': '693c364fae326579976cbcf5a0fc4ff809ddb7f333651c5051eb4c40d5dd7ff9',
+    'android-arm': 'e68e586fcc001aa55dba519f27cbf140d647ab2936b74305f922be4db475632a',
+    'android-x64': '8796df422cc91a9599d077186e8ecaf70b118ff9ebeef191950c2cd2d3f8d74d',
+    universal: '774befabb5c9234e3211e657dccb1253597ffcfe293e825f6294ab146a232bfb',
   },
   notes: [
     '修复暂停视频后弹幕继续飘动的问题。',
