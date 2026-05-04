@@ -23,6 +23,9 @@ const APP_UPDATE_MANIFEST = {
     universal: 'https://auth.congutsun.com/download/apk/universal',
   },
   sha256: {
+    'android-arm64': '85ac26ca3250656a4b9e07f578aac88d1798dccf935956a64cac50f735ee6e29',
+    'android-arm': 'f11711a07762e88dba997091ab5265d4c32eb9cf2647df9355d6cf105c362b4c',
+    'android-x64': '02cb970276da1199f88335bfb0edaa487dc3a46c1a501fa54a0e91336df61f51',
     universal: '',
   },
   notes: [
