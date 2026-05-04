@@ -311,6 +311,17 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
     }
   }
 
+  String _onlineSearchFriendlyError(Object error) {
+    final String raw = error.toString();
+    if (raw.contains('Timeout') || raw.contains('timed out')) {
+      return '在线源搜索超时，请检查网络后重试';
+    }
+    if (raw.contains('Connection') || raw.contains('SocketException')) {
+      return '网络连接失败，请检查网络后重试';
+    }
+    return '在线源搜索失败：$raw';
+  }
+
   void _startOnlineSearch(
     OnlineEpisodeQuery query, {
     required bool autoPlayFirst,
@@ -358,7 +369,7 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
               _onlineSourceSearchingNotifier.value = false;
               if (_activeMedia == null) {
                 _isPreparingMedia = false;
-                _statusText = '在线播放源搜索失败：$error';
+                _statusText = _onlineSearchFriendlyError(error);
               }
             });
           },
@@ -1534,6 +1545,7 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
                     SizedBox(
                       height: 86,
                       child: ListView.separated(
+                        key: const PageStorageKey<String>('episodes_horizontal'),
                         scrollDirection: Axis.horizontal,
                         itemCount: widget.episodes.length,
                         separatorBuilder: (BuildContext context, int index) =>

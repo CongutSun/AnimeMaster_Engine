@@ -539,10 +539,17 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
             setState(() {
               _setOnlineSourceSearching(false);
             });
+            final String raw = error.toString();
+            final String msg = raw.contains('Timeout') || raw.contains('timed out')
+                ? '在线源搜索超时，请检查网络后重试'
+                : raw.contains('Connection') || raw.contains('SocketException')
+                  ? '网络连接失败，请检查网络后重试'
+                  : '在线源搜索失败';
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                content: Text('在线源搜索失败：$error'),
+                content: Text(msg),
                 backgroundColor: Colors.redAccent,
+                duration: const Duration(seconds: 4),
               ),
             );
           },
@@ -2455,6 +2462,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
                   speed: _danmakuSpeed,
                   showBackground: _danmakuShowBackground,
                   showStroke: _danmakuShowStroke,
+                  paused: !_isPlaying,
                   onCompleted: _removeDanmakuItem,
                 ),
               ),
@@ -3816,6 +3824,7 @@ class _DanmakuOverlay extends StatelessWidget {
   final double speed;
   final bool showBackground;
   final bool showStroke;
+  final bool paused;
   final ValueChanged<int> onCompleted;
 
   const _DanmakuOverlay({
@@ -3825,6 +3834,7 @@ class _DanmakuOverlay extends StatelessWidget {
     required this.speed,
     required this.showBackground,
     required this.showStroke,
+    required this.paused,
     required this.onCompleted,
   });
 
@@ -3845,6 +3855,7 @@ class _DanmakuOverlay extends StatelessWidget {
                   speed: speed,
                   showBackground: showBackground,
                   showStroke: showStroke,
+                  paused: paused,
                   onCompleted: () => onCompleted(item.id),
                 ),
               )
@@ -3863,6 +3874,7 @@ class _DanmakuBullet extends StatefulWidget {
   final double speed;
   final bool showBackground;
   final bool showStroke;
+  final bool paused;
   final VoidCallback onCompleted;
 
   const _DanmakuBullet({
@@ -3874,6 +3886,7 @@ class _DanmakuBullet extends StatefulWidget {
     required this.speed,
     required this.showBackground,
     required this.showStroke,
+    required this.paused,
     required this.onCompleted,
   });
 
@@ -3884,6 +3897,8 @@ class _DanmakuBullet extends StatefulWidget {
 class _DanmakuBulletState extends State<_DanmakuBullet>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
+  late final double _cachedTextWidth;
+  late final bool _skipOpacityWrapper;
 
   @override
   void initState() {
@@ -3907,6 +3922,25 @@ class _DanmakuBulletState extends State<_DanmakuBullet>
             }
           })
           ..forward();
+
+    _cachedTextWidth = math.max(
+      120.0,
+      widget.item.comment.text.runes.length * widget.fontSize,
+    );
+    _skipOpacityWrapper =
+        widget.item.comment.mode == 1 && widget.opacity >= 0.99;
+  }
+
+  @override
+  void didUpdateWidget(covariant _DanmakuBullet oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.paused != oldWidget.paused) {
+      if (widget.paused) {
+        _controller.stop();
+      } else {
+        _controller.forward();
+      }
+    }
   }
 
   @override
@@ -3921,7 +3955,6 @@ class _DanmakuBulletState extends State<_DanmakuBullet>
 
   @override
   Widget build(BuildContext context) {
-    final double textWidth = _estimateTextWidth(widget.item.comment.text);
     final double laneHeight = widget.fontSize + 14;
 
     return AnimatedBuilder(
@@ -3940,21 +3973,27 @@ class _DanmakuBulletState extends State<_DanmakuBullet>
 
         final double left = mode == 1
             ? widget.viewportSize.width -
-                  (widget.viewportSize.width + textWidth + 32) * progress
-            : (widget.viewportSize.width - textWidth) / 2;
+                  (widget.viewportSize.width + _cachedTextWidth + 32) * progress
+            : (widget.viewportSize.width - _cachedTextWidth) / 2;
         final double opacity = mode == 1
             ? 1
             : (progress < 0.15
                   ? progress / 0.15
                   : (progress > 0.85 ? (1 - progress) / 0.15 : 1));
 
-        return Positioned(
+        final Widget positioned = Positioned(
           left: left,
           top: top,
-          child: Opacity(
-            opacity: (opacity * widget.opacity).clamp(0, 1),
-            child: child,
-          ),
+          child: child!,
+        );
+
+        if (_skipOpacityWrapper) {
+          return positioned;
+        }
+
+        return Opacity(
+          opacity: (opacity * widget.opacity).clamp(0, 1),
+          child: positioned,
         );
       },
       child: DecoratedBox(

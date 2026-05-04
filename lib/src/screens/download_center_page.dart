@@ -110,6 +110,17 @@ class DownloadCenterPage extends StatelessWidget {
                                                 AsyncSnapshot<DownloadTaskInfo>
                                                 snapshot,
                                               ) {
+                                                if (snapshot.hasError) {
+                                                  return Text(
+                                                    config.episodeLabel.isNotEmpty
+                                                        ? config.episodeLabel
+                                                        : config.title,
+                                                    style: TextStyle(
+                                                      fontSize: 12,
+                                                      color: colors.onSurfaceVariant,
+                                                    ),
+                                                  );
+                                                }
                                                 final DownloadTaskInfo task =
                                                     snapshot.data ?? config;
                                                 return Text(

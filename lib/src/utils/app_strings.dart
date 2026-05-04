@@ -31,7 +31,7 @@ class AppStrings {
   // ── Detail / Episode ──
   static const String noEpisodeData = '暂无剧集数据。';
   static const String noSummary = '暂无简介';
-  static const String noComments = '暂无评论或加载失败';
+  static const String noComments = '暂无评论，或加载失败请下拉重试';
   static const String noEpisodeComments = '暂无本集讨论';
   static const String noEpisodeDesc = '暂无本集简介。';
   static const String unnamedEpisode = '未命名剧集';

@@ -403,8 +403,11 @@ class SettingsProvider with ChangeNotifier {
     return trimmed.replaceAll(RegExp(r'/+$'), '');
   }
 
-  String _normalizeAppUpdateFeedUrl([String? _]) {
-    return EmbeddedCredentials.appUpdateFeedUrl.trim();
+  String _normalizeAppUpdateFeedUrl([String? value]) {
+    final String trimmed = (value ?? '').trim();
+    return trimmed.isEmpty
+        ? EmbeddedCredentials.appUpdateFeedUrl.trim()
+        : trimmed;
   }
 
   Future<void> _applyBangumiProfile(

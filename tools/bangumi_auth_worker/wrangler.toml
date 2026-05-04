@@ -11,6 +11,9 @@ routes = [
 binding = "BANGUMI_AUTH_KV"
 id = "cde856e4cf7e4af28d946732ee4342af"
 
+[triggers]
+crons = [ "0 */6 * * *" ]
+
 # Required secrets:
 # wrangler secret put BANGUMI_CLIENT_ID
 # wrangler secret put BANGUMI_CLIENT_SECRET

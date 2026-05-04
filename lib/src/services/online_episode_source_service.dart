@@ -525,7 +525,7 @@ class _DirectSiteAdapter extends _OnlineSourceAdapter {
     ),
     _DirectSiteAdapter(
       name: 'Dodo 动漫',
-      baseUrl: 'http://m.dodoge.me',
+      baseUrl: 'https://m.dodoge.me',
       searchPathBuilder: (String keyword) => '/vod/search.html?wd=$keyword',
       subjectSelector:
           'a[href*="/vod/detail/"], a[href*="/detail/"], a[href*="/show/"]',
@@ -563,29 +563,73 @@ class _DirectSiteAdapter extends _OnlineSourceAdapter {
     return <_OnlineSourceAdapter>[];
   }
 
-  /// Reads bundled assets/online_sources.json and returns macCms adapters.
-  /// Call once during app initialization (e.g. from [OnlineEpisodeSourceService]).
+  /// Tries remote sources.json first, falls back to bundled asset.
+  /// Call once during app initialization.
   static Future<void> warmUpJsonSources() async {
     if (_jsonMacCmsCache != null) return;
     try {
-      final String json = await rootBundle
-          .loadString('assets/online_sources.json');
-      final List<dynamic> decoded = jsonDecode(json) as List<dynamic>;
-      _jsonMacCmsCache = decoded
-          .whereType<Map<String, dynamic>>()
-          .map((Map<String, dynamic> entry) {
-            return _DirectSiteAdapter.macCms(
-              name: (entry['name'] ?? '').toString(),
-              baseUrl: (entry['baseUrl'] ?? '').toString(),
-            );
-          })
-          .toList(growable: false);
+      final String json = await _fetchRemoteSources();
+      _jsonMacCmsCache = _parseSourceJson(json);
+      debugPrint(
+        '[OnlineEpisodeSourceService] Loaded ${_jsonMacCmsCache!.length} '
+        'sources from remote.',
+      );
     } catch (error) {
       debugPrint(
-        '[OnlineEpisodeSourceService] Failed to warm up JSON sources: $error',
+        '[OnlineEpisodeSourceService] Remote sources unavailable: $error',
       );
-      _jsonMacCmsCache = <_OnlineSourceAdapter>[];
+      try {
+        final String json = await rootBundle
+            .loadString('assets/online_sources.json');
+        _jsonMacCmsCache = _parseSourceJson(json);
+        debugPrint(
+          '[OnlineEpisodeSourceService] Loaded ${_jsonMacCmsCache!.length} '
+          'sources from local asset.',
+        );
+      } catch (localError) {
+        debugPrint(
+          '[OnlineEpisodeSourceService] Local asset also failed: $localError',
+        );
+        _jsonMacCmsCache = <_OnlineSourceAdapter>[];
+      }
     }
+  }
+
+  static const String _remoteSourcesUrl =
+      'https://auth.congutsun.com/sources.json';
+
+  static Future<String> _fetchRemoteSources() async {
+    final Response<dynamic> response = await DioClient()
+        .dio
+        .get<dynamic>(_remoteSourcesUrl);
+    if (response.statusCode == 200) {
+      final dynamic data = response.data;
+      if (data is Map<String, dynamic>) {
+        // Remote format: { version, updatedAt, sources: [...] }
+        final List<dynamic>? sources = data['sources'] as List<dynamic>?;
+        if (sources != null) {
+          return jsonEncode(sources);
+        }
+      } else if (data is List) {
+        return jsonEncode(data);
+      } else if (data is String) {
+        return data;
+      }
+    }
+    throw Exception('Invalid remote sources response');
+  }
+
+  static List<_OnlineSourceAdapter> _parseSourceJson(String json) {
+    final List<dynamic> decoded = jsonDecode(json) as List<dynamic>;
+    return decoded
+        .whereType<Map<String, dynamic>>()
+        .map((Map<String, dynamic> entry) {
+          return _DirectSiteAdapter.macCms(
+            name: (entry['name'] ?? '').toString(),
+            baseUrl: (entry['baseUrl'] ?? '').toString(),
+          );
+        })
+        .toList(growable: false);
   }
 
   factory _DirectSiteAdapter.macCms({

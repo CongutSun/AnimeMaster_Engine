@@ -7,6 +7,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 
 import '../providers/settings_provider.dart';
 import '../api/bangumi_api.dart';
+import '../utils/app_strings.dart';
 import 'magnet_config_page.dart';
 import 'category_result_page.dart';
 import 'episode_watch_page.dart';
@@ -1090,6 +1091,7 @@ class _DetailPageState extends State<DetailPage>
         SizedBox(
           height: 105,
           child: ListView.builder(
+            key: PageStorageKey<String>('detail_${isCharacter ? "characters" : "staff"}'),
             scrollDirection: Axis.horizontal,
             itemCount: items.length,
             itemBuilder: (ctx, i) {
@@ -1256,6 +1258,7 @@ class _DetailPageState extends State<DetailPage>
               SizedBox(
                 height: 36,
                 child: ListView.separated(
+                  key: const PageStorageKey<String>('detail_episode_chunks'),
                   scrollDirection: Axis.horizontal,
                   itemCount: _episodeChunks.length,
                   separatorBuilder: (BuildContext context, int index) =>
@@ -1553,7 +1556,7 @@ class _DetailPageState extends State<DetailPage>
         child: Padding(
           padding: EdgeInsets.all(32.0),
           child: Center(
-            child: Text('暂无评论或加载失败', style: TextStyle(color: Colors.grey)),
+            child: Text(AppStrings.noComments, style: TextStyle(color: Colors.grey)),
           ),
         ),
       );

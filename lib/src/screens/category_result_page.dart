@@ -34,6 +34,7 @@ class _CategoryResultPageState extends State<CategoryResultPage> {
     super.initState();
     _fetchData();
     _scrollController.addListener(() {
+      if (!_scrollController.hasClients) return;
       if (_scrollController.position.pixels >=
           _scrollController.position.maxScrollExtent - 200) {
         if (!isLoading && !isLoadingMore && hasMore) {
