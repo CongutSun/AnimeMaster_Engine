@@ -478,18 +478,22 @@ class BangumiApi {
     if (cached != null) return cached;
 
     try {
-      final response = await _dio.get(
-        '${_ApiConfig.apiBase}/search/subject/${Uri.encodeComponent(keyword)}',
-        queryParameters: {
-          'type': type,
-          'start': start,
-          'max_results': maxResults,
+      final response = await _dio.post(
+        '${_ApiConfig.apiBase}/v0/search/subjects',
+        data: <String, dynamic>{
+          'keyword': keyword,
+          'filter': <String, dynamic>{'type': <int>[type]},
+        },
+        queryParameters: <String, dynamic>{
+          'limit': maxResults,
+          'offset': start,
         },
       );
-      if (response.statusCode == 200) {
-        final List<dynamic> results = response.data['list'] is List
-            ? response.data['list']
-            : <dynamic>[];
+      if (response.statusCode == 200 && response.data is Map) {
+        final List<dynamic> results =
+            (response.data as Map)['data'] is List
+                ? (response.data as Map)['data'] as List<dynamic>
+                : <dynamic>[];
         _searchCache.set(cacheKey, results);
         return results;
       }

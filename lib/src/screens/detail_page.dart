@@ -15,6 +15,7 @@ import 'role_subjects_page.dart';
 import '../utils/episode_helpers.dart';
 import '../utils/image_request.dart';
 import '../widgets/selection_dialog.dart';
+import '../utils/haptic_helper.dart';
 
 Widget _buildSafeImage({
   required String imageUrl,
@@ -105,6 +106,8 @@ class _DetailPageState extends State<DetailPage>
   bool hasRequestedEpisodes = false;
   bool isSyncing = false;
   bool hasFetchedPersonalData = false;
+  String? commentsErrorMessage;
+  String? episodesErrorMessage;
 
   String currentStatus = '未收藏';
   String currentRate = '暂不打分';
@@ -352,18 +355,24 @@ class _DetailPageState extends State<DetailPage>
     setState(() {
       hasRequestedComments = true;
       isCommentsLoading = true;
+      commentsErrorMessage = null;
     });
-    final List<Map<String, String>> comments =
-        await BangumiApi.instance.getSubjectComments(widget.animeId);
-
-    if (!mounted) {
-      return;
+    try {
+      final List<Map<String, String>> comments =
+          await BangumiApi.instance.getSubjectComments(widget.animeId);
+      if (!mounted) return;
+      setState(() {
+        realComments = comments;
+        isCommentsLoading = false;
+        commentsErrorMessage = comments.isEmpty ? '暂无评论' : null;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        isCommentsLoading = false;
+        commentsErrorMessage = '加载失败：${e.toString().replaceFirst("Exception: ", "")}';
+      });
     }
-
-    setState(() {
-      realComments = comments;
-      isCommentsLoading = false;
-    });
   }
 
   Future<void> _loadEpisodes() async {
@@ -483,6 +492,7 @@ class _DetailPageState extends State<DetailPage>
   }
 
   Future<void> _syncToCloud() async {
+    maybeHaptic(context);
     final SettingsProvider settings = Provider.of<SettingsProvider>(
       context,
       listen: false,
@@ -1438,6 +1448,7 @@ class _DetailPageState extends State<DetailPage>
   }
 
   Future<void> _openEpisodeWatchPage(Map<String, dynamic> episode) async {
+    maybeHaptic(context);
     await Navigator.push(
       context,
       MaterialPageRoute<void>(
@@ -1597,11 +1608,39 @@ class _DetailPageState extends State<DetailPage>
     }
 
     if (realComments.isEmpty) {
-      return const SliverToBoxAdapter(
+      return SliverToBoxAdapter(
         child: Padding(
-          padding: EdgeInsets.all(32.0),
+          padding: const EdgeInsets.all(32.0),
           child: Center(
-            child: Text(AppStrings.noComments, style: TextStyle(color: Colors.grey)),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                Icon(
+                  commentsErrorMessage != null && commentsErrorMessage != '暂无评论'
+                      ? Icons.cloud_off_rounded
+                      : Icons.chat_bubble_outline_rounded,
+                  size: 40,
+                  color: Colors.grey,
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  commentsErrorMessage ?? AppStrings.noComments,
+                  style: const TextStyle(color: Colors.grey),
+                  textAlign: TextAlign.center,
+                ),
+                if (commentsErrorMessage != null && commentsErrorMessage != '暂无评论') ...[
+                  const SizedBox(height: 16),
+                  OutlinedButton.icon(
+                    onPressed: () {
+                      hasRequestedComments = false;
+                      _loadComments();
+                    },
+                    icon: const Icon(Icons.refresh_rounded, size: 18),
+                    label: const Text(AppStrings.retry),
+                  ),
+                ],
+              ],
+            ),
           ),
         ),
       );

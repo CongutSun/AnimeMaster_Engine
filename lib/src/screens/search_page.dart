@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
 import '../models/anime.dart';
+import '../utils/haptic_helper.dart';
 import '../viewmodels/search_view_model.dart';
 import '../utils/image_request.dart';
 import '../widgets/skeleton.dart';
@@ -259,6 +260,7 @@ class _SearchPageState extends State<SearchPage> {
                     ],
                   ),
                   onTap: () {
+                    maybeHaptic(context);
                     Navigator.push(
                       context,
                       MaterialPageRoute(

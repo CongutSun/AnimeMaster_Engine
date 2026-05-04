@@ -3,27 +3,15 @@
   "build": 34,
   "apkUrl": "https://auth.congutsun.com/download/apk/universal",
   "apkUrls": {
-    "android-arm64": "https://auth.congutsun.com/download/apk/android-arm64",
-    "android-arm": "https://auth.congutsun.com/download/apk/android-arm",
-    "android-x64": "https://auth.congutsun.com/download/apk/android-x64",
-    "universal": "https://auth.congutsun.com/download/apk/universal"
+    "android-arm64": "fb3112e07e252b19c1dd747e9694326602f83a18d34c960e4657c3127d81d71d",
+    "android-arm": "1c53e8623950e5e64751b79e2c1fdce8a88250a0d20ad611535240b6552d397b",
+    "android-x64": "c5ecef5cb05f685d60c04a96f5526ea00b641e566b8bcf6a06c0fdd7fb0aadb4",
+    "universal": "3d5dbdb658aaf077ad4e109d456293e1635508163a7f69505bc9829407276147"
   },
   "sha256": {
-    "android-arm64": "bde16d412af42d7df776ab4b17186fe6a47d4003d1fcddb5e6259f56964a1ba4",
-    "android-arm": "8c34d2587f2518bc5ec1ebd94a650e6b28407699f1598408bdb9de2add4763c2",
-    "android-x64": "6f7b59b37591e4d4fe0c32d1eb3d6dfb8207b828db03e6498c893becf71c6c94",
-    "universal": "33060fa1ce0b78a469bf9049c7983fed4a5d1338cb9702145cb6f1fdef2315e8"
+    "android-arm64": "fb3112e07e252b19c1dd747e9694326602f83a18d34c960e4657c3127d81d71d",
+    "android-arm": "1c53e8623950e5e64751b79e2c1fdce8a88250a0d20ad611535240b6552d397b",
+    "android-x64": "c5ecef5cb05f685d60c04a96f5526ea00b641e566b8bcf6a06c0fdd7fb0aadb4",
+    "universal": "3d5dbdb658aaf077ad4e109d456293e1635508163a7f69505bc9829407276147"
   },
-  "notes": [
-    "安全加固：替换第三方 CORS 代理为自有 Worker 代理端点，修复异常信息泄漏。",
-    "废弃直连 OAuth 路径（client_secret 不再内嵌客户端），统一推荐网关登录。",
-    "性能优化：弹幕缓存增加 LRU 容量限制，下载引擎空闲时自动暂停后台定时器。",
-    "工程改进：BangumiApi 重构为实例化类，AppStrings 集中管理全部文案。",
-    "UI 升级：底部主导航栏（首页 / 收藏 / 下载 / 设置），统一区块标题组件。",
-    "用户体验：搜索结果展示评分，RSS 删除增加确认框，详情页无封面渐变占位。",
-    "交互改进：角色点击统一弹出框，工具栏双击刷新，导航栏触觉反馈。",
-    "新增首次启动引导页，详情页剧集分片阈值 100→30 集。"
-  ],
-  "publishedAt": "2026-05-04T22:00:00+08:00",
-  "forceUpdate": false
-}
+  "notes": 

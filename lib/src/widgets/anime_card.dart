@@ -5,6 +5,7 @@ import '../models/anime.dart';
 import '../screens/detail_page.dart';
 import '../utils/image_request.dart';
 
+import '../utils/haptic_helper.dart';
 class AnimeCard extends StatelessWidget {
   final Anime anime;
   final bool isTop;
@@ -31,6 +32,7 @@ class AnimeCard extends StatelessWidget {
         child: InkWell(
           borderRadius: BorderRadius.circular(16),
           onTap: () {
+            maybeHaptic(context);
             Navigator.push(
               context,
               MaterialPageRoute(
