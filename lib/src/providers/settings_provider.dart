@@ -5,6 +5,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../config/embedded_credentials.dart';
+import '../config/bangumi_gateway_config.dart';
 import '../core/engine_bridge.dart';
 import '../models/bangumi_auth_gateway_models.dart';
 import '../models/bangumi_user_profile.dart';
@@ -40,6 +41,7 @@ class SettingsProvider with ChangeNotifier {
   String _resumePlaybackBehavior = 'ask';
   bool _autoPlayNextEpisode = false;
   bool _enableHapticFeedback = true;
+  late final Future<void> _loadFuture;
 
   final FlutterSecureStorage _secureStorage = const FlutterSecureStorage();
 
@@ -59,6 +61,7 @@ class SettingsProvider with ChangeNotifier {
       _bgmNickname.trim().isNotEmpty || _bgmAvatarUrl.trim().isNotEmpty;
   bool get isBangumiAuthorized =>
       _bgmAcc.trim().isNotEmpty && _bgmToken.trim().isNotEmpty;
+  bool get hasBangumiToken => _bgmToken.trim().isNotEmpty;
   bool get hasBangumiAuthGateway => bgmAuthGatewayUrl.trim().isNotEmpty;
   bool get hasBangumiGatewaySession =>
       _bgmGatewaySessionId.trim().isNotEmpty && hasBangumiAuthGateway;
@@ -100,8 +103,10 @@ class SettingsProvider with ChangeNotifier {
 
   SettingsProvider() {
     EngineBridge().wakeUpEngine();
-    _loadSettings();
+    _loadFuture = _loadSettings();
   }
+
+  Future<void> initialize() => _loadFuture;
 
   Future<void> _loadSettings() async {
     final SharedPreferences prefs = await SharedPreferences.getInstance();
@@ -123,13 +128,13 @@ class SettingsProvider with ChangeNotifier {
     );
     _autoPlayNextEpisode =
         prefs.getBool('playback_auto_play_next_episode') ?? false;
-    _enableHapticFeedback =
-        prefs.getBool('ui_enable_haptic_feedback') ?? false;
+    _enableHapticFeedback = prefs.getBool('ui_enable_haptic_feedback') ?? false;
     _bgmNickname = prefs.getString('bgm_nickname') ?? '';
     _bgmAvatarUrl = prefs.getString('bgm_avatar_url') ?? '';
     _bgmBio = prefs.getString('bgm_bio') ?? '';
     final String? storedGatewayUrl = prefs.getString('bgm_auth_gateway_url');
     _bgmAuthGatewayUrl = _normalizeBangumiAuthGatewayUrl(storedGatewayUrl);
+    BangumiGatewayConfig.configure(_bgmAuthGatewayUrl);
     if (storedGatewayUrl != _bgmAuthGatewayUrl) {
       await prefs.setString('bgm_auth_gateway_url', _bgmAuthGatewayUrl);
     }
@@ -193,6 +198,7 @@ class SettingsProvider with ChangeNotifier {
 
   Future<void> updateBangumiAuthGateway(String gatewayUrl) async {
     _bgmAuthGatewayUrl = _normalizeBangumiAuthGatewayUrl(gatewayUrl);
+    BangumiGatewayConfig.configure(_bgmAuthGatewayUrl);
     final SharedPreferences prefs = await SharedPreferences.getInstance();
     await prefs.setString('bgm_auth_gateway_url', _bgmAuthGatewayUrl);
     notifyListeners();
@@ -276,6 +282,7 @@ class SettingsProvider with ChangeNotifier {
     if (!keepGatewayConfig) {
       _bgmAuthGatewayUrl = EmbeddedCredentials.bangumiAuthGatewayUrl;
     }
+    BangumiGatewayConfig.configure(_bgmAuthGatewayUrl);
 
     if (gatewayUrl.trim().isNotEmpty && sessionId.trim().isNotEmpty) {
       try {
@@ -334,13 +341,13 @@ class SettingsProvider with ChangeNotifier {
     notifyListeners();
   }
 
-
   Future<void> updateHapticFeedback(bool enabled) async {
     _enableHapticFeedback = enabled;
     final SharedPreferences prefs = await SharedPreferences.getInstance();
     await prefs.setBool('ui_enable_haptic_feedback', enabled);
     notifyListeners();
   }
+
   Future<void> updateDistribution(bool autoCheckUpdates) async {
     _appUpdateFeedUrl = _normalizeAppUpdateFeedUrl();
     _autoCheckUpdates = autoCheckUpdates;
@@ -441,6 +448,7 @@ class SettingsProvider with ChangeNotifier {
     if (sessionId != null && sessionId.trim().isNotEmpty) {
       _bgmGatewaySessionId = sessionId.trim();
     }
+    BangumiGatewayConfig.configure(_bgmAuthGatewayUrl);
 
     final SharedPreferences prefs = await SharedPreferences.getInstance();
     await prefs.setString('bgm_acc', _bgmAcc);

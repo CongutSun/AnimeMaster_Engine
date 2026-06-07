@@ -1,7 +1,7 @@
 name: animemaster_example
 description: "AnimeMaster Android application."
 publish_to: 'none'
-version: 2.3.4+41
+version: 2.3.5+42
 
 environment:
   sdk: ^3.11.4
@@ -21,6 +21,11 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+
+hooks:
+  user_defines:
+    sqlite3:
+      source: system
 
 flutter_launcher_icons:
   android: true

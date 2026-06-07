@@ -1,6 +1,8 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 
+import '../config/bangumi_gateway_config.dart';
+
 class ApiException implements Exception {
   final int? statusCode;
   final String message;
@@ -125,26 +127,26 @@ class DioClient {
           if (_shouldRetryViaProxy(error)) {
             try {
               final Uri originalUri = error.requestOptions.uri;
-              final String resourceProxyBase =
-                  const String.fromEnvironment(
-                    'ANIMEMASTER_RESOURCE_PROXY_URL',
-                    defaultValue: 'https://auth.congutsun.com',
-                  ).trim().replaceAll(RegExp(r'/$'), '');
+              final String resourceProxyBase = const String.fromEnvironment(
+                'ANIMEMASTER_RESOURCE_PROXY_URL',
+                defaultValue: 'https://auth.congutsun.com',
+              ).trim().replaceAll(RegExp(r'/$'), '');
               final String mode = originalUri.host == 'share.dmhy.org'
                   ? 'torrent'
                   : 'rss';
               final String proxyUrl =
                   '$resourceProxyBase/proxy/$mode?url=${Uri.encodeComponent(originalUri.toString())}';
 
-              final Response<dynamic> response = await _proxyDioInstance.request(
-                proxyUrl,
-                options: Options(
-                  method: error.requestOptions.method,
-                  responseType: error.requestOptions.responseType,
-                ),
-                data: error.requestOptions.data,
-                queryParameters: error.requestOptions.queryParameters,
-              );
+              final Response<dynamic> response = await _proxyDioInstance
+                  .request(
+                    proxyUrl,
+                    options: Options(
+                      method: error.requestOptions.method,
+                      responseType: error.requestOptions.responseType,
+                    ),
+                    data: error.requestOptions.data,
+                    queryParameters: error.requestOptions.queryParameters,
+                  );
 
               debugPrint(
                 '[DioClient] Proxy retry success for ${originalUri.host}',
@@ -187,7 +189,8 @@ class DioClient {
     final int? statusCode = error.response?.statusCode;
     if (statusCode != 401) return false;
     final String host = error.requestOptions.uri.host.toLowerCase();
-    return _authProtectedHosts.contains(host);
+    return _authProtectedHosts.contains(host) ||
+        BangumiGatewayConfig.isGatewayUri(error.requestOptions.uri);
   }
 
   bool _shouldRetryViaProxy(DioException error) {

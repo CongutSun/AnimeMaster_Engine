@@ -9,14 +9,15 @@ import 'package:flutter/foundation.dart';
 import 'api_cache_manager.dart';
 import 'api_exceptions.dart';
 import 'dio_client.dart';
+import '../config/bangumi_gateway_config.dart';
 import '../repositories/anime_repository.dart';
 import '../utils/episode_helpers.dart';
 
 class _ApiConfig {
-  static const String apiBase = 'https://api.bgm.tv';
-  static const String webBase = 'https://bgm.tv';
-  static const String chiiBase = 'https://chii.in';
-  static const List<String> htmlBases = <String>[chiiBase, webBase];
+  static String get apiBase => BangumiGatewayConfig.apiUrl('');
+  static String get webBase => BangumiGatewayConfig.webUrl('');
+  static String get chiiBase => BangumiGatewayConfig.chiiUrl('');
+  static List<String> get htmlBases => <String>[chiiBase, webBase];
 }
 
 class BangumiApi {
@@ -37,10 +38,8 @@ class BangumiApi {
       ApiCacheManager<List<dynamic>>(maxSize: 60);
   final ApiCacheManager<List<Map<String, String>>> _commentsCache =
       ApiCacheManager<List<Map<String, String>>>(maxSize: 60);
-  final ApiCacheManager<List<Map<String, String>>>
-  _episodeCommentsCache = ApiCacheManager<List<Map<String, String>>>(
-    maxSize: 120,
-  );
+  final ApiCacheManager<List<Map<String, String>>> _episodeCommentsCache =
+      ApiCacheManager<List<Map<String, String>>>(maxSize: 120);
   final ApiCacheManager<List<dynamic>> _searchCache =
       ApiCacheManager<List<dynamic>>(maxSize: 80);
   final ApiCacheManager<List<Map<String, dynamic>>> _tagSubjectsCache =
@@ -49,12 +48,11 @@ class BangumiApi {
       ApiCacheManager<List<dynamic>>(maxSize: 80);
   final ApiCacheManager<List<dynamic>> _personSubjectsCache =
       ApiCacheManager<List<dynamic>>(maxSize: 80);
-  final ApiCacheManager<List<Map<String, dynamic>>>
-  _subjectEpisodesCache = ApiCacheManager<List<Map<String, dynamic>>>(
-    maxSize: 80,
+  final ApiCacheManager<List<Map<String, dynamic>>> _subjectEpisodesCache =
+      ApiCacheManager<List<Map<String, dynamic>>>(maxSize: 80);
+  final ApiCacheManager<int?> _episodeIdResolveCache = ApiCacheManager<int?>(
+    maxSize: 120,
   );
-  final ApiCacheManager<int?> _episodeIdResolveCache =
-      ApiCacheManager<int?>(maxSize: 120);
 
   // Calendar cache is time‑sensitive — invalidate after 1 hour
   final ApiCacheManager<List<dynamic>> _calendarCache =
@@ -301,10 +299,7 @@ class BangumiApi {
     };
   }
 
-  String _episodeCommentContent(
-    dom.Element item, {
-    required bool isReply,
-  }) {
+  String _episodeCommentContent(dom.Element item, {required bool isReply}) {
     final Iterable<String> selectors = isReply
         ? <String>['.cmt_sub_content', '.reply_content', '.message', 'p']
         : <String>['.reply_content', '.message', '.inner > p', 'p'];
@@ -364,21 +359,18 @@ class BangumiApi {
     return data?.toString() ?? '';
   }
 
-  static Options _htmlRequestOptions({String referer = _ApiConfig.webBase}) {
+  static Options _htmlRequestOptions({String? referer}) {
     return Options(
       responseType: ResponseType.bytes,
       headers: <String, String>{
         'Accept':
             'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'Referer': referer,
+        'Referer': referer ?? _ApiConfig.webBase,
       },
     );
   }
 
-  Future<dom.Document?> _getHtmlDocument(
-    String url, {
-    String referer = _ApiConfig.webBase,
-  }) async {
+  Future<dom.Document?> _getHtmlDocument(String url, {String? referer}) async {
     final Response<dynamic> response = await _dio.get(
       url,
       options: _htmlRequestOptions(referer: referer),
@@ -430,10 +422,7 @@ class BangumiApi {
   }
 
   // 统一的 HTML 列表解析器，消除冗余代码
-  List<Map<String, dynamic>> _parseBrowserItemList(
-    String html,
-    int limit,
-  ) {
+  List<Map<String, dynamic>> _parseBrowserItemList(String html, int limit) {
     List<Map<String, dynamic>> results = [];
     final document = parser.parse(html);
     final ul = document.getElementById('browserItemList');
@@ -482,7 +471,9 @@ class BangumiApi {
         '${_ApiConfig.apiBase}/v0/search/subjects',
         data: <String, dynamic>{
           'keyword': keyword,
-          'filter': <String, dynamic>{'type': <int>[type]},
+          'filter': <String, dynamic>{
+            'type': <int>[type],
+          },
         },
         queryParameters: <String, dynamic>{
           'limit': maxResults,
@@ -490,10 +481,9 @@ class BangumiApi {
         },
       );
       if (response.statusCode == 200 && response.data is Map) {
-        final List<dynamic> results =
-            (response.data as Map)['data'] is List
-                ? (response.data as Map)['data'] as List<dynamic>
-                : <dynamic>[];
+        final List<dynamic> results = (response.data as Map)['data'] is List
+            ? (response.data as Map)['data'] as List<dynamic>
+            : <dynamic>[];
         _searchCache.set(cacheKey, results);
         return results;
       }
@@ -630,9 +620,7 @@ class BangumiApi {
     return [];
   }
 
-  Future<List<Map<String, dynamic>>> getSubjectEpisodes(
-    int subjectId,
-  ) async {
+  Future<List<Map<String, dynamic>>> getSubjectEpisodes(int subjectId) async {
     if (subjectId <= 0) return <Map<String, dynamic>>[];
     final List<Map<String, dynamic>>? cached = _subjectEpisodesCache.get(
       subjectId,
@@ -821,8 +809,7 @@ class BangumiApi {
     return _animeRepository.loadSubject(id);
   }
 
-  int? _extractEpisodeNumber(String value) =>
-      extractEpisodeNumber(value);
+  int? _extractEpisodeNumber(String value) => extractEpisodeNumber(value);
 
   int? _numberValue(dynamic value) => safeInt(value);
 
@@ -1003,9 +990,7 @@ class BangumiApi {
     return comments;
   }
 
-  Future<List<Map<String, String>>> getEpisodeComments(
-    int episodeId,
-  ) async {
+  Future<List<Map<String, String>>> getEpisodeComments(int episodeId) async {
     if (episodeId <= 0) {
       return <Map<String, String>>[];
     }

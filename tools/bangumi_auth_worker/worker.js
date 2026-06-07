@@ -3,7 +3,7 @@ const PENDING_TTL_SECONDS = 600;
 const SESSION_EXCHANGE_TTL_SECONDS = 600;
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 60;
 const BANGUMI_API_USER_AGENT =
-  'animemaster-19277/AnimeMaster/1.0.0 (Cloudflare Workers; https://animemaster-bangumi-auth.animemaster-19277.workers.dev)';
+  'CongutSun/AnimeMaster_Engine/2.3.5 (Cloudflare Workers; https://auth.congutsun.com)';
 const RESOURCE_PROXY_USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 const RESOURCE_PROXY_ALLOWED_HOSTS = new Set([
@@ -12,42 +12,64 @@ const RESOURCE_PROXY_ALLOWED_HOSTS = new Set([
   'share.dmhy.org',
 ]);
 const ALLOWED_BROWSER_ORIGINS = new Set(['https://auth.congutsun.com']);
+const BANGUMI_PROXY_TARGETS = {
+  '/bangumi/api': 'https://api.bgm.tv',
+  '/bangumi/web': 'https://bgm.tv',
+  '/bangumi/chii': 'https://chii.in',
+};
+const BANGUMI_PROXY_METHODS = new Set([
+  'GET',
+  'HEAD',
+  'POST',
+  'PUT',
+  'PATCH',
+  'DELETE',
+]);
+const BANGUMI_PROXY_REQUEST_HEADERS = [
+  'authorization',
+  'content-type',
+  'accept',
+  'accept-language',
+];
 const APP_UPDATE_MANIFEST = {
-  version: '2.3.4',
-  build: 41,
-  apkUrl: 'https://auth.congutsun.com/download/apk/universal',
+  version: '2.3.5',
+  build: 42,
+  apkUrl:
+    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.3.5/app-release.apk',
   apkUrls: {
-    'android-arm64': 'https://auth.congutsun.com/download/apk/android-arm64',
-    'android-arm': 'https://auth.congutsun.com/download/apk/android-arm',
-    'android-x64': 'https://auth.congutsun.com/download/apk/android-x64',
-    universal: 'https://auth.congutsun.com/download/apk/universal',
+    'android-arm64':
+      'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.3.5/app-arm64-v8a-release.apk',
+    'android-arm':
+      'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.3.5/app-armeabi-v7a-release.apk',
+    'android-x64':
+      'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.3.5/app-x86_64-release.apk',
+    universal:
+      'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.3.5/app-release.apk',
   },
   sha256: {
-    'android-arm64': 'fb3112e07e252b19c1dd747e9694326602f83a18d34c960e4657c3127d81d71d',
-    'android-arm': '1c53e8623950e5e64751b79e2c1fdce8a88250a0d20ad611535240b6552d397b',
-    'android-x64': 'c5ecef5cb05f685d60c04a96f5526ea00b641e566b8bcf6a06c0fdd7fb0aadb4',
-    universal: '3d5dbdb658aaf077ad4e109d456293e1635508163a7f69505bc9829407276147',
+    'android-arm64': '4e51b0978e774ce9384c458031e8d7cc3e62ec614208f2bce679e7178e8b0bd5',
+    'android-arm': '276edd081abdd9e3d5fcc9912a3baf54a02e828a89cb7ffa459f78943bd91636',
+    'android-x64': '43b8ba7922f0150a27e425d19c44b8d6197f22c465e53258091d8af3311e03c0',
+    universal: 'e264d2f903c1eafa2fec0847ecd0c830888e5b3999ee04fff542d70ddc851ecb',
   },
   notes: [
-    '安全：替换第三方 CORS 代理为自有 Worker 端点，修复异常信息泄漏。',
-    '性能：弹幕缓存 LRU 限制，下载定时器空闲暂停，文件扫描 I/O 优化。',
-    '工程：BangumiApi 实例化，AppStrings 集中管理文案。',
-    'UI：搜索结果评分，无封面渐变占位，剧集分片阈值调整，首次引导页。',
-    '交互：全局触觉反馈（默认关闭），角色点击统一弹出框，RSS 删除确认。',
-    '设置：全部选项即时生效，移除保存按钮。',
+    'Bangumi 资料、搜索、评论、收藏与进度请求迁移到 auth.congutsun.com 网关，减少客户端直连失败。',
+    'Worker 新增 Bangumi API、网页与图片代理，限制允许域名并按资源类型设置缓存。',
+    '图片请求自动通过 /bangumi/image 代理，保留本地 Drift 缓存与现有 TTL/LRU 离线兜底。',
+    '更新 Android 发布版本为 2.3.5+42，并同步分 ABI APK 下载地址与 SHA256。',
   ],
-  publishedAt: '2026-05-05T08:00:00+08:00',
+  publishedAt: '2026-06-07T23:21:26+08:00',
   forceUpdate: false,
 };
 const APK_DOWNLOAD_URLS = {
   'android-arm64':
-    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.3.4/app-arm64-v8a-release.apk',
+    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.3.5/app-arm64-v8a-release.apk',
   'android-arm':
-    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.3.4/app-armeabi-v7a-release.apk',
+    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.3.5/app-armeabi-v7a-release.apk',
   'android-x64':
-    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.3.4/app-x86_64-release.apk',
+    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.3.5/app-x86_64-release.apk',
   universal:
-    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.3.4/app-release.apk',
+    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.3.5/app-release.apk',
 };
 
 function applyCors(headers, request, methods = 'GET,POST,OPTIONS') {
@@ -57,7 +79,7 @@ function applyCors(headers, request, methods = 'GET,POST,OPTIONS') {
   }
   headers.set('access-control-allow-origin', origin);
   headers.set('access-control-allow-methods', methods);
-  headers.set('access-control-allow-headers', 'content-type');
+  headers.set('access-control-allow-headers', 'authorization,content-type');
   headers.set('vary', 'Origin');
   return headers;
 }
@@ -198,6 +220,240 @@ async function handleApkDownload(request) {
     status: upstream.status,
     headers,
   });
+}
+
+function findBangumiProxyPrefix(pathname) {
+  for (const prefix of Object.keys(BANGUMI_PROXY_TARGETS)) {
+    if (pathname === prefix || pathname.startsWith(`${prefix}/`)) {
+      return prefix;
+    }
+  }
+  return null;
+}
+
+function buildBangumiProxyTarget(requestUrl, prefix) {
+  const source = new URL(requestUrl);
+  let pathname = source.pathname.slice(prefix.length);
+  if (!pathname) {
+    pathname = '/';
+  }
+  if (!pathname.startsWith('/')) {
+    pathname = `/${pathname}`;
+  }
+  const target = new URL(pathname, BANGUMI_PROXY_TARGETS[prefix]);
+  target.search = source.search;
+  return target;
+}
+
+function isBangumiImageHost(hostname) {
+  const host = hostname.toLowerCase();
+  return (
+    host === 'bgm.tv' ||
+    host === 'chii.in' ||
+    host.endsWith('.bgm.tv') ||
+    host.endsWith('.chii.in')
+  );
+}
+
+function validateBangumiImageTarget(rawTarget) {
+  if (!rawTarget) {
+    throw new Error('Missing Bangumi image url.');
+  }
+
+  const normalized = rawTarget.startsWith('//') ? `https:${rawTarget}` : rawTarget;
+  const target = new URL(normalized);
+  if (target.protocol !== 'https:' || !isBangumiImageHost(target.hostname)) {
+    throw new Error('Bangumi image target is not allowed.');
+  }
+  return target;
+}
+
+function bangumiProxyMode(prefix) {
+  if (prefix === '/bangumi/api') return 'api';
+  if (prefix === '/bangumi/chii') return 'html';
+  return 'html';
+}
+
+function bangumiAcceptHeader(mode) {
+  if (mode === 'api') {
+    return 'application/json,*/*;q=0.8';
+  }
+  if (mode === 'image') {
+    return 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8';
+  }
+  return 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8';
+}
+
+function buildBangumiRequestHeaders(request, target, mode) {
+  const headers = new Headers();
+  headers.set('user-agent', BANGUMI_API_USER_AGENT);
+  headers.set('accept', bangumiAcceptHeader(mode));
+  headers.set('referer', `${target.origin}/`);
+
+  for (const name of BANGUMI_PROXY_REQUEST_HEADERS) {
+    const value = request.headers.get(name);
+    if (value) {
+      headers.set(name, value);
+    }
+  }
+  return headers;
+}
+
+function bangumiCacheTtlSeconds(target, mode) {
+  if (mode === 'image') {
+    return 60 * 60 * 24 * 7;
+  }
+
+  const pathname = target.pathname.toLowerCase();
+  if (pathname === '/calendar') {
+    return 60 * 60;
+  }
+  if (pathname.includes('/comments') || pathname.startsWith('/ep/')) {
+    return 60 * 10;
+  }
+  if (
+    pathname.startsWith('/v0/subjects') ||
+    pathname.startsWith('/v0/characters') ||
+    pathname.startsWith('/v0/persons') ||
+    pathname.startsWith('/v0/episodes') ||
+    pathname.startsWith('/anime/browser')
+  ) {
+    return 60 * 60 * 6;
+  }
+  return 60 * 60;
+}
+
+function bangumiResponseHeaders(upstream, request, cacheTtlSeconds) {
+  const headers = new Headers();
+  const contentType = upstream.headers.get('content-type');
+  if (contentType) {
+    headers.set('content-type', contentType);
+  }
+  const etag = upstream.headers.get('etag');
+  if (etag) {
+    headers.set('etag', etag);
+  }
+  const lastModified = upstream.headers.get('last-modified');
+  if (lastModified) {
+    headers.set('last-modified', lastModified);
+  }
+  headers.set(
+    'cache-control',
+    cacheTtlSeconds > 0
+      ? `public, max-age=${cacheTtlSeconds}`
+      : 'private, no-store',
+  );
+  return applyCors(headers, request, 'GET,HEAD,POST,PUT,PATCH,DELETE,OPTIONS');
+}
+
+function canCacheBangumiResponse(request, upstream, cacheTtlSeconds) {
+  return (
+    request.method === 'GET' &&
+    cacheTtlSeconds > 0 &&
+    upstream.ok &&
+    !request.headers.has('authorization') &&
+    !upstream.headers.has('set-cookie')
+  );
+}
+
+function cachedBangumiResponse(response, request) {
+  const headers = new Headers(response.headers);
+  headers.set('x-animemaster-cache', 'HIT');
+  applyCors(headers, request, 'GET,HEAD,POST,PUT,PATCH,DELETE,OPTIONS');
+  return new Response(request.method === 'HEAD' ? null : response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
+async function fetchBangumiTarget(request, target, mode) {
+  const init = {
+    method: request.method,
+    headers: buildBangumiRequestHeaders(request, target, mode),
+    redirect: 'follow',
+  };
+  if (request.method !== 'GET' && request.method !== 'HEAD') {
+    init.body = request.body;
+  }
+  return fetch(target.toString(), init);
+}
+
+async function handleBangumiProxy(request, prefix) {
+  if (!BANGUMI_PROXY_METHODS.has(request.method)) {
+    return json({ error: 'Bangumi proxy method is not allowed.' }, 405, request);
+  }
+
+  const target = buildBangumiProxyTarget(request.url, prefix);
+  const mode = bangumiProxyMode(prefix);
+  const cacheTtl = request.headers.has('authorization')
+    ? 0
+    : bangumiCacheTtlSeconds(target, mode);
+  const cacheKey =
+    request.method === 'GET' && cacheTtl > 0
+      ? new Request(target.toString(), {
+          method: 'GET',
+          headers: { accept: bangumiAcceptHeader(mode) },
+        })
+      : null;
+
+  if (cacheKey) {
+    const cached = await caches.default.match(cacheKey);
+    if (cached) {
+      return cachedBangumiResponse(cached, request);
+    }
+  }
+
+  const upstream = await fetchBangumiTarget(request, target, mode);
+  const headers = bangumiResponseHeaders(upstream, request, cacheTtl);
+  headers.set('x-animemaster-cache', cacheKey ? 'MISS' : 'BYPASS');
+  const response = new Response(
+    request.method === 'HEAD' ? null : upstream.body,
+    {
+      status: upstream.status,
+      statusText: upstream.statusText,
+      headers,
+    },
+  );
+
+  if (cacheKey && canCacheBangumiResponse(request, upstream, cacheTtl)) {
+    await caches.default.put(cacheKey, response.clone());
+  }
+  return response;
+}
+
+async function handleBangumiImageProxy(request) {
+  if (request.method !== 'GET' && request.method !== 'HEAD') {
+    return json({ error: 'Bangumi image method is not allowed.' }, 405, request);
+  }
+
+  const url = new URL(request.url);
+  const target = validateBangumiImageTarget(url.searchParams.get('url') || '');
+  const cacheTtl = bangumiCacheTtlSeconds(target, 'image');
+  const cacheKey = new Request(target.toString(), {
+    method: 'GET',
+    headers: { accept: bangumiAcceptHeader('image') },
+  });
+  const cached = await caches.default.match(cacheKey);
+  if (cached) {
+    return cachedBangumiResponse(cached, request);
+  }
+
+  const upstream = await fetchBangumiTarget(request, target, 'image');
+  const headers = bangumiResponseHeaders(upstream, request, cacheTtl);
+  headers.set('x-animemaster-cache', 'MISS');
+  const response = new Response(
+    request.method === 'HEAD' ? null : upstream.body,
+    {
+      status: upstream.status,
+      statusText: upstream.statusText,
+      headers,
+    },
+  );
+  if (upstream.ok && !upstream.headers.has('set-cookie')) {
+    await caches.default.put(cacheKey, response.clone());
+  }
+  return response;
 }
 
 function requireEnv(env, key) {
@@ -588,7 +844,11 @@ export default {
       if (request.method === 'OPTIONS') {
         return new Response(null, {
           status: 204,
-          headers: applyCors(new Headers(), request),
+          headers: applyCors(
+            new Headers(),
+            request,
+            'GET,HEAD,POST,PUT,PATCH,DELETE,OPTIONS',
+          ),
         });
       }
 
@@ -601,6 +861,13 @@ export default {
       }
       if (request.method === 'GET' && url.pathname === '/sources.json') {
         return await handleSources(env);
+      }
+      if (url.pathname === '/bangumi/image') {
+        return await handleBangumiImageProxy(request);
+      }
+      const bangumiProxyPrefix = findBangumiProxyPrefix(url.pathname);
+      if (bangumiProxyPrefix) {
+        return await handleBangumiProxy(request, bangumiProxyPrefix);
       }
       if (
         (request.method === 'GET' || request.method === 'HEAD') &&

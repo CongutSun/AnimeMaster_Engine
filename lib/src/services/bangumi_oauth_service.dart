@@ -3,6 +3,7 @@ import 'dart:math';
 import 'package:dio/dio.dart';
 
 import '../api/dio_client.dart';
+import '../config/bangumi_gateway_config.dart';
 import '../models/bangumi_oauth_token.dart';
 import '../models/bangumi_user_profile.dart';
 
@@ -117,7 +118,7 @@ class BangumiOAuthService {
 
   Future<BangumiUserProfile> fetchCurrentUserProfile(String accessToken) async {
     final Response<dynamic> response = await _dio.get<dynamic>(
-      'https://api.bgm.tv/v0/me',
+      BangumiGatewayConfig.apiUrl('/v0/me'),
       options: Options(
         responseType: ResponseType.json,
         headers: <String, String>{

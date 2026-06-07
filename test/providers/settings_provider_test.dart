@@ -10,14 +10,14 @@ void main() {
     SharedPreferences.setMockInitialValues(<String, Object>{});
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(
-      const MethodChannel('plugins.it_nomads.com/flutter_secure_storage'),
-      (MethodCall methodCall) async {
-        if (methodCall.method == 'read') {
-          return null;
-        }
-        return null;
-      },
-    );
+          const MethodChannel('plugins.it_nomads.com/flutter_secure_storage'),
+          (MethodCall methodCall) async {
+            if (methodCall.method == 'read') {
+              return null;
+            }
+            return null;
+          },
+        );
   });
 
   group('SettingsProvider appearance', () {
@@ -27,10 +27,10 @@ void main() {
       expect(provider.themeMode, 'Light');
     });
 
-    test('default close action is exit', () async {
+    test('default close action is minimize', () async {
       final SettingsProvider provider = SettingsProvider();
       await provider.initialize();
-      expect(provider.closeAction, 'exit');
+      expect(provider.closeAction, 'minimize');
     });
   });
 
@@ -80,10 +80,10 @@ void main() {
   });
 
   group('SettingsProvider RSS sources', () {
-    test('RSS sources start empty', () async {
+    test('RSS sources start with bundled defaults', () async {
       final SettingsProvider provider = SettingsProvider();
       await provider.initialize();
-      expect(provider.rssSources, isEmpty);
+      expect(provider.rssSources, isNotEmpty);
     });
 
     test('addRssSource adds entry', () async {
@@ -96,8 +96,8 @@ void main() {
       await provider.addRssSource('Mikan', 'https://mikanani.me');
 
       expect(didNotify, true);
-      expect(provider.rssSources.length, 1);
-      expect(provider.rssSources.first['name'], 'Mikan');
+      expect(provider.rssSources.length, 3);
+      expect(provider.rssSources.last['name'], 'Mikan');
     });
 
     test('removeRssSource removes entry at valid index', () async {
@@ -106,10 +106,15 @@ void main() {
       await provider.addRssSource('A', 'https://a.com');
       await provider.addRssSource('B', 'https://b.com');
 
-      await provider.removeRssSource(0);
+      await provider.removeRssSource(2);
 
-      expect(provider.rssSources.length, 1);
-      expect(provider.rssSources.first['name'], 'B');
+      expect(provider.rssSources.length, 3);
+      expect(
+        provider.rssSources.any(
+          (Map<String, String> source) => source['name'] == 'A',
+        ),
+        false,
+      );
     });
 
     test('removeRssSource ignores invalid index', () async {
@@ -119,7 +124,7 @@ void main() {
 
       await provider.removeRssSource(99);
 
-      expect(provider.rssSources.length, 1);
+      expect(provider.rssSources.length, 3);
     });
   });
 

@@ -1,17 +1,25 @@
 {
-  "version": "2.3.4",
-  "build": 34,
-  "apkUrl": "https://auth.congutsun.com/download/apk/universal",
+  "version": "2.3.5",
+  "build": 42,
+  "apkUrl": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.3.5/app-release.apk",
   "apkUrls": {
-    "android-arm64": "fb3112e07e252b19c1dd747e9694326602f83a18d34c960e4657c3127d81d71d",
-    "android-arm": "1c53e8623950e5e64751b79e2c1fdce8a88250a0d20ad611535240b6552d397b",
-    "android-x64": "c5ecef5cb05f685d60c04a96f5526ea00b641e566b8bcf6a06c0fdd7fb0aadb4",
-    "universal": "3d5dbdb658aaf077ad4e109d456293e1635508163a7f69505bc9829407276147"
+    "android-arm64": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.3.5/app-arm64-v8a-release.apk",
+    "android-arm": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.3.5/app-armeabi-v7a-release.apk",
+    "android-x64": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.3.5/app-x86_64-release.apk",
+    "universal": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.3.5/app-release.apk"
   },
   "sha256": {
-    "android-arm64": "fb3112e07e252b19c1dd747e9694326602f83a18d34c960e4657c3127d81d71d",
-    "android-arm": "1c53e8623950e5e64751b79e2c1fdce8a88250a0d20ad611535240b6552d397b",
-    "android-x64": "c5ecef5cb05f685d60c04a96f5526ea00b641e566b8bcf6a06c0fdd7fb0aadb4",
-    "universal": "3d5dbdb658aaf077ad4e109d456293e1635508163a7f69505bc9829407276147"
+    "android-arm64": "4e51b0978e774ce9384c458031e8d7cc3e62ec614208f2bce679e7178e8b0bd5",
+    "android-arm": "276edd081abdd9e3d5fcc9912a3baf54a02e828a89cb7ffa459f78943bd91636",
+    "android-x64": "43b8ba7922f0150a27e425d19c44b8d6197f22c465e53258091d8af3311e03c0",
+    "universal": "e264d2f903c1eafa2fec0847ecd0c830888e5b3999ee04fff542d70ddc851ecb"
   },
-  "notes": 
+  "notes": [
+    "Bangumi 资料、搜索、评论、收藏与进度请求迁移到 auth.congutsun.com 网关，减少客户端直连失败。",
+    "Worker 新增 Bangumi API、网页与图片代理，限制允许域名并按资源类型设置缓存。",
+    "图片请求自动通过 /bangumi/image 代理，保留本地 Drift 缓存与现有 TTL/LRU 离线兜底。",
+    "更新 Android 发布版本为 2.3.5+42，并同步分 ABI APK 下载地址与 SHA256。"
+  ],
+  "publishedAt": "2026-06-07T23:21:26+08:00",
+  "forceUpdate": false
+}

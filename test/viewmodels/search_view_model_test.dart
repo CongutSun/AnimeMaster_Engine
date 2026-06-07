@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:animemaster/src/models/anime.dart';
 import 'package:animemaster/src/viewmodels/search_view_model.dart';
 
 void main() {
@@ -40,7 +41,7 @@ void main() {
 
     test('copyWith preserves hasMore when not specified', () {
       final SearchViewState state = SearchViewState.initial();
-      final SearchViewState updated = state.copyWith(results: <dynamic>[]);
+      final SearchViewState updated = state.copyWith(results: <Anime>[]);
 
       expect(updated.hasMore, true);
     });
@@ -54,12 +55,12 @@ void main() {
       expect(vm.state.results, isEmpty);
     });
 
-    test('setKeyword updates keyword', () {
+    test('setSubjectType updates current subject type', () {
       final SearchViewModel vm = SearchViewModel();
 
-      vm.setKeyword('Attack on Titan');
+      vm.setSubjectType(1);
 
-      expect(vm.keyword, 'Attack on Titan');
+      expect(vm.state.currentSubjectType, 1);
     });
 
     test('dispose does not throw', () {

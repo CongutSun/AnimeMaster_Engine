@@ -1,9 +1,11 @@
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 
+import '../config/bangumi_gateway_config.dart';
+
 // 专业级：配置单例模式的自定义缓存管理器，控制最大并发与缓存时间，防止 OOM 与文件系统占用过高
 class AppImageCacheManager {
   static const String key = 'anime_image_cache';
-  
+
   static CacheManager instance = CacheManager(
     Config(
       key,
@@ -16,22 +18,12 @@ class AppImageCacheManager {
 }
 
 String normalizeImageUrl(String url) {
-  if (url.isEmpty) return '';
-  final cleanUrl = url.trim();
-  if (cleanUrl.startsWith('http://')) {
-    return cleanUrl.replaceFirst('http://', 'https://');
-  }
-  if (cleanUrl.startsWith('//')) {
-    return 'https:$cleanUrl';
-  }
-  if (cleanUrl.startsWith('/')) {
-    return 'https://bgm.tv$cleanUrl';
-  }
-  return cleanUrl;
+  final String normalized = BangumiGatewayConfig.normalizeBangumiUrl(url);
+  return BangumiGatewayConfig.imageProxyUrl(normalized);
 }
 
 Map<String, String> buildImageHeaders(String imageUrl) {
-  final normalized = normalizeImageUrl(imageUrl);
+  final normalized = BangumiGatewayConfig.normalizeBangumiUrl(imageUrl);
   final referer = normalized.contains('chii.in')
       ? 'https://chii.in/'
       : 'https://bgm.tv/';

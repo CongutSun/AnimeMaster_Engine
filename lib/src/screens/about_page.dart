@@ -43,8 +43,9 @@ class _AboutPageState extends State<AboutPage> {
     });
 
     final AppUpdateService updateService = ServiceLocator.appUpdateService;
-    final AppUpdateCheckResult result = await updateService
-        .checkForUpdates(settings.appUpdateFeedUrl);
+    final AppUpdateCheckResult result = await updateService.checkForUpdates(
+      settings.appUpdateFeedUrl,
+    );
 
     if (!mounted) {
       return;
@@ -138,7 +139,7 @@ class _AboutPageState extends State<AboutPage> {
             ),
           ),
           const SizedBox(height: 12),
-          Card(
+          const Card(
             child: Padding(
               padding: const EdgeInsets.all(16),
               child: Column(
@@ -149,6 +150,16 @@ class _AboutPageState extends State<AboutPage> {
                     style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                   ),
                   SizedBox(height: 12),
+                  _LogEntry(
+                    version: '2.3.5',
+                    items: <String>[
+                      'Bangumi 内容请求迁移到自有 Cloudflare Worker 网关，首页、搜索、详情、评论和收藏同步不再依赖用户本机代理。',
+                      'Worker 新增 Bangumi API、HTML 和图片白名单代理端点，GET 请求按业务类型缓存，鉴权请求不进入共享缓存。',
+                      'Bangumi 图片加载统一走网关图片代理，并保留原有本地图片缓存。',
+                      '自动更新清单和 Android 发布版本升级到 2.3.5+42。',
+                    ],
+                  ),
+                  SizedBox(height: 14),
                   _LogEntry(
                     version: '2.3.4',
                     items: <String>[

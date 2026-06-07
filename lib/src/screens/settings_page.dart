@@ -11,11 +11,12 @@ import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
 import '../core/service_locator.dart';
-import '../utils/app_strings.dart';
 import '../providers/settings_provider.dart';
 import '../services/app_update_service.dart';
 import '../services/bangumi_auth_gateway_service.dart';
 import '../services/bangumi_oauth_service.dart';
+import '../utils/app_strings.dart';
+import '../utils/image_request.dart';
 import 'about_page.dart';
 
 class SettingsPage extends StatefulWidget {
@@ -315,8 +316,9 @@ class _SettingsPageState extends State<SettingsPage> {
 
     final SettingsProvider provider = context.read<SettingsProvider>();
     final AppUpdateService updateService = ServiceLocator.appUpdateService;
-    final AppUpdateCheckResult result = await updateService
-        .checkForUpdates(provider.appUpdateFeedUrl);
+    final AppUpdateCheckResult result = await updateService.checkForUpdates(
+      provider.appUpdateFeedUrl,
+    );
 
     if (!mounted) {
       return;
@@ -737,7 +739,10 @@ class _SettingsPageState extends State<SettingsPage> {
                   CircleAvatar(
                     radius: 28,
                     backgroundImage: provider.bgmAvatarUrl.trim().isNotEmpty
-                        ? NetworkImage(provider.bgmAvatarUrl)
+                        ? NetworkImage(
+                            normalizeImageUrl(provider.bgmAvatarUrl),
+                            headers: buildImageHeaders(provider.bgmAvatarUrl),
+                          )
                         : null,
                     child: provider.bgmAvatarUrl.trim().isEmpty
                         ? const Icon(Icons.person_rounded)
@@ -1046,9 +1051,9 @@ class _SettingsPageState extends State<SettingsPage> {
                               _resumeBehaviorLabel,
                               style: TextStyle(
                                 fontSize: 12,
-                                color: Theme.of(context)
-                                    .colorScheme
-                                    .onSurfaceVariant,
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.onSurfaceVariant,
                               ),
                             ),
                           ],
@@ -1226,7 +1231,9 @@ class _SettingsPageState extends State<SettingsPage> {
               value: autoCheckUpdates,
               onChanged: (bool value) {
                 setState(() => autoCheckUpdates = value);
-                unawaited(context.read<SettingsProvider>().updateDistribution(value));
+                unawaited(
+                  context.read<SettingsProvider>().updateDistribution(value),
+                );
               },
             ),
             const SizedBox(height: 12),

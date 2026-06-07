@@ -45,7 +45,7 @@ gradle.taskGraph.whenReady {
 android {
     namespace = "com.animemaster.app"
     compileSdk = flutter.compileSdkVersion
-    ndkVersion = flutter.ndkVersion
+    ndkVersion = "26.3.11579264"
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
