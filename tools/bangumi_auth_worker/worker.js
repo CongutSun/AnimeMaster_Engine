@@ -33,7 +33,7 @@ const BANGUMI_PROXY_REQUEST_HEADERS = [
 ];
 const APP_UPDATE_MANIFEST = {
   version: '2.3.5',
-  build: 2042,
+  build: 2043,
   apkUrl:
     'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.3.5/app-release.apk',
   apkUrls: {
@@ -47,17 +47,18 @@ const APP_UPDATE_MANIFEST = {
       'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.3.5/app-release.apk',
   },
   sha256: {
-    'android-arm64': '5854392a4fcc4c6ae9fc60c16c0b0c763c97c72598a490a0777a6c549e5b6a0d',
-    'android-arm': '1b0704d0648aba7e9cbfdeffc9f343c8e2bd8697d08e3e484507b7cf2879f7b4',
-    'android-x64': '99786dc51f729220598b747f65509b59e44264cd59d82e9bdfc2da90ffc2bd8f',
-    universal: '03f8d90656eccb6ad4d534f36bc74a523af17312cb0e40e4e68e3930e116495d',
+    'android-arm64': 'c553cc4edda7263f7d745a36ba27ace0ef4cf40eeccfd287c6448b5213680fb9',
+    'android-arm': '94e3d4acba696a3354736f1eb2f1003effa13dc4a75fe174c17d20d1e8c8b713',
+    'android-x64': 'c0e7b381e54226f7b8ea39c35fd60e050797ec05277bf94327fffb0140609387',
+    universal: '19234b3573769385a7a6e9f0314d2c6a1995db4e785a5b10aee5f65848005e0d',
   },
   notes: [
     'Bangumi 资料、搜索、评论、收藏与进度请求迁移到 auth.congutsun.com 网关，减少客户端直连失败。',
     'Worker 新增 Bangumi API、网页与图片代理，限制允许域名并按资源类型设置缓存。',
     '图片请求自动通过 /bangumi/image 代理，保留本地 Drift 缓存与现有 TTL/LRU 离线兜底。',
-    '修正 Android versionCode 为 2042，确保可从 2.3.4 正常覆盖安装。',
-    '更新 Android 发布版本为 2.3.5+2042，并同步分 ABI APK 下载地址与 SHA256。',
+    '修正 Android versionCode 为 2043，确保可从 2.3.4 和 2.3.5 首版正常覆盖安装。',
+    '补齐 Android APK 内的 libsqlite3.so，修复启动后白屏的问题。',
+    '更新 Android 发布版本为 2.3.5+2043，并同步分 ABI APK 下载地址与 SHA256。',
   ],
   publishedAt: '2026-06-07T23:21:26+08:00',
   forceUpdate: false,
