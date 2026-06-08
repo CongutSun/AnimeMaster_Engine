@@ -337,9 +337,11 @@ function bangumiResponseHeaders(upstream, request, cacheTtlSeconds) {
   if (lastModified) {
     headers.set('last-modified', lastModified);
   }
+  const cacheableMethod = request.method === 'GET' || request.method === 'HEAD';
+  const cacheableRequest = cacheableMethod && !request.headers.has('authorization');
   headers.set(
     'cache-control',
-    cacheTtlSeconds > 0
+    cacheableRequest && cacheTtlSeconds > 0
       ? `public, max-age=${cacheTtlSeconds}`
       : 'private, no-store',
   );
