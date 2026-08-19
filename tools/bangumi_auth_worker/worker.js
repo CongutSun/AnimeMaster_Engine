@@ -388,8 +388,10 @@ async function fetchBangumiTarget(request, target, mode) {
 }
 
 function buildYearRankingFallbackTarget(request, target, mode, upstream) {
+  // Both web proxies use HTML mode, so also pin this fallback to bgm.tv.
   if (
-    mode !== 'web' ||
+    mode !== 'html' ||
+    target.origin !== BANGUMI_PROXY_TARGETS['/bangumi/web'] ||
     (request.method !== 'GET' && request.method !== 'HEAD') ||
     upstream.status !== 403 ||
     !/^\/anime\/browser\/airtime\/\d{4}\/?$/.test(target.pathname)
