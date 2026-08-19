@@ -6,20 +6,18 @@
 - 不要更换 release keystore，否则旧版本无法继续升级安装。
 - 每次发版前只递增 `example/pubspec.yaml` 里的 `version`。
 
-## ⚠️ 分 ABI 构建与 versionCode 偏移
+## ⚠️ 覆盖安装、签名与 versionCode
 
-Flutter 的 `--split-per-abi` 会为不同 CPU 架构的 APK 自动加上 versionCode 偏移量：
+当前 Gradle 配置会在一次标准 Release 构建中同时生成三个 ABI APK 和一个通用 APK，四个 APK 必须使用相同的 `versionCode` 和同一个正式签名。
 
-| ABI | 偏移 | 示例（version: 2.4.0+40） |
-|-----|------|---------------------------|
-| arm64-v8a | +2000 | versionCode = 2040 |
-| armeabi-v7a | +1000 | versionCode = 1040 |
-| x86_64 | +4000 | versionCode = 4040 |
-| universal | 无偏移 | versionCode = 40 |
+发布前必须同时满足：
 
-**如果不用 `--split-per-abi`**：所有分架构 APK 的 versionCode 都是 40，远低于已安装用户的 arm64 APK（如 2033），导致系统拒绝安装，提示"已安装更高版本"。
+1. 新 `versionCode` 严格大于上一版所有 APK 的实际值。
+2. 四个 APK 的 `versionCode` 完全一致。
+3. 四个 APK 的签名 SHA-256 与上一版一致。
+4. 不修改 `applicationId`。
 
-**结论：只要发版分 ABI 小包，必须使用 `--split-per-abi`，否则已安装用户无法覆盖升级。**
+`build_release.ps1` 会通过 Android `aapt` 和 `apksigner` 自动执行以上检查，任一条件不满足都会终止发布。不要直接使用 `flutter build apk --split-per-abi`，以免 Flutter 再次施加 ABI versionCode 偏移。
 
 ## 首次配置
 
@@ -30,8 +28,8 @@ Flutter 的 `--split-per-abi` 会为不同 CPU 架构的 APK 自动加上 versio
 ## 日常发版
 
 1. 修改 `example/pubspec.yaml` 的 `version`，例如 `2.0.1+2`。
-2. **推荐**：在 `example` 目录执行 `.\tool\build_release.ps1 -SplitPerAbi`（分 ABI + 自动输出 SHA256）。
-3. 如果只发通用包，执行 `.\tool\build_release.ps1`。
+2. 在 `example` 目录执行 `.\tool\build_release.ps1`，一次生成三个 ABI APK和通用 APK，并自动验证版本号、签名与 SHA256。
+3. `-SplitPerAbi` 仅为兼容旧命令保留，脚本不会再把它传给 Flutter。
 4. 如果需要同时生成应用市场包，追加 `-BuildAppBundle`。
 
 ## 输出路径

@@ -21,11 +21,17 @@ class _ApiConfig {
 }
 
 class BangumiApi {
-  BangumiApi._();
+  BangumiApi._({Dio? dio}) : _dio = dio ?? DioClient().dio;
+
   static final BangumiApi instance = BangumiApi._();
 
-  final Dio _dio = DioClient().dio;
-  final AnimeRepository _animeRepository = AnimeRepository.instance;
+  /// Creates an isolated API client for tests without mutating the singleton.
+  @visibleForTesting
+  BangumiApi.forTesting({required Dio dio}) : this._(dio: dio);
+
+  final Dio _dio;
+
+  AnimeRepository get _animeRepository => AnimeRepository.instance;
 
   // ── TTL caches replacing 16 ad‑hoc Maps ──
   final ApiCacheManager<Map<String, dynamic>> _animeDetailCache =
@@ -590,34 +596,67 @@ class BangumiApi {
     final List<Map<String, dynamic>>? cached = _yearTopCache.get('yearTop');
     if (_yearTopCacheYear == year && cached != null) return cached;
 
-    try {
-      var response = await _dio.get(
-        '${_ApiConfig.webBase}/anime/browser/airtime/$year',
-        queryParameters: {'sort': 'rank'},
-        options: Options(responseType: ResponseType.bytes),
+    // The year-specific page is occasionally protected by a Cloudflare
+    // challenge while the general ranking page remains available. Keep each
+    // attempt isolated so a 403 thrown by Dio cannot skip the fallback.
+    final List<String> candidateUrls = <String>[
+      '${_ApiConfig.webBase}/anime/browser/airtime/$year',
+      '${_ApiConfig.webBase}/anime/browser',
+    ];
+    for (final String url in candidateUrls) {
+      final List<Map<String, dynamic>> results = await _fetchBrowserItems(
+        url,
+        limit: 10,
+        methodLabel: 'getYearTop',
       );
-
-      if (response.statusCode != 200) {
-        response = await _dio.get(
-          '${_ApiConfig.webBase}/anime/browser',
-          queryParameters: {'sort': 'rank'},
-          options: Options(responseType: ResponseType.bytes),
-        );
-      }
-
-      if (response.statusCode == 200) {
-        final List<Map<String, dynamic>> results = _parseBrowserItemList(
-          utf8.decode(response.data),
-          10,
-        );
+      if (results.isNotEmpty) {
         _yearTopCache.set('yearTop', results);
         _yearTopCacheYear = year;
         return results;
       }
-    } catch (e) {
-      debugPrint('[BangumiApi.getYearTop] ${e.runtimeType}: $e');
     }
-    return [];
+    return <Map<String, dynamic>>[];
+  }
+
+  Future<List<Map<String, dynamic>>> _fetchBrowserItems(
+    String url, {
+    required int limit,
+    required String methodLabel,
+  }) async {
+    try {
+      final Response<dynamic> response = await _dio.get(
+        url,
+        queryParameters: <String, dynamic>{'sort': 'rank'},
+        options: Options(responseType: ResponseType.bytes),
+      );
+      if (response.statusCode != 200) {
+        debugPrint(
+          '[BangumiApi.$methodLabel] HTTP ${response.statusCode} for $url',
+        );
+        return <Map<String, dynamic>>[];
+      }
+
+      final List<Map<String, dynamic>> results = _parseBrowserItemList(
+        _decodeHtmlResponse(response.data),
+        limit,
+      );
+      if (results.isEmpty) {
+        debugPrint(
+          '[BangumiApi.$methodLabel] No browser items parsed from $url',
+        );
+      }
+      return results;
+    } on DioException catch (error) {
+      debugPrint(
+        '[BangumiApi.$methodLabel] HTTP ${error.response?.statusCode} '
+        'for $url: ${error.message}',
+      );
+    } catch (error) {
+      debugPrint(
+        '[BangumiApi.$methodLabel] ${error.runtimeType} for $url: $error',
+      );
+    }
+    return <Map<String, dynamic>>[];
   }
 
   Future<List<Map<String, dynamic>>> getSubjectEpisodes(int subjectId) async {

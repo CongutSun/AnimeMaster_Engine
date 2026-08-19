@@ -81,6 +81,22 @@ void main() {
       expect(repo.networkCallCount, 1);
     });
 
+    test(
+      'load reports a service error instead of blaming the network',
+      () async {
+        final _FakeHomeRepository repo = _FakeHomeRepository()
+          ..cachedSnapshotToReturn = null
+          ..networkSnapshotToReturn = null;
+        final HomeViewModel vm = HomeViewModel(repository: repo);
+
+        await vm.load();
+
+        expect(vm.state.isLoading, false);
+        expect(vm.state.snapshot, isNull);
+        expect(vm.state.errorMessage, '首页数据服务暂时不可用，请稍后下拉重试');
+      },
+    );
+
     test('toggleScheduleMode toggles showTodayOnly', () {
       final HomeViewModel vm = HomeViewModel(repository: _FakeHomeRepository());
 

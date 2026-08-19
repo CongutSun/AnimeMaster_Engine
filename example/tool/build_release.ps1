@@ -9,6 +9,18 @@ $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $PSScriptRoot
 Set-Location $projectRoot
 
+$versionLine = Select-String -Path (Join-Path $projectRoot 'pubspec.yaml') `
+    -Pattern '^\s*version:\s*(.+)$' |
+    Select-Object -First 1
+if (-not $versionLine) {
+    throw 'Cannot find version in example/pubspec.yaml'
+}
+$versionParts = $versionLine.Matches[0].Groups[1].Value.Trim().Split('+')
+if ($versionParts.Length -lt 2) {
+    throw 'Release version must include an explicit build number, e.g. 2.3.6+2044.'
+}
+$expectedVersionCode = [int]$versionParts[1]
+
 function Invoke-Flutter {
     param([Parameter(ValueFromRemainingArguments = $true)][string[]]$FlutterArgs)
     & flutter @FlutterArgs
@@ -32,9 +44,18 @@ if (-not $NoObfuscate) {
 }
 
 if ($SplitPerAbi) {
-    Invoke-Flutter build apk @commonReleaseArgs --split-per-abi
-} else {
-    Invoke-Flutter build apk @commonReleaseArgs
+    Write-Warning (
+        '-SplitPerAbi is retained for compatibility but is no longer passed ' +
+        'to Flutter. Gradle splits already produce the three ABI APKs plus ' +
+        'the universal APK with one consistent versionCode.'
+    )
+}
+Invoke-Flutter build apk @commonReleaseArgs
+
+& (Join-Path $PSScriptRoot 'verify_release.ps1') `
+    -ExpectedVersionCode $expectedVersionCode
+if ($LASTEXITCODE -ne 0) {
+    throw "Release verification failed with exit code $LASTEXITCODE"
 }
 
 if ($BuildAppBundle) {
@@ -43,8 +64,7 @@ if ($BuildAppBundle) {
 
 $apkOutputDir = Join-Path $projectRoot 'build\\app\\outputs\\flutter-apk'
 if (Test-Path $apkOutputDir) {
-    $apkFilter = if ($SplitPerAbi) { 'app-*-release.apk' } else { 'app-release.apk' }
-    Get-ChildItem $apkOutputDir -Filter $apkFilter | ForEach-Object {
+    Get-ChildItem $apkOutputDir -Filter 'app*-release.apk' | ForEach-Object {
         $hash = Get-FileHash $_.FullName -Algorithm SHA256
         $sizeMb = [Math]::Round($_.Length / 1MB, 2)
         Write-Host "$($_.Name)  Size=${sizeMb}MB  SHA256=$($hash.Hash)"

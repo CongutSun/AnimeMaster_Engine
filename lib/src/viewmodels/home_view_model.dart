@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 
 import '../repositories/home_repository.dart';
@@ -65,7 +67,7 @@ class HomeViewModel extends ChangeNotifier {
         clearError: true,
       );
       notifyListeners();
-      _refreshFromNetwork(serial: serial, silent: true);
+      unawaited(_refreshFromNetwork(serial: serial, silent: true));
       return;
     }
 
@@ -102,7 +104,7 @@ class HomeViewModel extends ChangeNotifier {
       }
       _state = _state.copyWith(
         isLoading: false,
-        errorMessage: '数据加载失败，请下拉重试或检查网络状态',
+        errorMessage: '首页数据服务暂时不可用，请稍后下拉重试',
       );
       notifyListeners();
     }

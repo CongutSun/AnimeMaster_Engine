@@ -151,6 +151,17 @@ class _AboutPageState extends State<AboutPage> {
                   ),
                   SizedBox(height: 12),
                   _LogEntry(
+                    version: '2.3.6',
+                    items: <String>[
+                      '修复首页年度排行接口被 Cloudflare 拦截时备用请求未执行的问题。',
+                      '首页排期与榜单改为分区容错和独立缓存，非关键榜单故障不再拖垮整个首页。',
+                      '上游短时不可用时使用有限期限的旧缓存，并忽略损坏或类型错误的缓存数据。',
+                      'Worker 不再为上游失败响应提供公共缓存语义，错误提示改为准确的数据服务状态。',
+                      'Android NDK 对齐至 28.2，并新增版本号、APK 签名和覆盖安装校验。',
+                    ],
+                  ),
+                  SizedBox(height: 14),
+                  _LogEntry(
                     version: '2.3.5',
                     items: <String>[
                       'Bangumi 内容请求迁移到自有 Cloudflare Worker 网关，首页、搜索、详情、评论和收藏同步不再依赖用户本机代理。',

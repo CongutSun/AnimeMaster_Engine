@@ -6,6 +6,18 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../api/bangumi_api.dart';
 import '../models/anime.dart';
 
+typedef HomeCalendarLoader = Future<List<dynamic>> Function();
+typedef HomeTopLoader = Future<List<Map<String, dynamic>>> Function();
+
+class HomeDataUnavailableException implements Exception {
+  const HomeDataUnavailableException(this.message);
+
+  final String message;
+
+  @override
+  String toString() => 'HomeDataUnavailableException: $message';
+}
+
 class HomeScheduleDay {
   final String weekdayName;
   final List<Anime> animeList;
@@ -28,10 +40,21 @@ class HomeContentSnapshot {
 }
 
 class HomeRepository {
+  HomeRepository({HomeCalendarLoader? calendarLoader, HomeTopLoader? topLoader})
+    : _calendarLoader = calendarLoader ?? BangumiApi.instance.getCalendar,
+      _topLoader = topLoader ?? BangumiApi.instance.getYearTop;
+
   static const Duration _cacheTtl = Duration(hours: 4);
+  static const Duration _staleCalendarTtl = Duration(days: 1);
+  static const Duration _staleTopTtl = Duration(days: 7);
   static const String _calendarCacheKey = 'cache_calendar';
   static const String _topCacheKey = 'cache_top';
-  static const String _cacheTimeKey = 'cache_time';
+  static const String _legacyCacheTimeKey = 'cache_time';
+  static const String _calendarCacheTimeKey = 'cache_calendar_time';
+  static const String _topCacheTimeKey = 'cache_top_time';
+
+  final HomeCalendarLoader _calendarLoader;
+  final HomeTopLoader _topLoader;
 
   Future<HomeContentSnapshot?> loadCachedSnapshot({
     required bool forceRefresh,
@@ -40,19 +63,31 @@ class HomeRepository {
       return null;
     }
 
-    final SharedPreferences prefs = await SharedPreferences.getInstance();
-    final String? calendarJson = prefs.getString(_calendarCacheKey);
-    final String? topJson = prefs.getString(_topCacheKey);
-    final String? cacheTimeText = prefs.getString(_cacheTimeKey);
-    if (calendarJson == null || topJson == null || cacheTimeText == null) {
+    final SharedPreferences prefs;
+    try {
+      prefs = await SharedPreferences.getInstance();
+    } catch (error) {
+      debugPrint('[HomeRepository] Cache unavailable: $error');
       return null;
     }
 
-    final DateTime? cacheTime = DateTime.tryParse(cacheTimeText);
-    if (cacheTime == null ||
-        DateTime.now().difference(cacheTime) >= _cacheTtl) {
+    final String? calendarJson = _readCachedListJson(
+      prefs,
+      dataKey: _calendarCacheKey,
+      timeKey: _calendarCacheTimeKey,
+      maxAge: _cacheTtl,
+    );
+    if (calendarJson == null) {
       return null;
     }
+    final String topJson =
+        _readCachedListJson(
+          prefs,
+          dataKey: _topCacheKey,
+          timeKey: _topCacheTimeKey,
+          maxAge: _cacheTtl,
+        ) ??
+        '[]';
 
     try {
       return compute(_parseHomeSnapshot, <String, String>{
@@ -66,35 +101,145 @@ class HomeRepository {
   }
 
   Future<HomeContentSnapshot> fetchNetworkSnapshot() async {
-    final List<List<dynamic>> results =
-        await Future.wait<List<dynamic>>(<Future<List<dynamic>>>[
-          BangumiApi.instance.getCalendar(),
-          BangumiApi.instance.getYearTop().then(
-            (List<Map<String, dynamic>> value) => List<dynamic>.from(value),
-          ),
-        ]);
+    final List<Object> results = await Future.wait<Object>(<Future<Object>>[
+      _loadCalendarSafely(),
+      _loadTopSafely(),
+    ]);
+    final List<dynamic> networkCalendar = results[0] as List<dynamic>;
+    final List<Map<String, dynamic>> networkTop =
+        results[1] as List<Map<String, dynamic>>;
 
-    final List<dynamic> calendar = results[0];
-    final List<Map<String, dynamic>> rawTopData = results[1]
-        .whereType<Map>()
-        .map((Map<dynamic, dynamic> item) => Map<String, dynamic>.from(item))
-        .toList(growable: false);
-
-    if (calendar.isEmpty || rawTopData.isEmpty) {
-      throw StateError('Bangumi returned empty home data.');
+    SharedPreferences? prefs;
+    try {
+      prefs = await SharedPreferences.getInstance();
+    } catch (error) {
+      debugPrint('[HomeRepository] Cache unavailable: $error');
     }
 
-    final String calendarJson = jsonEncode(calendar);
-    final String topJson = jsonEncode(rawTopData);
-    final SharedPreferences prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_calendarCacheKey, calendarJson);
-    await prefs.setString(_topCacheKey, topJson);
-    await prefs.setString(_cacheTimeKey, DateTime.now().toIso8601String());
+    final bool hasNetworkCalendar = _isUsableCalendar(networkCalendar);
+    final String? calendarJson = hasNetworkCalendar
+        ? jsonEncode(networkCalendar)
+        : prefs == null
+        ? null
+        : _readCachedListJson(
+            prefs,
+            dataKey: _calendarCacheKey,
+            timeKey: _calendarCacheTimeKey,
+            maxAge: _staleCalendarTtl,
+          );
+    if (calendarJson == null) {
+      throw const HomeDataUnavailableException(
+        'Bangumi calendar data is unavailable and no usable cache exists.',
+      );
+    }
+
+    final bool hasNetworkTop = networkTop.isNotEmpty;
+    final String topJson = hasNetworkTop
+        ? jsonEncode(networkTop)
+        : prefs == null
+        ? '[]'
+        : _readCachedListJson(
+                prefs,
+                dataKey: _topCacheKey,
+                timeKey: _topCacheTimeKey,
+                maxAge: _staleTopTtl,
+              ) ??
+              '[]';
+
+    if (prefs != null) {
+      await _persistNetworkSections(
+        prefs,
+        calendarJson: hasNetworkCalendar ? calendarJson : null,
+        topJson: hasNetworkTop ? topJson : null,
+      );
+    }
 
     return compute(_parseHomeSnapshot, <String, String>{
       'calendar': calendarJson,
       'top': topJson,
     });
+  }
+
+  Future<List<dynamic>> _loadCalendarSafely() async {
+    try {
+      return await _calendarLoader();
+    } catch (error) {
+      debugPrint('[HomeRepository] Calendar request failed: $error');
+      return <dynamic>[];
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> _loadTopSafely() async {
+    try {
+      return await _topLoader();
+    } catch (error) {
+      debugPrint('[HomeRepository] Ranking request failed: $error');
+      return <Map<String, dynamic>>[];
+    }
+  }
+
+  bool _isUsableCalendar(List<dynamic> calendar) {
+    return calendar.any((dynamic day) => day is Map && day['items'] is List);
+  }
+
+  String? _readCachedListJson(
+    SharedPreferences prefs, {
+    required String dataKey,
+    required String timeKey,
+    required Duration maxAge,
+  }) {
+    try {
+      final String? value = prefs.getString(dataKey);
+      final String? timeText =
+          prefs.getString(timeKey) ?? prefs.getString(_legacyCacheTimeKey);
+      final DateTime? cachedAt = timeText == null
+          ? null
+          : DateTime.tryParse(timeText);
+      if (value == null || cachedAt == null) {
+        return null;
+      }
+
+      final Duration age = DateTime.now().difference(cachedAt);
+      if (age >= maxAge) {
+        return null;
+      }
+
+      final Object? decoded = jsonDecode(value);
+      return decoded is List && decoded.isNotEmpty ? value : null;
+    } catch (error) {
+      debugPrint('[HomeRepository] Ignoring invalid cache $dataKey: $error');
+      return null;
+    }
+  }
+
+  Future<void> _persistNetworkSections(
+    SharedPreferences prefs, {
+    required String? calendarJson,
+    required String? topJson,
+  }) async {
+    if (calendarJson == null && topJson == null) {
+      return;
+    }
+
+    try {
+      final String now = DateTime.now().toIso8601String();
+      final List<Future<bool>> writes = <Future<bool>>[];
+      if (calendarJson != null) {
+        writes.add(prefs.setString(_calendarCacheKey, calendarJson));
+        writes.add(prefs.setString(_calendarCacheTimeKey, now));
+      }
+      if (topJson != null) {
+        writes.add(prefs.setString(_topCacheKey, topJson));
+        writes.add(prefs.setString(_topCacheTimeKey, now));
+      }
+      if (calendarJson != null && topJson != null) {
+        writes.add(prefs.setString(_legacyCacheTimeKey, now));
+      }
+      await Future.wait<bool>(writes);
+    } catch (error) {
+      // Cache persistence is an optimization and must never break the page.
+      debugPrint('[HomeRepository] Cache persistence failed: $error');
+    }
   }
 }
 
