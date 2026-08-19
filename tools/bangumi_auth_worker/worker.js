@@ -1,3 +1,10 @@
+import {
+  buildYearRankingCacheKeyUrl,
+  buildYearRankingSearchPayload,
+  renderYearRankingHtml,
+  selectYearRankingSubjects,
+} from './year_ranking.mjs';
+
 const DEFAULT_CALLBACK_SCHEME = 'animemasteroauth';
 const PENDING_TTL_SECONDS = 600;
 const SESSION_EXCHANGE_TTL_SECONDS = 600;
@@ -387,21 +394,56 @@ async function fetchBangumiTarget(request, target, mode) {
   return fetch(target.toString(), init);
 }
 
-function buildYearRankingFallbackTarget(request, target, mode, upstream) {
+function blockedYearRankingYear(request, target, mode, upstream) {
   // Both web proxies use HTML mode, so also pin this fallback to bgm.tv.
+  const pathMatch = /^\/anime\/browser\/airtime\/(\d{4})\/?$/.exec(
+    target.pathname,
+  );
   if (
     mode !== 'html' ||
     target.origin !== BANGUMI_PROXY_TARGETS['/bangumi/web'] ||
     (request.method !== 'GET' && request.method !== 'HEAD') ||
     upstream.status !== 403 ||
-    !/^\/anime\/browser\/airtime\/\d{4}\/?$/.test(target.pathname)
+    !pathMatch
   ) {
     return null;
   }
 
-  const fallback = new URL(target.toString());
-  fallback.pathname = '/anime/browser';
-  return fallback;
+  return Number(pathMatch[1]);
+}
+
+async function fetchYearRankingApiFallback(year) {
+  try {
+    const searchUrl = new URL(
+      '/v0/search/subjects',
+      BANGUMI_PROXY_TARGETS['/bangumi/api'],
+    );
+    searchUrl.searchParams.set('limit', '50');
+    searchUrl.searchParams.set('offset', '0');
+
+    const apiResponse = await fetch(searchUrl.toString(), {
+      method: 'POST',
+      headers: {
+        'user-agent': BANGUMI_API_USER_AGENT,
+        accept: 'application/json',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify(buildYearRankingSearchPayload(year)),
+    });
+    if (!apiResponse.ok) return null;
+
+    const payload = await apiResponse.json();
+    const subjects = selectYearRankingSubjects(payload?.data, year, 10);
+    if (subjects.length === 0) return null;
+
+    return new Response(renderYearRankingHtml(subjects), {
+      status: 200,
+      headers: { 'content-type': 'text/html; charset=utf-8' },
+    });
+  } catch (error) {
+    console.error('Bangumi year-ranking API fallback failed.', error);
+    return null;
+  }
 }
 
 async function handleBangumiProxy(request, prefix) {
@@ -416,7 +458,7 @@ async function handleBangumiProxy(request, prefix) {
     : bangumiCacheTtlSeconds(target, mode);
   const cacheKey =
     request.method === 'GET' && cacheTtl > 0
-      ? new Request(target.toString(), {
+      ? new Request(buildYearRankingCacheKeyUrl(target).toString(), {
           method: 'GET',
           headers: { accept: bangumiAcceptHeader(mode) },
         })
@@ -431,15 +473,15 @@ async function handleBangumiProxy(request, prefix) {
 
   let upstream = await fetchBangumiTarget(request, target, mode);
   let usedYearRankingFallback = false;
-  const fallbackTarget = buildYearRankingFallbackTarget(
+  const fallbackYear = blockedYearRankingYear(
     request,
     target,
     mode,
     upstream,
   );
-  if (fallbackTarget) {
-    const fallback = await fetchBangumiTarget(request, fallbackTarget, mode);
-    if (fallback.ok) {
+  if (fallbackYear !== null) {
+    const fallback = await fetchYearRankingApiFallback(fallbackYear);
+    if (fallback) {
       upstream = fallback;
       usedYearRankingFallback = true;
     }
@@ -448,7 +490,7 @@ async function handleBangumiProxy(request, prefix) {
   const headers = bangumiResponseHeaders(upstream, request, cacheTtl);
   headers.set('x-animemaster-cache', cacheKey ? 'MISS' : 'BYPASS');
   if (usedYearRankingFallback) {
-    headers.set('x-animemaster-fallback', 'year-ranking');
+    headers.set('x-animemaster-fallback', 'year-ranking-api');
   }
   const response = new Response(
     request.method === 'HEAD' ? null : upstream.body,

@@ -596,24 +596,87 @@ class BangumiApi {
     final List<Map<String, dynamic>>? cached = _yearTopCache.get('yearTop');
     if (_yearTopCacheYear == year && cached != null) return cached;
 
-    // The year-specific page is occasionally protected by a Cloudflare
-    // challenge while the general ranking page remains available. Keep each
-    // attempt isolated so a 403 thrown by Dio cannot skip the fallback.
-    final List<String> candidateUrls = <String>[
+    final List<Map<String, dynamic>> apiResults = await _fetchYearTopFromApi(
+      year,
+    );
+    if (apiResults.isNotEmpty) {
+      _yearTopCache.set('yearTop', apiResults);
+      _yearTopCacheYear = year;
+      return apiResults;
+    }
+
+    // Keep the HTML fallback constrained to the same year. Falling back to
+    // /anime/browser would silently turn this section into an all-time chart.
+    final List<Map<String, dynamic>> webResults = await _fetchBrowserItems(
       '${_ApiConfig.webBase}/anime/browser/airtime/$year',
-      '${_ApiConfig.webBase}/anime/browser',
-    ];
-    for (final String url in candidateUrls) {
-      final List<Map<String, dynamic>> results = await _fetchBrowserItems(
-        url,
-        limit: 10,
-        methodLabel: 'getYearTop',
+      limit: 10,
+      methodLabel: 'getYearTop',
+    );
+    if (webResults.isNotEmpty) {
+      _yearTopCache.set('yearTop', webResults);
+      _yearTopCacheYear = year;
+      return webResults;
+    }
+    return <Map<String, dynamic>>[];
+  }
+
+  Future<List<Map<String, dynamic>>> _fetchYearTopFromApi(int year) async {
+    try {
+      final Response<dynamic> response = await _dio.post(
+        '${_ApiConfig.apiBase}/v0/search/subjects',
+        queryParameters: <String, dynamic>{'limit': 50, 'offset': 0},
+        data: <String, dynamic>{
+          'keyword': '',
+          'sort': 'rank',
+          'filter': <String, dynamic>{
+            'type': <int>[2],
+            'air_date': <String>['>=$year-01-01', '<${year + 1}-01-01'],
+            'rank': <String>['>=1'],
+          },
+        },
       );
-      if (results.isNotEmpty) {
-        _yearTopCache.set('yearTop', results);
-        _yearTopCacheYear = year;
-        return results;
+      if (response.statusCode != 200 || response.data is! Map) {
+        return <Map<String, dynamic>>[];
       }
+
+      final Object? rawData = (response.data as Map<dynamic, dynamic>)['data'];
+      if (rawData is! List) return <Map<String, dynamic>>[];
+
+      final List<Map<String, dynamic>> subjects =
+          rawData
+              .whereType<Map>()
+              .map(
+                (Map<dynamic, dynamic> item) => Map<String, dynamic>.from(item),
+              )
+              .where((Map<String, dynamic> item) {
+                final Object? rawRating = item['rating'];
+                if (item['type'] != 2 || rawRating is! Map) return false;
+                final num rank = rawRating['rank'] is num
+                    ? rawRating['rank'] as num
+                    : 0;
+                final num score = rawRating['score'] is num
+                    ? rawRating['score'] as num
+                    : 0;
+                return (item['date']?.toString() ?? '').startsWith('$year-') &&
+                    rank > 0 &&
+                    score > 0;
+              })
+              .toList(growable: false)
+            ..sort((Map<String, dynamic> left, Map<String, dynamic> right) {
+              final num leftRank =
+                  (left['rating'] as Map<dynamic, dynamic>)['rank'] as num;
+              final num rightRank =
+                  (right['rating'] as Map<dynamic, dynamic>)['rank'] as num;
+              return leftRank.compareTo(rightRank);
+            });
+      return subjects.take(10).toList(growable: false);
+    } on DioException catch (error) {
+      debugPrint(
+        '[BangumiApi.getYearTop] API HTTP ${error.response?.statusCode}: '
+        '${error.message}',
+      );
+    } catch (error) {
+      debugPrint('[BangumiApi.getYearTop] API ${error.runtimeType}: $error');
     }
     return <Map<String, dynamic>>[];
   }

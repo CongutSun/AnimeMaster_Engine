@@ -20,6 +20,17 @@ jobs:
       # Keep legacy lint findings visible without hiding real analyzer errors.
       - run: flutter analyze --no-fatal-infos --no-fatal-warnings
 
+  worker:
+    name: Worker Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: node --check tools/bangumi_auth_worker/worker.js
+      - run: node --test tools/bangumi_auth_worker/year_ranking.test.mjs
+
   test:
     name: Run Tests
     runs-on: ubuntu-latest
