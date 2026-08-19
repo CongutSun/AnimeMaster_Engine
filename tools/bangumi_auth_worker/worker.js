@@ -387,6 +387,21 @@ async function fetchBangumiTarget(request, target, mode) {
   return fetch(target.toString(), init);
 }
 
+function buildYearRankingFallbackTarget(request, target, mode, upstream) {
+  if (
+    mode !== 'web' ||
+    (request.method !== 'GET' && request.method !== 'HEAD') ||
+    upstream.status !== 403 ||
+    !/^\/anime\/browser\/airtime\/\d{4}\/?$/.test(target.pathname)
+  ) {
+    return null;
+  }
+
+  const fallback = new URL(target.toString());
+  fallback.pathname = '/anime/browser';
+  return fallback;
+}
+
 async function handleBangumiProxy(request, prefix) {
   if (!BANGUMI_PROXY_METHODS.has(request.method)) {
     return json({ error: 'Bangumi proxy method is not allowed.' }, 405, request);
@@ -412,9 +427,27 @@ async function handleBangumiProxy(request, prefix) {
     }
   }
 
-  const upstream = await fetchBangumiTarget(request, target, mode);
+  let upstream = await fetchBangumiTarget(request, target, mode);
+  let usedYearRankingFallback = false;
+  const fallbackTarget = buildYearRankingFallbackTarget(
+    request,
+    target,
+    mode,
+    upstream,
+  );
+  if (fallbackTarget) {
+    const fallback = await fetchBangumiTarget(request, fallbackTarget, mode);
+    if (fallback.ok) {
+      upstream = fallback;
+      usedYearRankingFallback = true;
+    }
+  }
+
   const headers = bangumiResponseHeaders(upstream, request, cacheTtl);
   headers.set('x-animemaster-cache', cacheKey ? 'MISS' : 'BYPASS');
+  if (usedYearRankingFallback) {
+    headers.set('x-animemaster-fallback', 'year-ranking');
+  }
   const response = new Response(
     request.method === 'HEAD' ? null : upstream.body,
     {
