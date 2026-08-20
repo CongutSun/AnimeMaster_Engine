@@ -24,4 +24,47 @@ void main() {
       '第 7 集 · Restart',
     );
   });
+
+  group('matchesEpisodeNumber', () {
+    test('matches common single episode release formats', () {
+      expect(
+        TaskTitleParser.matchesEpisodeNumber(
+          '[Lilith-Raws] Example - 03 [Baha][1080p]',
+          3,
+        ),
+        isTrue,
+      );
+      expect(
+        TaskTitleParser.matchesEpisodeNumber('[Group] Example S02E13v2', 13),
+        isTrue,
+      );
+      expect(TaskTitleParser.matchesEpisodeNumber('Example 第 7 话', 7), isTrue);
+      expect(
+        TaskTitleParser.matchesEpisodeNumber('Example [09][HEVC]', 9),
+        isTrue,
+      );
+      expect(
+        TaskTitleParser.matchesEpisodeNumber('Example 11 (B-Global 1080p)', 11),
+        isTrue,
+      );
+    });
+
+    test('does not confuse metadata or batch ranges with a single episode', () {
+      expect(
+        TaskTitleParser.matchesEpisodeNumber(
+          '[Group] Example [1080p][10bit][2026]',
+          10,
+        ),
+        isFalse,
+      );
+      expect(
+        TaskTitleParser.matchesEpisodeNumber('Example 01-12 [1080p]', 12),
+        isFalse,
+      );
+      expect(
+        TaskTitleParser.matchesEpisodeNumber('Example - 04 [1080p]', 3),
+        isFalse,
+      );
+    });
+  });
 }

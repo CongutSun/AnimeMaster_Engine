@@ -62,6 +62,58 @@ class TaskTitleParser {
     return null;
   }
 
+  /// Returns whether a release title explicitly identifies one episode.
+  /// Resolution, year and codec numbers are deliberately ignored so a search
+  /// for episode 10 does not accidentally match "10bit" or "1080p".
+  static bool matchesEpisodeNumber(String title, int episodeNumber) {
+    if (episodeNumber <= 0) {
+      return true;
+    }
+    final String normalized = stripSourcePrefix(title);
+    if (normalized.isEmpty) {
+      return false;
+    }
+
+    final RegExpMatch? range = RegExp(
+      r'(?<!\d)0*(\d{1,3})\s*[-~～]\s*0*(\d{1,3})(?!\d)',
+      caseSensitive: false,
+    ).firstMatch(normalized);
+    if (range != null) {
+      final int? start = int.tryParse(range.group(1) ?? '');
+      final int? end = int.tryParse(range.group(2) ?? '');
+      if (start != null && end != null && start != end) {
+        return false;
+      }
+    }
+
+    final List<RegExp> patterns = <RegExp>[
+      RegExp(r'\bS\d{1,2}E0*(\d{1,4})(?:v\d+)?\b', caseSensitive: false),
+      RegExp(
+        r'\b(?:EP?|Episode)\s*[._-]?\s*0*(\d{1,4})(?:v\d+)?\b',
+        caseSensitive: false,
+      ),
+      RegExp(r'第\s*0*(\d{1,4})\s*[话話集回]'),
+      RegExp(r'[\[【]\s*0*(\d{1,3})(?:v\d+)?\s*[\]】]'),
+      RegExp(
+        r'(?:\s|^)[-–—]\s*0*(\d{1,3})(?:v\d+)?(?=\s*(?:[\[({]|\.(?:mkv|mp4)|$))',
+        caseSensitive: false,
+      ),
+      RegExp(
+        r'(?<!\d)0*(\d{1,3})(?:v\d+)?(?=\s*(?:[\[({]|END\b|\.(?:mkv|mp4)|$))',
+        caseSensitive: false,
+      ),
+    ];
+
+    for (final RegExp pattern in patterns) {
+      for (final RegExpMatch match in pattern.allMatches(normalized)) {
+        if (int.tryParse(match.group(1) ?? '') == episodeNumber) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
   static String buildEpisodeDisplayLabel({
     required int episodeNumber,
     String episodeTitle = '',

@@ -177,7 +177,10 @@ class _DetailPageState extends State<DetailPage>
 
     _activeTabIndex = index;
     setState(() {});
-    final SettingsProvider settings = Provider.of<SettingsProvider>(context, listen: false);
+    final SettingsProvider settings = Provider.of<SettingsProvider>(
+      context,
+      listen: false,
+    );
     if (settings.enableHapticFeedback) {
       HapticFeedback.lightImpact();
     }
@@ -244,8 +247,8 @@ class _DetailPageState extends State<DetailPage>
 
   Future<void> _loadAllData() async {
     final provider = Provider.of<SettingsProvider>(context, listen: false);
-    final Future<Map<String, dynamic>?> detailFuture =
-        BangumiApi.instance.getAnimeDetail(widget.animeId);
+    final Future<Map<String, dynamic>?> detailFuture = BangumiApi.instance
+        .getAnimeDetail(widget.animeId);
     final Future<Map<String, dynamic>?> collectionFuture = () async {
       await provider.ensureBangumiAccessToken();
       final String bgmUsername = provider.bgmAcc;
@@ -333,14 +336,18 @@ class _DetailPageState extends State<DetailPage>
       }),
     );
     unawaited(
-      BangumiApi.instance.getSubjectPersons(widget.animeId).then((List<dynamic> data) {
+      BangumiApi.instance.getSubjectPersons(widget.animeId).then((
+        List<dynamic> data,
+      ) {
         if (mounted) {
           setState(() => staffData = data);
         }
       }),
     );
     unawaited(
-      BangumiApi.instance.getSubjectRelations(widget.animeId).then((List<dynamic> data) {
+      BangumiApi.instance.getSubjectRelations(widget.animeId).then((
+        List<dynamic> data,
+      ) {
         if (mounted) {
           setState(() => relatedData = data);
         }
@@ -358,8 +365,8 @@ class _DetailPageState extends State<DetailPage>
       commentsErrorMessage = null;
     });
     try {
-      final List<Map<String, String>> comments =
-          await BangumiApi.instance.getSubjectComments(widget.animeId);
+      final List<Map<String, String>> comments = await BangumiApi.instance
+          .getSubjectComments(widget.animeId);
       if (!mounted) return;
       setState(() {
         realComments = comments;
@@ -370,7 +377,8 @@ class _DetailPageState extends State<DetailPage>
       if (!mounted) return;
       setState(() {
         isCommentsLoading = false;
-        commentsErrorMessage = '加载失败：${e.toString().replaceFirst("Exception: ", "")}';
+        commentsErrorMessage =
+            '加载失败：${e.toString().replaceFirst("Exception: ", "")}';
       });
     }
   }
@@ -380,8 +388,8 @@ class _DetailPageState extends State<DetailPage>
       hasRequestedEpisodes = true;
       isEpisodesLoading = true;
     });
-    final List<Map<String, dynamic>> episodes =
-        await BangumiApi.instance.getSubjectEpisodes(widget.animeId);
+    final List<Map<String, dynamic>> episodes = await BangumiApi.instance
+        .getSubjectEpisodes(widget.animeId);
 
     if (!mounted) {
       return;
@@ -473,8 +481,11 @@ class _DetailPageState extends State<DetailPage>
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (_) =>
-                        RoleSubjectsPage(id: id, name: name, isCharacter: isCharacter),
+                    builder: (_) => RoleSubjectsPage(
+                      id: id,
+                      name: name,
+                      isCharacter: isCharacter,
+                    ),
                   ),
                 );
               }
@@ -1036,7 +1047,7 @@ class _DetailPageState extends State<DetailPage>
                           ),
                           icon: const Icon(Icons.download_rounded),
                           label: const Text(
-                            '全网磁力检索',
+                            '搜索下载资源',
                             style: TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.bold,
@@ -1137,12 +1148,13 @@ class _DetailPageState extends State<DetailPage>
         ),
         SizedBox(
           height: 105,
-          child: 
-              ListView.builder(
-                key: PageStorageKey<String>('detail_${isCharacter ? "characters" : "staff"}'),
-                scrollDirection: Axis.horizontal,
-                itemCount: items.length,
-                itemBuilder: (ctx, i) {
+          child: ListView.builder(
+            key: PageStorageKey<String>(
+              'detail_${isCharacter ? "characters" : "staff"}',
+            ),
+            scrollDirection: Axis.horizontal,
+            itemCount: items.length,
+            itemBuilder: (ctx, i) {
               final item = items[i];
               return InkWell(
                 onTap: () => _handlePersonTap(item, isCharacter),
@@ -1223,7 +1235,11 @@ class _DetailPageState extends State<DetailPage>
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: const <Widget>[
-                  Icon(Icons.videocam_off_rounded, size: 36, color: Colors.grey),
+                  Icon(
+                    Icons.videocam_off_rounded,
+                    size: 36,
+                    color: Colors.grey,
+                  ),
                   SizedBox(height: 12),
                   Text('暂无剧集数据。', style: TextStyle(color: Colors.grey)),
                 ],
@@ -1287,7 +1303,21 @@ class _DetailPageState extends State<DetailPage>
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(fontSize: 12),
                   ),
-                  trailing: const Icon(Icons.chevron_right_rounded, size: 20),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: <Widget>[
+                      IconButton(
+                        tooltip: '搜索并下载第 $epNum 集',
+                        visualDensity: VisualDensity.compact,
+                        onPressed: epNum > 0
+                            ? () =>
+                                  unawaited(_openEpisodeResourceSearch(episode))
+                            : null,
+                        icon: const Icon(Icons.download_rounded, size: 20),
+                      ),
+                      const Icon(Icons.chevron_right_rounded, size: 20),
+                    ],
+                  ),
                   onTap: () => _openEpisodeWatchPage(episode),
                 ),
               );
@@ -1422,17 +1452,43 @@ class _DetailPageState extends State<DetailPage>
                                   ),
                                 ),
                               ),
-                              Text(
-                                episode['airdate']?.toString().isNotEmpty ==
-                                        true
-                                    ? episode['airdate'].toString()
-                                    : '',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  fontSize: 10,
-                                  color: Colors.grey,
-                                ),
+                              Row(
+                                children: <Widget>[
+                                  Expanded(
+                                    child: Text(
+                                      episode['airdate']
+                                                  ?.toString()
+                                                  .isNotEmpty ==
+                                              true
+                                          ? episode['airdate'].toString()
+                                          : '',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        fontSize: 10,
+                                        color: Colors.grey,
+                                      ),
+                                    ),
+                                  ),
+                                  IconButton(
+                                    tooltip: '搜索并下载第 $epNum 集',
+                                    visualDensity: VisualDensity.compact,
+                                    constraints: const BoxConstraints(
+                                      minWidth: 28,
+                                      minHeight: 28,
+                                    ),
+                                    padding: EdgeInsets.zero,
+                                    onPressed: epNum > 0
+                                        ? () => unawaited(
+                                            _openEpisodeResourceSearch(episode),
+                                          )
+                                        : null,
+                                    icon: const Icon(
+                                      Icons.download_rounded,
+                                      size: 17,
+                                    ),
+                                  ),
+                                ],
                               ),
                             ],
                           ),
@@ -1459,6 +1515,25 @@ class _DetailPageState extends State<DetailPage>
           initialEpisode: episode,
           currentProgress: currentEp,
           onSetProgress: _setProgressToEpisode,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openEpisodeResourceSearch(Map<String, dynamic> episode) async {
+    final String originalName =
+        detailData?['name']?.toString().trim() ?? widget.initialName;
+    final String cnName =
+        detailData?['name_cn']?.toString().trim() ?? widget.initialName;
+    await Navigator.push(
+      context,
+      MaterialPageRoute<void>(
+        builder: (BuildContext context) => MagnetConfigPage(
+          animeName: cnName.isEmpty ? originalName : cnName,
+          aliases: _extractAliases(cnName, originalName),
+          bangumiSubjectId: widget.animeId,
+          initialEpisodeNumber: _episodeNumber(episode),
+          initialEpisodeTitle: _episodeTitle(episode),
         ),
       ),
     );
@@ -1627,7 +1702,8 @@ class _DetailPageState extends State<DetailPage>
                   style: const TextStyle(color: Colors.grey),
                   textAlign: TextAlign.center,
                 ),
-                if (commentsErrorMessage != null && commentsErrorMessage != '暂无评论') ...[
+                if (commentsErrorMessage != null &&
+                    commentsErrorMessage != '暂无评论') ...[
                   const SizedBox(height: 16),
                   OutlinedButton.icon(
                     onPressed: () {

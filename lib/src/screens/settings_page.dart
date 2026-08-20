@@ -1146,7 +1146,7 @@ class _SettingsPageState extends State<SettingsPage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
             const Text(
-              'RSS 检索源',
+              'RSS 资源搜索源',
               style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 12),

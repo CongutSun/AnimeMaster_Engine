@@ -51,6 +51,11 @@ class OnlineEpisodeSourceService {
     return latest;
   }
 
+  @visibleForTesting
+  static Future<int> debugConfiguredSourceCount() async {
+    return (await _DirectSiteAdapter.loadAllKnownDefaults()).length;
+  }
+
   Stream<List<OnlineEpisodeSourceResult>> searchStream(
     OnlineEpisodeQuery query,
   ) {
@@ -58,8 +63,7 @@ class OnlineEpisodeSourceService {
     final Map<String, OnlineEpisodeSourceResult> deduplicated =
         <String, OnlineEpisodeSourceResult>{};
     final List<String> subjectNames = _buildSubjectNames(query);
-    final List<_OnlineSourceAdapter> adapters =
-        _DirectSiteAdapter.allKnownDefaults;
+    List<_OnlineSourceAdapter> adapters = <_OnlineSourceAdapter>[];
     final String cacheKey = _queryCacheKey(query);
     final List<OnlineEpisodeSourceResult>? cachedResults = _readCachedResults(
       cacheKey,
@@ -179,20 +183,33 @@ class OnlineEpisodeSourceService {
       maybeClose();
     }
 
+    Future<void> startSearch() async {
+      try {
+        adapters = await _DirectSiteAdapter.loadAllKnownDefaults();
+      } catch (error) {
+        debugPrint(
+          '[OnlineEpisodeSourceService] Source initialization failed: $error',
+        );
+        adapters = _DirectSiteAdapter.allKnownDefaults;
+      }
+      if (cancelled || controller.isClosed) {
+        return;
+      }
+      if (adapters.isEmpty) {
+        controller.add(const <OnlineEpisodeSourceResult>[]);
+        await controller.close();
+        return;
+      }
+      if (cachedResults != null && cachedResults.isNotEmpty) {
+        controller.add(_sortedResults(deduplicated));
+      }
+      deadlineTimer = Timer(_searchDeadline, closeWithCurrentResults);
+      launchNextAdapters();
+    }
+
     controller = StreamController<List<OnlineEpisodeSourceResult>>(
       onListen: () {
-        if (adapters.isEmpty) {
-          controller.add(const <OnlineEpisodeSourceResult>[]);
-          unawaited(controller.close());
-          return;
-        }
-        if (cachedResults != null && cachedResults.isNotEmpty) {
-          controller.add(_sortedResults(deduplicated));
-        }
-        deadlineTimer = Timer(_searchDeadline, () {
-          closeWithCurrentResults();
-        });
-        launchNextAdapters();
+        unawaited(startSearch());
       },
       onCancel: () {
         cancelled = true;
@@ -476,9 +493,15 @@ class _DirectSiteAdapter extends _OnlineSourceAdapter {
     return _allKnownDefaultsCache!;
   }
 
+  static Future<List<_OnlineSourceAdapter>> loadAllKnownDefaults() async {
+    await warmUpJsonSources();
+    return allKnownDefaults;
+  }
+
   static List<_OnlineSourceAdapter>? _allKnownDefaultsCache;
 
-  static List<_OnlineSourceAdapter> _buildAllKnownDefaults() => <_OnlineSourceAdapter>[
+  static List<_OnlineSourceAdapter>
+  _buildAllKnownDefaults() => <_OnlineSourceAdapter>[
     _DirectSiteAdapter(
       name: 'OmoFun',
       baseUrl: 'https://omofun04.top',
@@ -555,6 +578,8 @@ class _DirectSiteAdapter extends _OnlineSourceAdapter {
   }
 
   static List<_OnlineSourceAdapter>? _jsonMacCmsCache;
+  static Future<void>? _jsonSourcesWarmUp;
+  static bool _remoteRefreshStarted = false;
 
   static List<_OnlineSourceAdapter> _parseJsonAsset() {
     // Synchronous asset loading at class-init time — the JSON is bundled.
@@ -563,35 +588,76 @@ class _DirectSiteAdapter extends _OnlineSourceAdapter {
     return <_OnlineSourceAdapter>[];
   }
 
-  /// Tries remote sources.json first, falls back to bundled asset.
-  /// Call once during app initialization.
-  static Future<void> warmUpJsonSources() async {
-    if (_jsonMacCmsCache != null) return;
+  /// Loads the bundled registry before the first search, then refreshes it in
+  /// the background. This keeps first use deterministic without making users
+  /// wait for the remote registry to time out.
+  static Future<void> warmUpJsonSources() {
+    return _jsonSourcesWarmUp ??= _loadBundledSources();
+  }
+
+  static Future<void> _loadBundledSources() async {
+    if (_jsonMacCmsCache != null) {
+      _startRemoteRefresh();
+      return;
+    }
     try {
-      final String json = await _fetchRemoteSources();
+      final String json = await rootBundle.loadString(
+        'assets/online_sources.json',
+      );
       _jsonMacCmsCache = _parseSourceJson(json);
+      _allKnownDefaultsCache = null;
       debugPrint(
         '[OnlineEpisodeSourceService] Loaded ${_jsonMacCmsCache!.length} '
-        'sources from remote.',
+        'sources from local asset.',
+      );
+    } catch (error) {
+      debugPrint(
+        '[OnlineEpisodeSourceService] Local sources unavailable: $error',
+      );
+      try {
+        final String json = await _fetchRemoteSources();
+        _jsonMacCmsCache = _parseSourceJson(json);
+        _allKnownDefaultsCache = null;
+        debugPrint(
+          '[OnlineEpisodeSourceService] Loaded ${_jsonMacCmsCache!.length} '
+          'sources from remote fallback.',
+        );
+      } catch (remoteError) {
+        debugPrint(
+          '[OnlineEpisodeSourceService] Remote fallback failed: $remoteError',
+        );
+        _jsonMacCmsCache = <_OnlineSourceAdapter>[];
+        _allKnownDefaultsCache = null;
+      }
+    }
+    _startRemoteRefresh();
+  }
+
+  static void _startRemoteRefresh() {
+    if (_remoteRefreshStarted) {
+      return;
+    }
+    _remoteRefreshStarted = true;
+    unawaited(_refreshRemoteSources());
+  }
+
+  static Future<void> _refreshRemoteSources() async {
+    try {
+      final String json = await _fetchRemoteSources();
+      final List<_OnlineSourceAdapter> refreshed = _parseSourceJson(json);
+      if (refreshed.isEmpty) {
+        return;
+      }
+      _jsonMacCmsCache = refreshed;
+      _allKnownDefaultsCache = null;
+      debugPrint(
+        '[OnlineEpisodeSourceService] Refreshed ${refreshed.length} '
+        'available sources from remote.',
       );
     } catch (error) {
       debugPrint(
         '[OnlineEpisodeSourceService] Remote sources unavailable: $error',
       );
-      try {
-        final String json = await rootBundle
-            .loadString('assets/online_sources.json');
-        _jsonMacCmsCache = _parseSourceJson(json);
-        debugPrint(
-          '[OnlineEpisodeSourceService] Loaded ${_jsonMacCmsCache!.length} '
-          'sources from local asset.',
-        );
-      } catch (localError) {
-        debugPrint(
-          '[OnlineEpisodeSourceService] Local asset also failed: $localError',
-        );
-        _jsonMacCmsCache = <_OnlineSourceAdapter>[];
-      }
     }
   }
 
@@ -599,9 +665,9 @@ class _DirectSiteAdapter extends _OnlineSourceAdapter {
       'https://auth.congutsun.com/sources.json';
 
   static Future<String> _fetchRemoteSources() async {
-    final Response<dynamic> response = await DioClient()
-        .dio
-        .get<dynamic>(_remoteSourcesUrl);
+    final Response<dynamic> response = await DioClient().dio.get<dynamic>(
+      _remoteSourcesUrl,
+    );
     if (response.statusCode == 200) {
       final dynamic data = response.data;
       if (data is Map<String, dynamic>) {
@@ -623,6 +689,15 @@ class _DirectSiteAdapter extends _OnlineSourceAdapter {
     final List<dynamic> decoded = jsonDecode(json) as List<dynamic>;
     return decoded
         .whereType<Map<String, dynamic>>()
+        .where((Map<String, dynamic> entry) => entry['available'] != false)
+        .where(
+          (Map<String, dynamic> entry) =>
+              (entry['name'] ?? '').toString().trim().isNotEmpty &&
+              Uri.tryParse(
+                    (entry['baseUrl'] ?? '').toString().trim(),
+                  )?.hasScheme ==
+                  true,
+        )
         .map((Map<String, dynamic> entry) {
           return _DirectSiteAdapter.macCms(
             name: (entry['name'] ?? '').toString(),
@@ -831,8 +906,9 @@ class _DirectSiteAdapter extends _OnlineSourceAdapter {
       }
       final String title = _normalizeText(
         link.attributes['title'] ??
+            link.querySelector('img[alt]')?.attributes['alt'] ??
             link.querySelector('h3, .title')?.text ??
-            link.text,
+            (link.text.trim().isNotEmpty ? link.text : link.parent?.text ?? ''),
       );
       final int score = _scoreSubject(title, subjectNames);
       if (score <= 0) {

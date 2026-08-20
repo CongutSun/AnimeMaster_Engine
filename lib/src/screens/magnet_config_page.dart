@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -12,12 +14,16 @@ class MagnetConfigPage extends StatefulWidget {
   final String animeName;
   final List<String> aliases;
   final int bangumiSubjectId;
+  final int initialEpisodeNumber;
+  final String initialEpisodeTitle;
 
   const MagnetConfigPage({
     super.key,
     required this.animeName,
     required this.aliases,
     this.bangumiSubjectId = 0,
+    this.initialEpisodeNumber = 0,
+    this.initialEpisodeTitle = '',
   });
 
   @override
@@ -29,16 +35,21 @@ class _MagnetConfigPageState extends State<MagnetConfigPage> {
   final TextEditingController includeController = TextEditingController();
   final TextEditingController qualityController = TextEditingController();
   final TextEditingController excludeController = TextEditingController();
+  final TextEditingController episodeController = TextEditingController();
 
   List<Map<String, String>> selectedSources = <Map<String, String>>[];
   List<Map<String, String>> searchResults = <Map<String, String>>[];
   bool isSearching = false;
   bool hasSearched = false;
+  int? searchedEpisodeNumber;
 
   @override
   void initState() {
     super.initState();
     keywordController.text = widget.animeName;
+    if (widget.initialEpisodeNumber > 0) {
+      episodeController.text = widget.initialEpisodeNumber.toString();
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) => _loadSources());
   }
 
@@ -48,6 +59,7 @@ class _MagnetConfigPageState extends State<MagnetConfigPage> {
     includeController.dispose();
     qualityController.dispose();
     excludeController.dispose();
+    episodeController.dispose();
     super.dispose();
   }
 
@@ -68,7 +80,18 @@ class _MagnetConfigPageState extends State<MagnetConfigPage> {
     if (selectedSources.isEmpty) {
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(const SnackBar(content: Text('请至少选择一个检索源。')));
+      ).showSnackBar(const SnackBar(content: Text('请至少选择一个资源源。')));
+      return;
+    }
+    final String rawEpisode = episodeController.text.trim();
+    final int? targetEpisodeNumber = rawEpisode.isEmpty
+        ? null
+        : int.tryParse(rawEpisode);
+    if (rawEpisode.isNotEmpty &&
+        (targetEpisodeNumber == null || targetEpisodeNumber <= 0)) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('请输入正确的集数。')));
       return;
     }
 
@@ -76,6 +99,7 @@ class _MagnetConfigPageState extends State<MagnetConfigPage> {
       isSearching = true;
       hasSearched = true;
       searchResults = <Map<String, String>>[];
+      searchedEpisodeNumber = targetEpisodeNumber;
     });
 
     final List<Map<String, String>> results = await MagnetApi.searchTorrents(
@@ -84,6 +108,7 @@ class _MagnetConfigPageState extends State<MagnetConfigPage> {
       mustInclude: includeController.text.trim(),
       quality: qualityController.text.trim(),
       exclude: excludeController.text.trim(),
+      targetEpisodeNumber: targetEpisodeNumber,
     );
 
     if (!mounted) {
@@ -158,7 +183,7 @@ class _MagnetConfigPageState extends State<MagnetConfigPage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('聚合搜刮'),
+        title: const Text('番剧资源搜索'),
         actions: <Widget>[
           IconButton(
             tooltip: '缓存中心',
@@ -184,7 +209,7 @@ class _MagnetConfigPageState extends State<MagnetConfigPage> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
                   const Text(
-                    '检索条件',
+                    '搜索条件',
                     style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
                   ),
                   const SizedBox(height: 12),
@@ -194,7 +219,7 @@ class _MagnetConfigPageState extends State<MagnetConfigPage> {
                         child: TextField(
                           controller: keywordController,
                           decoration: const InputDecoration(
-                            labelText: '检索词',
+                            labelText: '番剧名称',
                             hintText: '建议优先使用罗马音或英文名',
                           ),
                         ),
@@ -206,6 +231,32 @@ class _MagnetConfigPageState extends State<MagnetConfigPage> {
                         label: const Text('别名'),
                       ),
                     ],
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: episodeController,
+                    keyboardType: TextInputType.number,
+                    inputFormatters: <TextInputFormatter>[
+                      FilteringTextInputFormatter.digitsOnly,
+                    ],
+                    decoration: InputDecoration(
+                      labelText: '指定集数（可选）',
+                      hintText: '例如：12',
+                      helperText: widget.initialEpisodeTitle.trim().isEmpty
+                          ? '填写后只显示该单集，不需要手动拼 EP12'
+                          : '当前：${widget.initialEpisodeTitle.trim()}',
+                      suffixIcon: episodeController.text.isEmpty
+                          ? null
+                          : IconButton(
+                              tooltip: '搜索全部资源',
+                              onPressed: () {
+                                setState(episodeController.clear);
+                              },
+                              icon: const Icon(Icons.close_rounded),
+                            ),
+                    ),
+                    onChanged: (_) => setState(() {}),
+                    onSubmitted: (_) => unawaited(_startSearch()),
                   ),
                   const SizedBox(height: 12),
                   TextField(
@@ -241,7 +292,7 @@ class _MagnetConfigPageState extends State<MagnetConfigPage> {
                   ),
                   const SizedBox(height: 16),
                   const Text(
-                    '检索源',
+                    '资源源',
                     style: TextStyle(fontWeight: FontWeight.w700),
                   ),
                   const SizedBox(height: 8),
@@ -283,12 +334,12 @@ class _MagnetConfigPageState extends State<MagnetConfigPage> {
                               child: CircularProgressIndicator(strokeWidth: 2),
                             )
                           : const Icon(Icons.travel_explore),
-                      label: Text(isSearching ? '正在并发检索...' : '开始搜刮'),
+                      label: Text(isSearching ? '正在搜索...' : '搜索资源'),
                     ),
                   ),
                   const SizedBox(height: 12),
                   Text(
-                    '说明：如果结果同时提供 magnet 和 .torrent，下载与播放将优先使用 .torrent 直链，以缩短元数据解析时间。',
+                    '结果可能是磁力链接或 .torrent 种子；下载与播放会优先使用可用的种子直链。',
                     style: TextStyle(
                       fontSize: 12,
                       color: Colors.grey.shade700,
@@ -302,7 +353,11 @@ class _MagnetConfigPageState extends State<MagnetConfigPage> {
           if (hasSearched) ...<Widget>[
             const SizedBox(height: 12),
             Text(
-              isSearching ? '正在获取结果...' : '检索结果：${searchResults.length} 条',
+              isSearching
+                  ? '正在获取结果...'
+                  : searchedEpisodeNumber == null
+                  ? '搜索结果：${searchResults.length} 条'
+                  : '第 $searchedEpisodeNumber 集：${searchResults.length} 条',
               style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 8),
@@ -318,9 +373,16 @@ class _MagnetConfigPageState extends State<MagnetConfigPage> {
               ),
             ...searchResults.map((Map<String, String> result) {
               final String title = result['title'] ?? '未知资源';
-              final String episodeLabel = TaskTitleParser.extractEpisodeLabel(
-                title,
-              );
+              final String parsedEpisodeLabel =
+                  TaskTitleParser.extractEpisodeLabel(title);
+              final String episodeLabel = parsedEpisodeLabel.isNotEmpty
+                  ? parsedEpisodeLabel
+                  : searchedEpisodeNumber == null
+                  ? ''
+                  : TaskTitleParser.buildEpisodeDisplayLabel(
+                      episodeNumber: searchedEpisodeNumber!,
+                      episodeTitle: widget.initialEpisodeTitle,
+                    );
               final String targetDownloadUrl = _preferredDownloadUrl(result);
               final bool hasTorrent =
                   result['torrent']?.trim().isNotEmpty == true;

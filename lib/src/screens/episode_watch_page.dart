@@ -21,6 +21,7 @@ import '../utils/episode_helpers.dart';
 import '../utils/format_helpers.dart';
 import '../utils/task_title_parser.dart';
 import '../widgets/playback_action_prompt.dart';
+import 'magnet_config_page.dart';
 import 'video_player_page.dart';
 
 class EpisodeWatchPage extends StatefulWidget {
@@ -200,30 +201,52 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
 
   @override
   void dispose() {
-    try { unawaited(_savePlaybackProgress(force: true)); } catch (_) {}
+    try {
+      unawaited(_savePlaybackProgress(force: true));
+    } catch (_) {}
 
     WidgetsBinding.instance.removeObserver(this);
-    try { unawaited(PictureInPictureService.setPlaybackActive(false)); } catch (_) {}
-    try { unawaited(PictureInPictureService.setAutoEnter(false)); } catch (_) {}
-    try { unawaited(_onlineSubscription?.cancel()); } catch (_) {}
+    try {
+      unawaited(PictureInPictureService.setPlaybackActive(false));
+    } catch (_) {}
+    try {
+      unawaited(PictureInPictureService.setAutoEnter(false));
+    } catch (_) {}
+    try {
+      unawaited(_onlineSubscription?.cancel());
+    } catch (_) {}
 
     // ── stop streaming before native resource teardown ──
-    try { _cachedSession?.streamServer?.stop(); } catch (_) {}
+    try {
+      _cachedSession?.streamServer?.stop();
+    } catch (_) {}
 
     _progressSaveTimer?.cancel();
     _inlineGestureTimer?.cancel();
     _cancelAutoNextCountdown();
     for (final StreamSubscription<dynamic> subscription
         in _playerSubscriptions) {
-      try { subscription.cancel(); } catch (_) {}
+      try {
+        subscription.cancel();
+      } catch (_) {}
     }
-    try { _onlineSourcesNotifier.dispose(); } catch (_) {}
-    try { _onlineSourceSearchingNotifier.dispose(); } catch (_) {}
-    try { _tabController.dispose(); } catch (_) {}
+    try {
+      _onlineSourcesNotifier.dispose();
+    } catch (_) {}
+    try {
+      _onlineSourceSearchingNotifier.dispose();
+    } catch (_) {}
+    try {
+      _tabController.dispose();
+    } catch (_) {}
 
     // ── stop player before disposing native codecs ──
-    try { _player.stop(); } catch (_) {}
-    try { _player.dispose(); } catch (_) {}
+    try {
+      _player.stop();
+    } catch (_) {}
+    try {
+      _player.dispose();
+    } catch (_) {}
     super.dispose();
   }
 
@@ -989,6 +1012,20 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
                                 fontSize: 12,
                               ),
                             ),
+                            const SizedBox(height: 10),
+                            SizedBox(
+                              width: double.infinity,
+                              child: OutlinedButton.icon(
+                                onPressed: () {
+                                  Navigator.pop(context);
+                                  unawaited(
+                                    _openCurrentEpisodeResourceSearch(),
+                                  );
+                                },
+                                icon: const Icon(Icons.download_rounded),
+                                label: const Text('搜索并下载本集资源'),
+                              ),
+                            ),
                             if (cachedTasks.isNotEmpty) ...<Widget>[
                               const SizedBox(height: 12),
                               const _SourceSectionTitle(title: '本地缓存'),
@@ -1054,6 +1091,22 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
     } else {
       await _player.play();
     }
+  }
+
+  Future<void> _openCurrentEpisodeResourceSearch() async {
+    final int number = _episodeNumber(_episode);
+    await Navigator.push(
+      context,
+      MaterialPageRoute<void>(
+        builder: (BuildContext context) => MagnetConfigPage(
+          animeName: _subjectDisplayName(),
+          aliases: _activeQuery?.aliases ?? const <String>[],
+          bangumiSubjectId: widget.animeId,
+          initialEpisodeNumber: number,
+          initialEpisodeTitle: _episodeTitle(_episode),
+        ),
+      ),
+    );
   }
 
   void _toggleInlineControls() {
@@ -1182,8 +1235,7 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
         : target.inMilliseconds / duration.inMilliseconds;
     _showInlineGestureIndicator(
       icon: forward ? Icons.fast_forward_rounded : Icons.fast_rewind_rounded,
-      text:
-          '${formatDuration(target)} / ${formatDuration(duration)}',
+      text: '${formatDuration(target)} / ${formatDuration(duration)}',
       progress: progress.clamp(0.0, 1.0).toDouble(),
       autoHide: false,
     );
@@ -1504,6 +1556,12 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
                           ),
                         ),
                         IconButton(
+                          tooltip: '搜索并下载本集资源',
+                          onPressed: () =>
+                              unawaited(_openCurrentEpisodeResourceSearch()),
+                          icon: const Icon(Icons.download_rounded),
+                        ),
+                        IconButton(
                           tooltip: '把进度更新到本集',
                           onPressed:
                               episodeNumber > 0 && widget.onSetProgress != null
@@ -1545,7 +1603,9 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
                     SizedBox(
                       height: 86,
                       child: ListView.separated(
-                        key: const PageStorageKey<String>('episodes_horizontal'),
+                        key: const PageStorageKey<String>(
+                          'episodes_horizontal',
+                        ),
                         scrollDirection: Axis.horizontal,
                         itemCount: widget.episodes.length,
                         separatorBuilder: (BuildContext context, int index) =>

@@ -6,6 +6,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 
 import '../config/embedded_credentials.dart';
+import '../utils/task_title_parser.dart';
 import 'dio_client.dart';
 
 class MagnetApi {
@@ -17,6 +18,7 @@ class MagnetApi {
     String mustInclude = '',
     String quality = '',
     String exclude = '',
+    int? targetEpisodeNumber,
   }) async {
     final Iterable<Future<List<Map<String, String>>>> futures = selectedSources
         .map(
@@ -26,6 +28,7 @@ class MagnetApi {
             mustInclude: mustInclude,
             quality: quality,
             exclude: exclude,
+            targetEpisodeNumber: targetEpisodeNumber,
           ),
         );
 
@@ -53,6 +56,7 @@ class MagnetApi {
     required String mustInclude,
     required String quality,
     required String exclude,
+    required int? targetEpisodeNumber,
   }) async {
     final String rawUrl = source['url']?.trim() ?? '';
     if (rawUrl.isEmpty) {
@@ -89,6 +93,14 @@ class MagnetApi {
           continue;
         }
         if (excludeLower.isNotEmpty && titleLower.contains(excludeLower)) {
+          continue;
+        }
+        if (targetEpisodeNumber != null &&
+            targetEpisodeNumber > 0 &&
+            !TaskTitleParser.matchesEpisodeNumber(
+              rawTitle,
+              targetEpisodeNumber,
+            )) {
           continue;
         }
 
@@ -205,21 +217,23 @@ class MagnetApi {
     });
 
     for (final String url in candidateUrls) {
-      _downloadFeedBytes(url).then((Uint8List? bytes) {
-        if (bytes != null && bytes.isNotEmpty && !resolved) {
-          resolved = true;
-          globalTimeout.cancel();
-          completer.complete(bytes);
-          return;
-        }
+      unawaited(
+        _downloadFeedBytes(url).then((Uint8List? bytes) {
+          if (bytes != null && bytes.isNotEmpty && !resolved) {
+            resolved = true;
+            globalTimeout.cancel();
+            completer.complete(bytes);
+            return;
+          }
 
-        pending--;
-        if (pending == 0 && !resolved) {
-          resolved = true;
-          globalTimeout.cancel();
-          completer.complete(null);
-        }
-      });
+          pending--;
+          if (pending == 0 && !resolved) {
+            resolved = true;
+            globalTimeout.cancel();
+            completer.complete(null);
+          }
+        }),
+      );
     }
 
     return completer.future;

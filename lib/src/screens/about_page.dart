@@ -151,6 +151,17 @@ class _AboutPageState extends State<AboutPage> {
                   ),
                   SizedBox(height: 12),
                   _LogEntry(
+                    version: '2.3.7',
+                    items: <String>[
+                      '修复首次在线播放搜索遗漏动态站点列表、导致在线源始终为空的问题。',
+                      '在线源会先读取内置列表，并在后台刷新远程健康状态、过滤已下线站点。',
+                      '“全网磁力检索”更名为“番剧资源搜索”，明确同时支持磁力链接和种子文件。',
+                      '资源搜索新增指定集数过滤，避免把分辨率、年份或合集范围误判为目标单集。',
+                      '剧集列表和播放页可直接搜索下载当前单集，并自动带入番剧名称与集数。',
+                    ],
+                  ),
+                  SizedBox(height: 14),
+                  _LogEntry(
                     version: '2.3.6',
                     items: <String>[
                       '修复首页年度排行接口被 Cloudflare 拦截时备用请求未执行的问题。',
