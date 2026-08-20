@@ -10,7 +10,7 @@ const PENDING_TTL_SECONDS = 600;
 const SESSION_EXCHANGE_TTL_SECONDS = 600;
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 60;
 const BANGUMI_API_USER_AGENT =
-  'CongutSun/AnimeMaster_Engine/2.3.6 (Cloudflare Workers; https://auth.congutsun.com)';
+  'CongutSun/AnimeMaster_Engine/2.3.7 (Cloudflare Workers; https://auth.congutsun.com)';
 const RESOURCE_PROXY_USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 const RESOURCE_PROXY_ALLOWED_HOSTS = new Set([
@@ -39,46 +39,46 @@ const BANGUMI_PROXY_REQUEST_HEADERS = [
   'accept-language',
 ];
 const APP_UPDATE_MANIFEST = {
-  version: '2.3.6',
-  build: 2044,
+  version: '2.3.7',
+  build: 2045,
   apkUrl:
-    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.3.6/app-release.apk',
+    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.3.7/app-release.apk',
   apkUrls: {
     'android-arm64':
-      'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.3.6/app-arm64-v8a-release.apk',
+      'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.3.7/app-arm64-v8a-release.apk',
     'android-arm':
-      'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.3.6/app-armeabi-v7a-release.apk',
+      'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.3.7/app-armeabi-v7a-release.apk',
     'android-x64':
-      'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.3.6/app-x86_64-release.apk',
+      'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.3.7/app-x86_64-release.apk',
     universal:
-      'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.3.6/app-release.apk',
+      'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.3.7/app-release.apk',
   },
   sha256: {
-    'android-arm64': '3ca36c5d749ab9c9ba7ac97c451b7a5396ecd63fc46d36dc30770173fbbb0c6d',
-    'android-arm': '1c2fec6123813d38e36956700a4de4a71d1274dc9cc1d3349f77a6f6d1d015e3',
-    'android-x64': 'ba53544d88c60322c4087148e73241196bf2390a29efe3110fb71e2296ce4bca',
-    universal: 'a7ceef232bad2d18b3a324a8d18f0a6c9815d9840f1618c8dead0882ae394e60',
+    'android-arm64': '0f1ed649389b2c6460a0fb77e48b5c77dfa7bbac1f6277d5ce9754a477a7ecae',
+    'android-arm': '98126b4c8396f5c42ecf0c296548c31217f4c5286f66a35cfd4365a8a64fc11c',
+    'android-x64': 'fffc05bd99ea190e89bdceeb7892e22b111cce97f5301c3ad53946ba5339d0f5',
+    universal: '1651eff40c39832b4980f22dea5d71f4c83caaf8551c51add4204e7003f8f5e7',
   },
   notes: [
-    '修复 Bangumi 年度排行接口返回 403 或页面结构异常时未执行备用请求，导致整个首页加载失败的问题。',
-    '首页排期与榜单改为独立容错和独立缓存，榜单故障不再拖垮首页。',
-    '上游短时不可用时使用有限期限的旧缓存，并安全忽略损坏或类型错误的缓存。',
-    'Worker 不再为上游失败响应和带 Cookie 响应提供公共缓存语义。',
-    'Android NDK 对齐至 28.2，并新增版本号、APK 签名和覆盖安装自动校验。',
-    'Android 发布版本升级为 2.3.6+2044，可覆盖安装现有 2.3.5+2043。',
+    '修复首次在线播放搜索遗漏动态站点列表、导致在线源始终为空的问题。',
+    '在线源会先加载内置站点列表，并在后台刷新远程健康状态、过滤已下线站点。',
+    '“全网磁力检索”更名为“番剧资源搜索”，明确同时支持磁力链接和 .torrent 种子。',
+    '资源搜索新增指定集数过滤，避免把分辨率、年份或合集范围误判为目标单集。',
+    '剧集列表和播放页可直接搜索下载当前单集，并自动带入番剧名称与集数。',
+    'Android 发布版本升级为 2.3.7+2045，可覆盖安装现有版本。',
   ],
-  publishedAt: '2026-08-19T14:02:00+08:00',
+  publishedAt: '2026-08-20T10:14:38+08:00',
   forceUpdate: false,
 };
 const APK_DOWNLOAD_URLS = {
   'android-arm64':
-    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.3.6/app-arm64-v8a-release.apk',
+    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.3.7/app-arm64-v8a-release.apk',
   'android-arm':
-    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.3.6/app-armeabi-v7a-release.apk',
+    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.3.7/app-armeabi-v7a-release.apk',
   'android-x64':
-    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.3.6/app-x86_64-release.apk',
+    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.3.7/app-x86_64-release.apk',
   universal:
-    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.3.6/app-release.apk',
+    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.3.7/app-release.apk',
 };
 
 function applyCors(headers, request, methods = 'GET,POST,OPTIONS') {

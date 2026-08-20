@@ -30,6 +30,7 @@ jobs:
           node-version: '24'
       - run: node --check tools/bangumi_auth_worker/worker.js
       - run: node --test tools/bangumi_auth_worker/year_ranking.test.mjs
+      - run: node --test tools/bangumi_auth_worker/app_update_manifest.test.mjs
 
   test:
     name: Run Tests
