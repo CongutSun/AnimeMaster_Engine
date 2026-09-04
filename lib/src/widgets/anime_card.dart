@@ -5,7 +5,6 @@ import '../models/anime.dart';
 import '../screens/detail_page.dart';
 import '../utils/image_request.dart';
 
-import '../utils/haptic_helper.dart';
 class AnimeCard extends StatelessWidget {
   final Anime anime;
   final bool isTop;
@@ -41,98 +40,103 @@ class AnimeCard extends StatelessWidget {
             );
           },
           child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Expanded(
-              child: Container(
-                width: double.infinity,
-                decoration: BoxDecoration(
-                  borderRadius: (theme.cardTheme.shape as RoundedRectangleBorder?)?.borderRadius ?? BorderRadius.circular(14),
-                  border: Border.all(
-                    color: colors.outlineVariant,
-                    width: 0.5,
-                  ),
-                  boxShadow: <BoxShadow>[
-                    BoxShadow(
-                      color: colors.shadow.withValues(alpha: isDarkMode ? 0.5 : 0.18),
-                      blurRadius: 18,
-                      offset: const Offset(0, 10),
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Expanded(
+                child: Container(
+                  width: double.infinity,
+                  decoration: BoxDecoration(
+                    borderRadius:
+                        (theme.cardTheme.shape as RoundedRectangleBorder?)
+                            ?.borderRadius ??
+                        BorderRadius.circular(14),
+                    border: Border.all(
+                      color: colors.outlineVariant,
+                      width: 0.5,
                     ),
-                  ],
-                ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(14),
-                  child: CachedNetworkImage(
-                    imageUrl: normalizeImageUrl(anime.imageUrl),
-                    fit: BoxFit.cover,
-                    fadeInDuration: const Duration(milliseconds: 260),
-                    httpHeaders: buildImageHeaders(anime.imageUrl),
-                    cacheManager: AppImageCacheManager.instance,
-                    placeholder: (context, url) => Container(
-                      color: placeholderColor,
-                      child: Center(
-                        child: Icon(
-                          Icons.image_outlined,
-                          color: colors.onSurfaceVariant,
-                          size: 24,
+                    boxShadow: <BoxShadow>[
+                      BoxShadow(
+                        color: colors.shadow.withValues(
+                          alpha: isDarkMode ? 0.5 : 0.18,
+                        ),
+                        blurRadius: 18,
+                        offset: const Offset(0, 10),
+                      ),
+                    ],
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(14),
+                    child: CachedNetworkImage(
+                      imageUrl: normalizeImageUrl(anime.imageUrl),
+                      fit: BoxFit.cover,
+                      fadeInDuration: const Duration(milliseconds: 260),
+                      httpHeaders: buildImageHeaders(anime.imageUrl),
+                      cacheManager: AppImageCacheManager.instance,
+                      placeholder: (context, url) => Container(
+                        color: placeholderColor,
+                        child: Center(
+                          child: Icon(
+                            Icons.image_outlined,
+                            color: colors.onSurfaceVariant,
+                            size: 24,
+                          ),
                         ),
                       ),
-                    ),
-                    errorWidget: (context, url, error) => Container(
-                      color: placeholderColor,
-                      child: Center(
-                        child: Icon(
-                          Icons.broken_image_outlined,
-                          color: colors.onSurfaceVariant,
-                          size: 24,
+                      errorWidget: (context, url, error) => Container(
+                        color: placeholderColor,
+                        child: Center(
+                          child: Icon(
+                            Icons.broken_image_outlined,
+                            color: colors.onSurfaceVariant,
+                            size: 24,
+                          ),
                         ),
                       ),
                     ),
                   ),
                 ),
               ),
-            ),
-            const SizedBox(height: 9),
-            Text(
-              displayName,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.labelLarge?.copyWith(
-                fontWeight: FontWeight.w800,
-                height: 1.12,
-              ),
-            ),
-            const SizedBox(height: 4),
-            if (isTop && anime.score.isNotEmpty)
-              Row(
-                children: <Widget>[
-                  const Icon(
-                    Icons.star_rounded,
-                    size: 13,
-                    color: Color(0xFFFF9F0A),
-                  ),
-                  const SizedBox(width: 4),
-                  Text(
-                    anime.score,
-                    style: theme.textTheme.labelSmall?.copyWith(
-                      color: const Color(0xFFFF9F0A),
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ],
-              )
-            else
+              const SizedBox(height: 9),
               Text(
-                anime.name,
+                displayName,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.labelSmall?.copyWith(
-                  color: colors.onSurfaceVariant,
+                style: theme.textTheme.labelLarge?.copyWith(
+                  fontWeight: FontWeight.w800,
+                  height: 1.12,
                 ),
               ),
-          ],
+              const SizedBox(height: 4),
+              if (isTop && anime.score.isNotEmpty)
+                Row(
+                  children: <Widget>[
+                    const Icon(
+                      Icons.star_rounded,
+                      size: 13,
+                      color: Color(0xFFFF9F0A),
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      anime.score,
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: const Color(0xFFFF9F0A),
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
+                )
+              else
+                Text(
+                  anime.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: colors.onSurfaceVariant,
+                  ),
+                ),
+            ],
+          ),
         ),
-      ),
       ),
     );
   }

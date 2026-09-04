@@ -62,3 +62,6 @@ example/android/local.properties
 .flutter-plugins
 .packages
 **/.wrangler/
+
+# Local AI assistant permissions and machine-specific state
+.claude/settings.local.json

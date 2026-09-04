@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:ui';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
@@ -141,7 +140,7 @@ class _SettingsPageState extends State<SettingsPage> {
     unawaited(
       context.read<SettingsProvider>().updateAppearance(
         context.read<SettingsProvider>().closeAction,
-        selected!,
+        selected,
         bgController.text,
       ),
     );
@@ -298,7 +297,10 @@ class _SettingsPageState extends State<SettingsPage> {
       isSaving = false;
     });
     if (provider.enableHapticFeedback) {
-      HapticFeedback.mediumImpact();
+      await HapticFeedback.mediumImpact();
+    }
+    if (!mounted) {
+      return;
     }
     ScaffoldMessenger.of(
       context,
@@ -358,8 +360,12 @@ class _SettingsPageState extends State<SettingsPage> {
       final Uri callbackUri = Uri.parse(callback);
       final String sessionId =
           callbackUri.queryParameters['session_id']?.trim() ?? '';
+      final String callbackRequestId =
+          callbackUri.queryParameters['request_id']?.trim() ?? '';
 
-      if (sessionId.isEmpty) {
+      if (sessionId.isEmpty ||
+          callbackRequestId.isEmpty ||
+          callbackRequestId != start.requestId) {
         throw Exception('授权回调缺少会话信息。');
       }
 
@@ -484,9 +490,6 @@ class _SettingsPageState extends State<SettingsPage> {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
-    final ThemeData theme = Theme.of(context);
-    final ColorScheme colors = theme.colorScheme;
-
     return Scaffold(
       appBar: AppBar(title: const Text('系统设置')),
       body: ListView(
@@ -571,7 +574,7 @@ class _SettingsPageState extends State<SettingsPage> {
         children: <Widget>[
           Row(
             children: <Widget>[
-              _SettingsIconBadge(icon: Icons.tune_rounded),
+              const _SettingsIconBadge(icon: Icons.tune_rounded),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
@@ -1130,6 +1133,20 @@ class _SettingsPageState extends State<SettingsPage> {
               controller: dandanAppSecretController,
               obscureText: true,
               decoration: const InputDecoration(labelText: 'AppSecret'),
+            ),
+            const SizedBox(height: 12),
+            Align(
+              alignment: Alignment.centerRight,
+              child: FilledButton.icon(
+                onPressed: isSaving ? null : _saveSettings,
+                icon: isSaving
+                    ? const SizedBox.square(
+                        dimension: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.save_outlined),
+                label: Text(isSaving ? '保存中…' : '保存凭据'),
+              ),
             ),
           ],
         ),

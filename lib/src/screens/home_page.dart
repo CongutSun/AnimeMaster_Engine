@@ -36,7 +36,6 @@ class _HomePageState extends State<HomePage> {
     super.dispose();
   }
 
-
   Widget _buildWeekSchedule(HomeContentSnapshot snapshot) {
     final ColorScheme colors = Theme.of(context).colorScheme;
     return Column(
@@ -67,7 +66,7 @@ class _HomePageState extends State<HomePage> {
                     ],
                   ),
                   const SizedBox(height: 12),
-                  AnimeGrid(animeList: day.animeList, isTop: false),
+                  AnimeGrid(animeList: day.animeList),
                 ],
               ),
             );
@@ -90,11 +89,11 @@ class _HomePageState extends State<HomePage> {
               children: <Widget>[
                 SkeletonBlock(width: 180, height: 32),
                 SizedBox(height: 16),
-                AnimeGridSkeleton(itemCount: 6),
+                AnimeGridSkeleton(),
                 SizedBox(height: 32),
                 SkeletonBlock(width: 160, height: 32),
                 SizedBox(height: 16),
-                AnimeGridSkeleton(itemCount: 6),
+                AnimeGridSkeleton(),
               ],
             ),
           ),
@@ -154,13 +153,13 @@ class _HomePageState extends State<HomePage> {
                 ),
                 const SizedBox(height: 16),
                 state.showTodayOnly
-                    ? AnimeGrid(animeList: snapshot.todayAnime, isTop: false)
+                    ? AnimeGrid(animeList: snapshot.todayAnime)
                     : _buildWeekSchedule(snapshot),
                 const SizedBox(height: 32),
-                SectionHeader(
+                const SectionHeader(
                   icon: Icons.emoji_events_rounded,
                   title: '本年度高分榜单',
-                  iconColor: const Color(0xFFFF9F0A),
+                  iconColor: Color(0xFFFF9F0A),
                 ),
                 const SizedBox(height: 16),
                 AnimeGrid(animeList: snapshot.topAnime, isTop: true),

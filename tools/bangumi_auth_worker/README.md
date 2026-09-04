@@ -18,3 +18,11 @@ Required secrets:
 - `BANGUMI_CALLBACK_URL`
 
 The callback URL must match the URL registered in the Bangumi developer console.
+
+Only the fixed `animemasteroauth://callback` application callback is accepted.
+Authorization-start, session-exchange, and Bangumi proxy routes are rate-limited
+through the same KV namespace. Remote media-source entries are limited to public
+HTTPS endpoints; localhost, private IPv4 ranges, and IPv6 literals are rejected.
+
+Run `node --test *.test.mjs` before deployment. Deployments must keep the KV
+binding and all three OAuth secrets configured; secrets must never be committed.

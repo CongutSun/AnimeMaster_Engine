@@ -31,9 +31,7 @@ class AppUpdateInfo {
     final Map<String, String> apkUrls = _parseApkUrls(
       json['apkUrls'] ?? json['downloads'],
     );
-    final Map<String, String> sha256Map = _parseApkUrls(
-      json['sha256'],
-    );
+    final Map<String, String> sha256Map = _parseApkUrls(json['sha256']);
 
     return AppUpdateInfo(
       version: (json['version'] ?? '').toString().trim(),

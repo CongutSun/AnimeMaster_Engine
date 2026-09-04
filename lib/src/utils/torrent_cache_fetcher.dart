@@ -75,21 +75,23 @@ class TorrentCacheFetcher {
     });
 
     for (final String url in requestUrls) {
-      _fetchSingleNode(url).then((Uint8List? bytes) {
-        if (bytes != null && bytes.isNotEmpty && !resolved) {
-          resolved = true;
-          globalTimeout.cancel();
-          completer.complete(bytes);
-          return;
-        }
+      unawaited(
+        _fetchSingleNode(url).then((Uint8List? bytes) {
+          if (bytes != null && bytes.isNotEmpty && !resolved) {
+            resolved = true;
+            globalTimeout.cancel();
+            completer.complete(bytes);
+            return;
+          }
 
-        pendingRequests--;
-        if (pendingRequests == 0 && !resolved) {
-          resolved = true;
-          globalTimeout.cancel();
-          completer.complete(null);
-        }
-      });
+          pendingRequests--;
+          if (pendingRequests == 0 && !resolved) {
+            resolved = true;
+            globalTimeout.cancel();
+            completer.complete(null);
+          }
+        }),
+      );
     }
 
     return completer.future;

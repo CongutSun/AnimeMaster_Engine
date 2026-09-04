@@ -154,7 +154,7 @@ class _CollectionPageState extends State<CollectionPage> {
     );
 
     if (result == true) {
-      _loadCollection();
+      await _loadCollection();
     }
   }
 

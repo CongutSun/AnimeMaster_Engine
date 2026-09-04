@@ -77,8 +77,9 @@ class _OnboardingPageState extends State<OnboardingPage> {
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: SystemUiOverlayStyle(
         statusBarColor: Colors.transparent,
-        statusBarIconBrightness:
-            theme.brightness == Brightness.dark ? Brightness.light : Brightness.dark,
+        statusBarIconBrightness: theme.brightness == Brightness.dark
+            ? Brightness.light
+            : Brightness.dark,
         systemNavigationBarColor: theme.scaffoldBackgroundColor,
       ),
       child: Scaffold(
@@ -88,7 +89,8 @@ class _OnboardingPageState extends State<OnboardingPage> {
               Expanded(
                 child: PageView.builder(
                   controller: _controller,
-                  onPageChanged: (int page) => setState(() => _currentPage = page),
+                  onPageChanged: (int page) =>
+                      setState(() => _currentPage = page),
                   itemCount: _steps.length,
                   itemBuilder: (BuildContext context, int index) {
                     final _OnboardingStep step = _steps[index];
@@ -145,7 +147,9 @@ class _OnboardingPageState extends State<OnboardingPage> {
                     ),
                     Row(
                       mainAxisSize: MainAxisSize.min,
-                      children: List<Widget>.generate(_steps.length, (int index) {
+                      children: List<Widget>.generate(_steps.length, (
+                        int index,
+                      ) {
                         return AnimatedContainer(
                           duration: const Duration(milliseconds: 240),
                           curve: Curves.easeOutCubic,

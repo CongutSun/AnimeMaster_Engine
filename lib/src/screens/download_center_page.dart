@@ -112,12 +112,15 @@ class DownloadCenterPage extends StatelessWidget {
                                               ) {
                                                 if (snapshot.hasError) {
                                                   return Text(
-                                                    config.episodeLabel.isNotEmpty
+                                                    config
+                                                            .episodeLabel
+                                                            .isNotEmpty
                                                         ? config.episodeLabel
                                                         : config.title,
                                                     style: TextStyle(
                                                       fontSize: 12,
-                                                      color: colors.onSurfaceVariant,
+                                                      color: colors
+                                                          .onSurfaceVariant,
                                                     ),
                                                   );
                                                 }
@@ -289,8 +292,8 @@ class DownloadCenterPage extends StatelessWidget {
       return config;
     }
 
-    final List<Map<String, dynamic>> episodes =
-        await BangumiApi.instance.getSubjectEpisodes(config.bangumiSubjectId);
+    final List<Map<String, dynamic>> episodes = await BangumiApi.instance
+        .getSubjectEpisodes(config.bangumiSubjectId);
     if (episodes.isEmpty) {
       return config;
     }
@@ -530,9 +533,9 @@ class DownloadCenterPage extends StatelessWidget {
       streamServer?.stop();
       return;
     }
-    Navigator.push(
+    await Navigator.push<void>(
       context,
-      MaterialPageRoute(
+      MaterialPageRoute<void>(
         builder: (BuildContext context) =>
             VideoPlayerPage(media: media, streamServer: streamServer),
       ),
@@ -555,9 +558,17 @@ class DownloadCenterPage extends StatelessWidget {
             child: const Text('取消'),
           ),
           TextButton(
-            onPressed: () {
-              manager.deleteTask(hash);
+            onPressed: () async {
+              final bool deleted = await manager.deleteTask(hash);
+              if (!dialogContext.mounted) {
+                return;
+              }
               Navigator.pop(dialogContext);
+              if (!deleted && context.mounted) {
+                ScaffoldMessenger.of(
+                  context,
+                ).showSnackBar(const SnackBar(content: Text('删除失败，任务文件未被移除。')));
+              }
             },
             child: const Text('删除', style: TextStyle(color: Colors.redAccent)),
           ),

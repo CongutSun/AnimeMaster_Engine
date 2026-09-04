@@ -56,6 +56,16 @@ class OnlineEpisodeSourceService {
     return (await _DirectSiteAdapter.loadAllKnownDefaults()).length;
   }
 
+  @visibleForTesting
+  static bool debugIsTrustedRemoteSourceUrl(Object? value) {
+    return _DirectSiteAdapter.isTrustedRemoteSourceUrl(value);
+  }
+
+  @visibleForTesting
+  static void debugDisableRemoteRefresh() {
+    _DirectSiteAdapter.disableRemoteRefreshForTesting();
+  }
+
   Stream<List<OnlineEpisodeSourceResult>> searchStream(
     OnlineEpisodeQuery query,
   ) {
@@ -429,29 +439,6 @@ abstract class _OnlineSourceAdapter {
     }
   }
 
-  String _normalizeAbsoluteUrl(String value, Uri baseUri) {
-    String url = value
-        .trim()
-        .replaceAll(r'\/', '/')
-        .replaceAll(r'/', '/')
-        .replaceAll('&amp;', '&');
-    if (url.startsWith('//')) {
-      url = '${baseUri.scheme}:$url';
-    }
-    return baseUri.resolve(url).replace(fragment: '').toString();
-  }
-
-  String _normalizeText(String value) {
-    return value.replaceAll(RegExp(r'\s+'), ' ').trim();
-  }
-
-  String _normalizeComparable(String value) {
-    return value
-        .toLowerCase()
-        .replaceAll(RegExp(r'[\s·・:：,，.。!！?？_\-—+]+'), '')
-        .trim();
-  }
-
   static const String _browserUserAgent =
       'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
       '(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
@@ -580,6 +567,12 @@ class _DirectSiteAdapter extends _OnlineSourceAdapter {
   static List<_OnlineSourceAdapter>? _jsonMacCmsCache;
   static Future<void>? _jsonSourcesWarmUp;
   static bool _remoteRefreshStarted = false;
+  static bool _remoteRefreshEnabled = true;
+
+  @visibleForTesting
+  static void disableRemoteRefreshForTesting() {
+    _remoteRefreshEnabled = false;
+  }
 
   static List<_OnlineSourceAdapter> _parseJsonAsset() {
     // Synchronous asset loading at class-init time — the JSON is bundled.
@@ -634,7 +627,7 @@ class _DirectSiteAdapter extends _OnlineSourceAdapter {
   }
 
   static void _startRemoteRefresh() {
-    if (_remoteRefreshStarted) {
+    if (!_remoteRefreshEnabled || _remoteRefreshStarted) {
       return;
     }
     _remoteRefreshStarted = true;
@@ -693,10 +686,7 @@ class _DirectSiteAdapter extends _OnlineSourceAdapter {
         .where(
           (Map<String, dynamic> entry) =>
               (entry['name'] ?? '').toString().trim().isNotEmpty &&
-              Uri.tryParse(
-                    (entry['baseUrl'] ?? '').toString().trim(),
-                  )?.hasScheme ==
-                  true,
+              isTrustedRemoteSourceUrl(entry['baseUrl']),
         )
         .map((Map<String, dynamic> entry) {
           return _DirectSiteAdapter.macCms(
@@ -705,6 +695,57 @@ class _DirectSiteAdapter extends _OnlineSourceAdapter {
           );
         })
         .toList(growable: false);
+  }
+
+  static bool isTrustedRemoteSourceUrl(Object? value) {
+    final Uri? uri = Uri.tryParse(value?.toString().trim() ?? '');
+    if (uri == null || uri.scheme != 'https' || uri.host.isEmpty) {
+      return false;
+    }
+    final String host = uri.host.toLowerCase();
+    if (host == 'localhost' || host.endsWith('.localhost')) {
+      return false;
+    }
+    if (host.contains(':')) {
+      final String normalized = host.toLowerCase();
+      if (normalized == '::1' ||
+          normalized.startsWith('fc') ||
+          normalized.startsWith('fd') ||
+          RegExp(r'^fe[89ab]').hasMatch(normalized)) {
+        return false;
+      }
+      if (normalized.startsWith('::ffff:')) {
+        return isTrustedRemoteSourceUrl('https://${normalized.substring(7)}');
+      }
+      return true;
+    }
+    final List<int>? ipv4 = _parseIpv4(host);
+    if (ipv4 == null) {
+      return !RegExp(r'^[0-9.]+$').hasMatch(host);
+    }
+    return ipv4[0] != 0 &&
+        ipv4[0] != 10 &&
+        ipv4[0] != 127 &&
+        !(ipv4[0] == 169 && ipv4[1] == 254) &&
+        !(ipv4[0] == 172 && ipv4[1] >= 16 && ipv4[1] <= 31) &&
+        !(ipv4[0] == 192 && ipv4[1] == 168) &&
+        ipv4[0] < 224;
+  }
+
+  static List<int>? _parseIpv4(String host) {
+    final List<String> parts = host.split('.');
+    if (parts.length != 4) {
+      return null;
+    }
+    final List<int> numbers = <int>[];
+    for (final String part in parts) {
+      final int? value = int.tryParse(part);
+      if (value == null || value < 0 || value > 255) {
+        return null;
+      }
+      numbers.add(value);
+    }
+    return numbers;
   }
 
   factory _DirectSiteAdapter.macCms({
@@ -1458,6 +1499,7 @@ class _Anime1MeAdapter extends _OnlineSourceAdapter {
     return results.values.toList();
   }
 
+  @override
   Future<dom.Document> _loadDocument(
     Dio dio,
     Uri uri, {
@@ -1467,6 +1509,7 @@ class _Anime1MeAdapter extends _OnlineSourceAdapter {
     return parser.parse(html);
   }
 
+  @override
   Future<String> _loadText(Dio dio, Uri uri, {String? referer}) async {
     final Response<String> response = await dio.get<String>(
       uri.toString(),
@@ -1673,6 +1716,7 @@ class _Anime1MeAdapter extends _OnlineSourceAdapter {
     );
   }
 
+  @override
   Future<bool> _isMediaReachable(
     Dio dio,
     String url,

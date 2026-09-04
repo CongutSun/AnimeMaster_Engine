@@ -23,7 +23,9 @@ const ALLOWED_BROWSER_ORIGINS = new Set(
 );
 const BANGUMI_API_USER_AGENT =
   process.env.BANGUMI_API_USER_AGENT ??
-  'animemaster-19277/AnimeMaster/1.0.0 (Node.js Gateway)';
+  'CongutSun/AnimeMaster_Engine/2.4.1 (Node.js Gateway)';
+
+class RequestValidationError extends Error {}
 
 if (!CLIENT_ID || !CLIENT_SECRET || !CALLBACK_URL) {
   throw new Error(
@@ -48,7 +50,10 @@ async function loadStore() {
 }
 
 async function saveStore(store) {
-  await writeFile(storeFile, JSON.stringify(store, null, 2), 'utf8');
+  await writeFile(storeFile, JSON.stringify(store, null, 2), {
+    encoding: 'utf8',
+    mode: 0o600,
+  });
 }
 
 function applyCors(headers, req) {
@@ -97,14 +102,11 @@ function randomId(size = 24) {
 }
 
 function sanitizeCallbackScheme(value) {
-  const trimmed = (value ?? '').trim();
-  if (!trimmed) {
-    return DEFAULT_CALLBACK_SCHEME;
+  const scheme = (value ?? DEFAULT_CALLBACK_SCHEME).trim().toLowerCase();
+  if (scheme !== DEFAULT_CALLBACK_SCHEME.toLowerCase()) {
+    throw new RequestValidationError('Unsupported callback scheme.');
   }
-  if (!/^[a-zA-Z][a-zA-Z0-9+.-]*$/.test(trimmed)) {
-    throw new Error('Invalid callback scheme.');
-  }
-  return trimmed;
+  return DEFAULT_CALLBACK_SCHEME;
 }
 
 function buildBangumiAuthorizeUrl(state) {
@@ -341,7 +343,7 @@ const server = createServer(async (req, res) => {
 
     json(res, 404, { error: 'Not found.' }, req);
   } catch (error) {
-    json(res, 500, {
+    json(res, error instanceof RequestValidationError ? 400 : 500, {
       error: error instanceof Error ? error.message : 'Unknown server error.',
     }, req);
   }

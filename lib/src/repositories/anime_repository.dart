@@ -141,5 +141,4 @@ class AnimeRepository {
       'is_watched': row.isWatched,
     };
   }
-
 }

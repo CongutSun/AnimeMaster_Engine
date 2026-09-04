@@ -82,7 +82,7 @@ void main() {
 
   group('Episode.toJson', () {
     test('round-trips correctly', () {
-      final Episode episode = Episode(
+      const Episode episode = Episode(
         id: 42,
         subjectId: 7,
         episodeNumber: 3,
@@ -105,7 +105,7 @@ void main() {
     });
 
     test('displayNumber returns ? for zero', () {
-      expect(const Episode(id: 1, episodeNumber: 0).displayNumber, '?');
+      expect(const Episode(id: 1).displayNumber, '?');
     });
 
     test('chartKey uses episode number when positive', () {
@@ -113,7 +113,7 @@ void main() {
     });
 
     test('chartKey falls back to id when no episode number', () {
-      expect(const Episode(id: 42, episodeNumber: 0).chartKey, '42');
+      expect(const Episode(id: 42).chartKey, '42');
     });
   });
 }

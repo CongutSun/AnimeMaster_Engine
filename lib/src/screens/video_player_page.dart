@@ -540,17 +540,14 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
               _setOnlineSourceSearching(false);
             });
             final String raw = error.toString();
-            final String msg = raw.contains('Timeout') || raw.contains('timed out')
+            final String msg =
+                raw.contains('Timeout') || raw.contains('timed out')
                 ? '在线源搜索超时，请检查网络后重试'
                 : raw.contains('Connection') || raw.contains('SocketException')
-                  ? '网络连接失败，请检查网络后重试'
-                  : '在线源搜索失败';
+                ? '网络连接失败，请检查网络后重试'
+                : '在线源搜索失败';
             ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(msg),
-                backgroundColor: Colors.redAccent,
-                duration: const Duration(seconds: 4),
-              ),
+              SnackBar(content: Text(msg), backgroundColor: Colors.redAccent),
             );
           },
           onDone: () {
@@ -2168,7 +2165,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
       return;
     }
 
-    Navigator.of(context).pushReplacement(
+    await Navigator.of(context).pushReplacement<void, void>(
       MaterialPageRoute<void>(
         builder: (BuildContext context) =>
             VideoPlayerPage(media: media, streamServer: streamServer),
@@ -2329,7 +2326,9 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
     try {
       unawaited(PictureInPictureService.setAutoEnter(false));
     } catch (error) {
-      debugPrint('[VideoPlayerPage] Error in PiP setAutoEnter on dispose: $error');
+      debugPrint(
+        '[VideoPlayerPage] Error in PiP setAutoEnter on dispose: $error',
+      );
     }
     try {
       unawaited(_onlineSourceSubscription?.cancel());
@@ -2341,12 +2340,16 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
         ScreenBrightnessPlatform.instance.resetApplicationScreenBrightness(),
       );
     } catch (error) {
-      debugPrint('[VideoPlayerPage] Error resetting brightness on dispose: $error');
+      debugPrint(
+        '[VideoPlayerPage] Error resetting brightness on dispose: $error',
+      );
     }
     try {
       VolumeController.instance.showSystemUI = true;
     } catch (error) {
-      debugPrint('[VideoPlayerPage] Error restoring system UI on dispose: $error');
+      debugPrint(
+        '[VideoPlayerPage] Error restoring system UI on dispose: $error',
+      );
     }
 
     _cancelControlsAutoHide();
@@ -2359,19 +2362,25 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
       try {
         subscription.cancel();
       } catch (error) {
-        debugPrint('[VideoPlayerPage] Error canceling subscription on dispose: $error');
+        debugPrint(
+          '[VideoPlayerPage] Error canceling subscription on dispose: $error',
+        );
       }
     }
     if (_isMagnet) {
       try {
         _coordinator.removeListener(_onStateChanged);
       } catch (error) {
-        debugPrint('[VideoPlayerPage] Error removing listener on dispose: $error');
+        debugPrint(
+          '[VideoPlayerPage] Error removing listener on dispose: $error',
+        );
       }
       try {
         _coordinator.reset();
       } catch (error) {
-        debugPrint('[VideoPlayerPage] Error resetting coordinator on dispose: $error');
+        debugPrint(
+          '[VideoPlayerPage] Error resetting coordinator on dispose: $error',
+        );
       }
     }
 
@@ -2380,35 +2389,47 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
       try {
         widget.streamServer?.stop();
       } catch (error) {
-        debugPrint('[VideoPlayerPage] Error stopping stream server on dispose: $error');
+        debugPrint(
+          '[VideoPlayerPage] Error stopping stream server on dispose: $error',
+        );
       }
       try {
         _player.stop();
       } catch (error) {
-        debugPrint('[VideoPlayerPage] Error stopping player on dispose: $error');
+        debugPrint(
+          '[VideoPlayerPage] Error stopping player on dispose: $error',
+        );
       }
     }
     try {
       _onlineSourcesNotifier.dispose();
     } catch (error) {
-      debugPrint('[VideoPlayerPage] Error disposing online sources on dispose: $error');
+      debugPrint(
+        '[VideoPlayerPage] Error disposing online sources on dispose: $error',
+      );
     }
     try {
       _onlineSourceSearchingNotifier.dispose();
     } catch (error) {
-      debugPrint('[VideoPlayerPage] Error disposing search notifier on dispose: $error');
+      debugPrint(
+        '[VideoPlayerPage] Error disposing search notifier on dispose: $error',
+      );
     }
     if (_ownsPlayer) {
       try {
         _player.dispose();
       } catch (error) {
-        debugPrint('[VideoPlayerPage] Error disposing player on dispose: $error');
+        debugPrint(
+          '[VideoPlayerPage] Error disposing player on dispose: $error',
+        );
       }
     }
     try {
       _exitPlayerMode();
     } catch (error) {
-      debugPrint('[VideoPlayerPage] Error exiting player mode on dispose: $error');
+      debugPrint(
+        '[VideoPlayerPage] Error exiting player mode on dispose: $error',
+      );
     }
     super.dispose();
   }
@@ -2485,10 +2506,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
               bottom: MediaQuery.orientationOf(context) == Orientation.landscape
                   ? 92
                   : 126,
-              child: Align(
-                alignment: Alignment.center,
-                child: _buildPlaybackPrompt(),
-              ),
+              child: Align(child: _buildPlaybackPrompt()),
             ),
           if (showPlayer && _gestureIndicatorText.isNotEmpty)
             Positioned.fill(
@@ -2698,7 +2716,6 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
                               : _effectivePosition.inMilliseconds
                                     .clamp(0, _displayDuration.inMilliseconds)
                                     .toDouble(),
-                          min: 0,
                           max: _displayDuration.inMilliseconds <= 0
                               ? 1
                               : _displayDuration.inMilliseconds.toDouble(),
@@ -3947,10 +3964,6 @@ class _DanmakuBulletState extends State<_DanmakuBullet>
   void dispose() {
     _controller.dispose();
     super.dispose();
-  }
-
-  double _estimateTextWidth(String text) {
-    return math.max(120.0, text.runes.length * widget.fontSize).toDouble();
   }
 
   @override

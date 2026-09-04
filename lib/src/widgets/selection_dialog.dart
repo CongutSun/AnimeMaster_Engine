@@ -72,7 +72,9 @@ Future<void> showSelectionSheet(
                               item.label,
                               style: TextStyle(
                                 fontWeight: FontWeight.w600,
-                                color: item.enabled ? null : theme.colorScheme.onSurfaceVariant,
+                                color: item.enabled
+                                    ? null
+                                    : theme.colorScheme.onSurfaceVariant,
                               ),
                             ),
                           ),

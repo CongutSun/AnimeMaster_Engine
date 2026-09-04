@@ -26,39 +26,41 @@ class MagnetActionHelper {
   }) async {
     bool loadingDialogOpen = false;
 
-    showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (BuildContext dialogContext) => PopScope(
-        canPop: false,
-        child: Dialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: <Widget>[
-                const SizedBox(
-                  width: 24,
-                  height: 24,
-                  child: CircularProgressIndicator(
-                    color: Colors.blueAccent,
-                    strokeWidth: 3,
-                  ),
-                ),
-                const SizedBox(width: 20),
-                Expanded(
-                  child: Text(
-                    autoPlay ? '正在准备任务并建立播放链路...' : '正在解析资源并创建下载任务...',
-                    style: const TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.bold,
+    unawaited(
+      showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (BuildContext dialogContext) => PopScope(
+          canPop: false,
+          child: Dialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  const SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: CircularProgressIndicator(
+                      color: Colors.blueAccent,
+                      strokeWidth: 3,
                     ),
                   ),
-                ),
-              ],
+                  const SizedBox(width: 20),
+                  Expanded(
+                    child: Text(
+                      autoPlay ? '正在准备任务并建立播放链路...' : '正在解析资源并创建下载任务...',
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -150,7 +152,6 @@ class MagnetActionHelper {
     final bool startupReady = await DownloadManager().isRangeReadable(
       config.hash,
       config.targetPath,
-      bytes: _startupProbeBytes,
     );
     if (!context.mounted) {
       return;
@@ -276,7 +277,6 @@ class _WaitProgressDialogState extends State<_WaitProgressDialog> {
     final bool startupReady = await DownloadManager().isRangeReadable(
       widget.config.hash,
       widget.config.targetPath,
-      bytes: MagnetActionHelper._startupProbeBytes,
     );
     if (!mounted) {
       return;

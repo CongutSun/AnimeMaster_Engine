@@ -2,6 +2,7 @@
 ///
 /// All user‑facing text lives here so the app is i18n‑ready —
 /// swap this file for ARB/flutter_localizations when needed.
+library;
 
 class AppStrings {
   AppStrings._();
@@ -155,6 +156,14 @@ class AppStrings {
   static const String updateUpToDate = '当前已经是最新版本。';
   static const String updateAvailable = '发现新版本。';
   static const String cannotOpenDownloadUrl = '无法打开下载地址。';
+  static const String updateHttpsRequired = '更新地址必须使用有效的 HTTPS 链接。';
+  static const String updateChecksumMissing = '更新清单缺少有效的 SHA-256，已停止安装。';
+  static const String updateChecksumMismatch = '安装包校验失败，文件可能已损坏或被替换。';
+  static const String updatePackageInvalid = '安装包身份、版本或签名校验失败。';
+  static const String updateDownloadFailed = '更新下载失败，请稍后重试。';
+  static const String updateInstallerOpened = '安全校验通过，请在系统安装器中确认更新。';
+  static const String updateExternalDownloadOpened = '已打开系统下载页面。';
+  static const String updateDownloadingAndVerifying = '正在下载并校验安装包…';
 
   // ── Update dialog ──
   static const String updateDialogTitle = '发现新版本';
@@ -164,7 +173,7 @@ class AppStrings {
   static const String updateDialogSha256 = 'SHA256 校验';
   static const String updateDialogChangelog = '更新内容';
   static const String updateDialogNote =
-      '说明：Android 普通应用无法静默强制安装更新，系统会跳转到下载或安装流程，由用户确认覆盖安装。';
+      '安装前会自动校验 SHA-256、包名、版本号和签名，随后由系统安装器确认覆盖安装。';
   static const String updateDialogLater = '稍后';
   static const String updateDialogDownload = '下载更新';
   static const String updateDialogAppTitle = '应用更新';

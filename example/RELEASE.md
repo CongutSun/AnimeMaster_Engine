@@ -27,7 +27,7 @@
 
 ## 日常发版
 
-1. 修改 `example/pubspec.yaml` 的 `version`，例如 `2.0.1+2`。
+1. 修改 `example/pubspec.yaml` 的 `version`，例如 `2.4.1+2046`。
 2. 在 `example` 目录执行 `.\tool\build_release.ps1`，一次生成三个 ABI APK和通用 APK，并自动验证版本号、签名与 SHA256。
 3. `-SplitPerAbi` 仅为兼容旧命令保留，脚本不会再把它传给 Flutter。
 4. 如果需要同时生成应用市场包，追加 `-BuildAppBundle`。
@@ -40,37 +40,41 @@
 
 ## 已安装用户更新流程
 
-AnimeMaster 现在支持"检查更新 + 跳转下载安装"，但 Android 普通侧载应用不能静默强制升级。实际流程如下：
+AnimeMaster 支持安全的应用内更新。Android 会下载 APK，依次核验 HTTPS、SHA-256、应用包名、versionCode 和签名，再交由系统安装界面确认；侧载应用不能静默升级。
 
 1. 先构建新的 `app-release.apk`。
 2. 把 APK 上传到你自己的静态文件地址、对象存储或 GitHub Releases。
-3. 运行下面的脚本生成更新清单 JSON：
+3. 运行下面的脚本生成更新清单 JSON；脚本会从本地 Release APK 自动计算 SHA-256：
 
 ```powershell
-cd F:\AnimeMaster_Engine\AnimeMaster_Engine\example
+cd <项目目录>\example
 .\tool\write_update_manifest.ps1 `
   -ApkUrl "https://your-domain.com/anime/app-release.apk" `
   -Notes "修复磁力解析超时","新增播放器选集与倍速"
 ```
 
 4. 把生成的 `build/app/outputs/flutter-apk/app_update.json` 上传到固定 URL。
-5. 在应用设置页把"更新清单地址"填写为这个 JSON 的公开地址。
-6. 用户之后可以：
+5. 更新清单及其中全部 APK 地址必须使用 HTTPS，并为每个 APK 填写 SHA-256。
+6. 在应用设置页把"更新清单地址"填写为这个 JSON 的公开地址。
+7. 用户之后可以：
    - 在"关于 AnimeMaster"页手动点"检查更新"。
-   - 或者开启"启动时检查更新"，应用启动后自动发现新版本并跳转下载。
+   - 或者开启"启动时检查更新"，应用启动后自动发现、校验并安装新版本。
 
 ## 更新清单格式
 
 ```json
 {
-  "version": "2.0.1",
-  "build": 2,
+  "version": "2.4.1",
+  "build": 2046,
   "apkUrl": "https://your-domain.com/anime/app-release.apk",
   "notes": [
     "修复磁力解析超时",
-    "新增播放器选集与倍速"
+    "新增更新包完整性与签名校验"
   ],
-  "publishedAt": "2026-04-15T22:00:00+08:00",
-  "forceUpdate": false
+  "publishedAt": "2026-09-04T14:53:23+08:00",
+  "forceUpdate": false,
+  "sha256": {
+    "universal": "64 位十六进制 SHA-256"
+  }
 }
 ```

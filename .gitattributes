@@ -1,1 +1,1 @@
-release/app-release.apk filter=lfs diff=lfs merge=lfs -text
+release/*.apk filter=lfs diff=lfs merge=lfs -text

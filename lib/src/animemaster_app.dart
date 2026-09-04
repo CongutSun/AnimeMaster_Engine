@@ -21,7 +21,9 @@ class AnimeMasterApp extends StatelessWidget {
         ChangeNotifierProvider<SettingsProvider>(
           create: (_) => SettingsProvider(),
         ),
-        ChangeNotifierProvider<DownloadManager>.value(value: ServiceLocator.downloadManager),
+        ChangeNotifierProvider<DownloadManager>.value(
+          value: ServiceLocator.downloadManager,
+        ),
       ],
       child: Consumer<SettingsProvider>(
         builder:
@@ -29,7 +31,8 @@ class AnimeMasterApp extends StatelessWidget {
               // Register 401 auto-refresh callback once settings are loaded.
               if (settings.isLoaded) {
                 DioClient.setAuthTokenRefresher(
-                  () => settings.ensureBangumiAccessToken(forceRefresh: true)
+                  () => settings
+                      .ensureBangumiAccessToken(forceRefresh: true)
                       .then((bool ok) => ok ? settings.bgmToken : null),
                 );
               }
@@ -40,11 +43,15 @@ class AnimeMasterApp extends StatelessWidget {
                   settings.themeMode.contains('深色') ||
                   settings.themeMode.contains('暗');
 
-              HapticNavigatorObserver.syncFromSettings(settings.enableHapticFeedback);
+              HapticNavigatorObserver.syncFromSettings(
+                settings.enableHapticFeedback,
+              );
               return MaterialApp(
                 title: 'AnimeMaster',
                 debugShowCheckedModeBanner: false,
-                navigatorObservers: <NavigatorObserver>[HapticNavigatorObserver()],
+                navigatorObservers: <NavigatorObserver>[
+                  HapticNavigatorObserver(),
+                ],
                 themeMode: isDark ? ThemeMode.dark : ThemeMode.light,
                 theme: AppTheme.light(),
                 darkTheme: AppTheme.dark(),
@@ -126,8 +133,9 @@ class _StartupUpdateProbeState extends State<_StartupUpdateProbe> {
     _isChecking = true;
     try {
       final AppUpdateService updateService = ServiceLocator.appUpdateService;
-      final AppUpdateCheckResult result = await updateService
-          .checkForUpdates(feedUrl);
+      final AppUpdateCheckResult result = await updateService.checkForUpdates(
+        feedUrl,
+      );
       if (!mounted || !result.updateAvailable) {
         return;
       }

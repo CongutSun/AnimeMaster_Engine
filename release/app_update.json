@@ -1,27 +1,27 @@
 {
-  "version": "2.3.7",
-  "build": 2045,
-  "apkUrl": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.3.7/app-release.apk",
+  "version": "2.4.1",
+  "build": 2046,
+  "apkUrl": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.1/app-release.apk",
   "notes": [
-    "修复首次在线播放搜索遗漏动态站点列表、导致在线源始终为空的问题。",
-    "在线源会先加载内置站点列表，并在后台刷新远程健康状态、过滤已下线站点。",
-    "“全网磁力检索”更名为“番剧资源搜索”，明确同时支持磁力链接和 .torrent 种子。",
-    "资源搜索新增指定集数过滤，避免把分辨率、年份或合集范围误判为目标单集。",
-    "剧集列表和播放页可直接搜索下载当前单集，并自动带入番剧名称与集数。",
-    "Android 发布版本升级为 2.3.7+2045，可覆盖安装现有版本。"
+    "更新包下载后自动校验 HTTPS、SHA-256、应用包名、版本号和签名，再交由系统安装。",
+    "收紧 Bangumi OAuth 回调白名单并增加授权与代理接口限流。",
+    "强化下载任务删除边界，避免任务仍在写入或路径越界时误删文件。",
+    "远程在线源仅接受 HTTPS 公网地址，阻止本机与私有网络地址注入。",
+    "补齐 iOS OAuth 与相册权限声明、Windows FFI 构建配置及法律与隐私文档。",
+    "静态检查告警清零，新增安全回归测试与持续集成质量门禁。"
   ],
-  "publishedAt": "2026-08-20T10:14:38+08:00",
+  "publishedAt": "2026-09-04T14:53:23+08:00",
   "forceUpdate": false,
   "apkUrls": {
-    "android-arm64": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.3.7/app-arm64-v8a-release.apk",
-    "android-arm": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.3.7/app-armeabi-v7a-release.apk",
-    "android-x64": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.3.7/app-x86_64-release.apk",
-    "universal": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.3.7/app-release.apk"
+    "android-arm64": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.1/app-arm64-v8a-release.apk",
+    "android-arm": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.1/app-armeabi-v7a-release.apk",
+    "android-x64": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.1/app-x86_64-release.apk",
+    "universal": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.1/app-release.apk"
   },
   "sha256": {
-    "android-arm64": "0f1ed649389b2c6460a0fb77e48b5c77dfa7bbac1f6277d5ce9754a477a7ecae",
-    "android-arm": "98126b4c8396f5c42ecf0c296548c31217f4c5286f66a35cfd4365a8a64fc11c",
-    "android-x64": "fffc05bd99ea190e89bdceeb7892e22b111cce97f5301c3ad53946ba5339d0f5",
-    "universal": "1651eff40c39832b4980f22dea5d71f4c83caaf8551c51add4204e7003f8f5e7"
+    "android-arm64": "f9fb15aec567455453f4ad0a5ef2fa4cabb259b5cf0c236d840b81c9f4688005",
+    "android-arm": "c6a1cb51b29156aad769bb27a4d10ed0bbfb43f6f19e8d749ca718998cfca06f",
+    "android-x64": "5a0b59fb73f156e55a1f6003fd61a4ff8bd91a11b22263347695690c841e0280",
+    "universal": "f342a45a26355fea7acdc0603cd90774a6bf3328b3224f9d1c8793dbd4bd6638"
   }
 }

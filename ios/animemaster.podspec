@@ -4,14 +4,14 @@
 #
 Pod::Spec.new do |s|
   s.name             = 'animemaster'
-  s.version          = '0.0.1'
-  s.summary          = 'A new Flutter FFI plugin project.'
+  s.version          = '2.4.1'
+  s.summary          = 'Native parser and local media scanner for AnimeMaster.'
   s.description      = <<-DESC
-A new Flutter FFI plugin project.
+AnimeMaster native helpers for magnet parsing and local media discovery.
                        DESC
-  s.homepage         = 'http://example.com'
+  s.homepage         = 'https://github.com/CongutSun/AnimeMaster_Engine'
   s.license          = { :file => '../LICENSE' }
-  s.author           = { 'Your Company' => 'email@example.com' }
+  s.author           = { 'CongutSun' => 'CongutSun@users.noreply.github.com' }
 
   # This will ensure the source files in Classes/ are included in the native
   # builds of apps using this FFI plugin. Podspec does not support relative

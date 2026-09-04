@@ -1,3 +1,13 @@
+## 2.4.1
+
+* 加固 Bangumi OAuth：回调 Scheme 固定白名单、客户端校验 request_id，并为授权入口增加速率限制与回归测试。
+* Android 更新改为应用内安全下载，安装前自动验证 HTTPS、SHA-256、包名、versionCode 与签名证书。
+* 下载任务删除增加目录边界检查，等待 BT 任务停止后再清理文件，失败时保留可恢复状态。
+* 远程在线播放源限制为公网 HTTPS 地址，拒绝本机、环回和私网目标。
+* 统一 Flutter、Native、CMake、Podspec 和应用版本为 2.4.1，Android buildNumber 更新为 2046。
+* 补齐 iOS OAuth URL Scheme、相册权限说明、项目许可证、隐私与内容使用说明。
+* 收紧持续集成质量门槛，新增格式、严格分析、OAuth 安全和覆盖率检查。
+
 ## 2.3.7
 
 * 修复首轮在线播放搜索未等待动态站点列表加载、导致 60+ 在线源被永久遗漏的问题；远程列表会过滤已下线站点并在后台刷新。
@@ -132,4 +142,4 @@
 
 ## 0.0.1
 
-* TODO: Describe initial release.
+* Initial project import.

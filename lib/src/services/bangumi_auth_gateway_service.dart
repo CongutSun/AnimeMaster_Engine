@@ -9,7 +9,6 @@ class BangumiAuthGatewayService {
       connectTimeout: const Duration(seconds: 45),
       receiveTimeout: const Duration(seconds: 45),
       sendTimeout: const Duration(seconds: 45),
-      responseType: ResponseType.json,
     ),
   );
 

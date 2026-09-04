@@ -111,7 +111,7 @@ class TorrentStreamServer {
 
     RandomAccessFile? raf;
     try {
-      raf = await file.open(mode: FileMode.read);
+      raf = await file.open();
       await raf.setPosition(start);
       int currentPos = start;
 
@@ -191,7 +191,7 @@ class TorrentStreamServer {
           continue;
         }
 
-        raf = await file.open(mode: FileMode.read);
+        raf = await file.open();
         await raf.setPosition(start);
         final List<int> probe = await raf.read(probeLength);
         if (probe.isNotEmpty && !_isZeroFilled(probe)) {

@@ -11,6 +11,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/download_task_info.dart';
 import '../repositories/download_task_repository.dart';
 import '../services/background_download_service.dart';
+import '../utils/app_storage_paths.dart';
 import '../utils/tracker_pool.dart';
 
 List<DownloadTaskInfo> _decodeLegacyDownloadTasks(String tasksJson) {
@@ -43,7 +44,7 @@ class DownloadManager extends ChangeNotifier {
   static const Duration _maintenanceInterval = Duration(seconds: 20);
   static const Duration _peerRefreshCooldown = Duration(seconds: 35);
 
-  // ── Per-task state — see _ManagedTask for the target unified model ──
+  // ── Per-task state ──
   final Map<String, TorrentTask> _activeTasks = <String, TorrentTask>{};
   final Map<String, DownloadTaskInfo> _taskConfigs =
       <String, DownloadTaskInfo>{};
@@ -487,7 +488,7 @@ class DownloadManager extends ChangeNotifier {
       if (await file.length() < start + probeLength) {
         return false;
       }
-      final RandomAccessFile raf = await file.open(mode: FileMode.read);
+      final RandomAccessFile raf = await file.open();
       try {
         await raf.setPosition(start);
         final List<int> probe = await raf.read(probeLength);
@@ -1011,11 +1012,38 @@ class DownloadManager extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> deleteTask(String hash) async {
+  Future<bool> deleteTask(String hash) async {
     final TorrentTask? task = _activeTasks[hash];
     final DownloadTaskInfo? config = _taskConfigs[hash];
 
-    task?.stop();
+    if (task == null || config == null) {
+      return false;
+    }
+
+    try {
+      await task.stop().timeout(const Duration(seconds: 10));
+    } catch (error) {
+      debugPrint('Failed to stop task before deletion: $error');
+      return false;
+    }
+
+    if (!await AppStoragePaths.isManagedTaskDirectory(config.savePath)) {
+      debugPrint(
+        'Refused to delete unmanaged task directory: ${config.savePath}',
+      );
+      return false;
+    }
+
+    try {
+      final Directory dir = Directory(config.savePath);
+      if (await dir.exists()) {
+        await dir.delete(recursive: true);
+      }
+    } catch (error) {
+      debugPrint('Failed to delete task files: $error');
+      return false;
+    }
+
     _peerWarmupTimers.remove(hash)?.cancel();
     _activeTasks.remove(hash);
     _taskConfigs.remove(hash);
@@ -1034,20 +1062,12 @@ class DownloadManager extends ChangeNotifier {
       _playbackPriorityHash = null;
     }
 
-    if (config != null) {
-      try {
-        final Directory dir = Directory(config.savePath);
-        if (await dir.exists()) {
-          await dir.delete(recursive: true);
-        }
-      } catch (_) {}
-    }
-
     await _taskRepository.deleteByHash(hash);
     await _enforceConcurrency();
     _stopTimersIfIdle();
     _syncBackgroundService();
     notifyListeners();
+    return true;
   }
 
   double _uploadSpeedInKb(TorrentTask task) {
@@ -1080,32 +1100,9 @@ class DownloadManager extends ChangeNotifier {
     }
     _peerWarmupTimers.clear();
     for (final TorrentTask task in _activeTasks.values) {
-      task.stop();
+      unawaited(task.stop());
     }
     unawaited(BackgroundDownloadService.setActive(false));
     super.dispose();
   }
-}
-
-/// Bundled per-task mutable state — replaces scattered parallel Maps.
-class _ManagedTask {
-  _ManagedTask({
-    required this.torrentTask,
-    required this.config,
-    this.isPaused = false,
-    this.isQueued = false,
-  });
-
-  TorrentTask torrentTask;
-  DownloadTaskInfo config;
-  bool isPaused;
-  bool isQueued;
-  int lastDownloadedBytes = 0;
-  DateTime lastSpeedSampleTime = DateTime.now();
-  double currentSpeed = 0.0;
-  double currentUploadSpeed = 0.0;
-  double lastNotifiedProgress = 0.0;
-  double lastNotifiedSpeed = 0.0;
-  double lastNotifiedUploadSpeed = 0.0;
-  DateTime? lastPeerRefreshTime;
 }

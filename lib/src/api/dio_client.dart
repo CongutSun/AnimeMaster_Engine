@@ -177,8 +177,6 @@ class DioClient {
           request: false,
           requestHeader: false,
           responseHeader: false,
-          responseBody: false,
-          error: true,
         ),
       );
     }

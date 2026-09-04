@@ -1199,7 +1199,6 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
     _showInlineGestureIndicator(
       icon: Icons.speed_rounded,
       text: '2.0x 倍速播放',
-      progress: null,
       autoHide: false,
     );
   }
@@ -1789,7 +1788,7 @@ class _EmbeddedEpisodePlayer extends StatelessWidget {
               left: 8,
               right: 8,
               bottom: showControls ? 58 : 12,
-              child: Align(alignment: Alignment.center, child: playbackPrompt!),
+              child: Align(child: playbackPrompt!),
             ),
         ],
       ),
@@ -1923,7 +1922,6 @@ class _InlinePlayerBar extends StatelessWidget {
                 ),
                 child: Slider(
                   value: value,
-                  min: 0,
                   max: maxMs.toDouble(),
                   activeColor: Colors.white,
                   inactiveColor: Colors.white30,

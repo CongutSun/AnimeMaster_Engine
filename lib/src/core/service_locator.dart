@@ -25,7 +25,8 @@ class ServiceLocator {
 
   static DioClient get dioClient => _instance._dioClient!;
   static DownloadManager get downloadManager => _instance._downloadManager!;
-  static EpisodeCoordinator get episodeCoordinator => _instance._episodeCoordinator!;
+  static EpisodeCoordinator get episodeCoordinator =>
+      _instance._episodeCoordinator!;
   static AppUpdateService get appUpdateService => _instance._appUpdateService!;
   static OnlineEpisodeSourceService get onlineEpisodeSourceService =>
       _instance._onlineEpisodeSourceService!;

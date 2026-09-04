@@ -23,10 +23,7 @@ class ErrorStateWidget extends StatelessWidget {
   }
 
   factory ErrorStateWidget.loadFailed({VoidCallback? onRetry}) {
-    return ErrorStateWidget(
-      message: AppStrings.loadFailed,
-      onRetry: onRetry,
-    );
+    return ErrorStateWidget(message: AppStrings.loadFailed, onRetry: onRetry);
   }
 
   @override
@@ -38,7 +35,11 @@ class ErrorStateWidget extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
-            Icon(icon, size: 56, color: colors.onSurface.withValues(alpha: 0.4)),
+            Icon(
+              icon,
+              size: 56,
+              color: colors.onSurface.withValues(alpha: 0.4),
+            ),
             const SizedBox(height: 16),
             Text(
               message,

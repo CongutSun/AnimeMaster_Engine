@@ -147,7 +147,7 @@ class _RoleSubjectsPageState extends State<RoleSubjectsPage> {
             ],
           ),
           const SizedBox(height: 16),
-          AnimeGrid(animeList: subjects, isTop: false),
+          AnimeGrid(animeList: subjects),
         ],
       ),
     );

@@ -22,43 +22,28 @@ void main() {
 
   group('stripRedundantEpisodePrefix', () {
     test('removes 第N集 prefix', () {
-      expect(
-        stripRedundantEpisodePrefix('第1集 プロローグ', 1),
-        'プロローグ',
-      );
+      expect(stripRedundantEpisodePrefix('第1集 プロローグ', 1), 'プロローグ');
     });
 
     test('removes numbered prefix', () {
-      expect(
-        stripRedundantEpisodePrefix('01 始まり', 1),
-        '始まり',
-      );
+      expect(stripRedundantEpisodePrefix('01 始まり', 1), '始まり');
     });
 
     test('returns title unchanged when no prefix', () {
-      expect(
-        stripRedundantEpisodePrefix('オリジナルタイトル', 5),
-        'オリジナルタイトル',
-      );
+      expect(stripRedundantEpisodePrefix('オリジナルタイトル', 5), 'オリジナルタイトル');
     });
   });
 
   group('episodeTitle', () {
     test('builds display title from name_cn', () {
       expect(
-        episodeTitle(<String, dynamic>{
-          'ep': 3,
-          'name_cn': '第3集 旅立ち',
-        }),
+        episodeTitle(<String, dynamic>{'ep': 3, 'name_cn': '第3集 旅立ち'}),
         '旅立ち',
       );
     });
 
     test('falls back to numbered label for empty title', () {
-      expect(
-        episodeTitle(<String, dynamic>{'ep': 5}),
-        '第5集',
-      );
+      expect(episodeTitle(<String, dynamic>{'ep': 5}), '第5集');
     });
   });
 

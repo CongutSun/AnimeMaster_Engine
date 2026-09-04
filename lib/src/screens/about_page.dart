@@ -131,7 +131,7 @@ class _AboutPageState extends State<AboutPage> {
                   ),
                   const SizedBox(height: 8),
                   const Text(
-                    '说明：侧载 APK 用户只能通过应用内检测后跳转下载覆盖安装，系统不会允许静默升级。',
+                    '说明：应用会先下载并校验 APK 的哈希、包名、版本和签名，再交由系统安装器确认覆盖安装。',
                     style: TextStyle(fontSize: 12, color: Colors.grey),
                   ),
                 ],
@@ -141,15 +141,26 @@ class _AboutPageState extends State<AboutPage> {
           const SizedBox(height: 12),
           const Card(
             child: Padding(
-              padding: const EdgeInsets.all(16),
+              padding: EdgeInsets.all(16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
-                children: const <Widget>[
+                children: <Widget>[
                   Text(
                     '更新日志',
                     style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                   ),
                   SizedBox(height: 12),
+                  _LogEntry(
+                    version: '2.4.1',
+                    items: <String>[
+                      '加固 Bangumi OAuth 回调绑定、速率限制和客户端请求校验。',
+                      'Android 更新包在安装前自动校验 HTTPS、SHA-256、包名、版本号和签名。',
+                      '下载删除增加受管目录边界保护，并等待任务停止后再清理文件。',
+                      '远程在线播放源限制为公网 HTTPS 地址，补齐 iOS OAuth 和相册权限。',
+                      '统一工程版本与质量门槛，补充许可证、隐私说明和安全测试。',
+                    ],
+                  ),
+                  SizedBox(height: 14),
                   _LogEntry(
                     version: '2.3.7',
                     items: <String>[
@@ -196,7 +207,7 @@ class _AboutPageState extends State<AboutPage> {
                       'Worker 更新：online_sources 健康探活优化，代理端点 user-agent 规范化，APP_UPDATE_MANIFEST 同步至 v2.3.4。',
                     ],
                   ),
-                  const SizedBox(height: 14),
+                  SizedBox(height: 14),
                   _LogEntry(
                     version: '2.3.3',
                     items: <String>[
@@ -212,7 +223,7 @@ class _AboutPageState extends State<AboutPage> {
                       '在线源远程热更新：Cloudflare Worker 每 6 小时自动探活所有站点，客户端启动时拉取合并，本地 JSON 作兜底。',
                     ],
                   ),
-                  const SizedBox(height: 14),
+                  SizedBox(height: 14),
                   _LogEntry(
                     version: '2.3.2',
                     items: <String>[
@@ -230,7 +241,7 @@ class _AboutPageState extends State<AboutPage> {
                       '补充测试覆盖：Episode / AppUpdateInfo / SettingsProvider / HomeViewModel / SearchViewModel 等，测试用例从 24 增至 73+。',
                     ],
                   ),
-                  const SizedBox(height: 14),
+                  SizedBox(height: 14),
                   _LogEntry(
                     version: '2.3.1',
                     items: <String>[

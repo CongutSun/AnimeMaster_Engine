@@ -4,14 +4,17 @@ param(
 
     [string]$ApkDirectory = "build/app/outputs/flutter-apk",
 
-    [string]$PreviousReleaseApk = "../release/app-arm64-v8a-release.apk"
+    [string]$ReleaseManifest = "../release/app_update.json",
+
+    [string]$ReleaseIdentity = "../release/release_identity.json"
 )
 
 $ErrorActionPreference = 'Stop'
 
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $apkDirectoryPath = Join-Path $projectRoot $ApkDirectory
-$previousReleaseApkPath = Join-Path $projectRoot $PreviousReleaseApk
+$releaseManifestPath = Join-Path $projectRoot $ReleaseManifest
+$releaseIdentityPath = Join-Path $projectRoot $ReleaseIdentity
 
 $androidSdk = if ($env:ANDROID_SDK_ROOT) {
     $env:ANDROID_SDK_ROOT
@@ -34,8 +37,11 @@ $apkSigner = Join-Path $buildTools.FullName 'apksigner.bat'
 if (-not (Test-Path -LiteralPath $aapt) -or -not (Test-Path -LiteralPath $apkSigner)) {
     throw "aapt.exe or apksigner.bat is missing from $($buildTools.FullName)"
 }
-if (-not (Test-Path -LiteralPath $previousReleaseApkPath)) {
-    throw "Previous signed release APK is required: $previousReleaseApkPath"
+if (-not (Test-Path -LiteralPath $releaseManifestPath)) {
+    throw "Release manifest is required: $releaseManifestPath"
+}
+if (-not (Test-Path -LiteralPath $releaseIdentityPath)) {
+    throw "Release identity is required: $releaseIdentityPath"
 }
 
 function Get-ApkVersionCode {
@@ -70,14 +76,63 @@ function Get-ApkSignerSha256 {
     return $match.Groups[1].Value.ToLowerInvariant()
 }
 
-$previousVersionCode = Get-ApkVersionCode -Path $previousReleaseApkPath
-if ($ExpectedVersionCode -le $previousVersionCode) {
+function Get-ApkPackageName {
+    param([Parameter(Mandatory = $true)][string]$Path)
+
+    $badging = & $aapt dump badging $Path
+    if ($LASTEXITCODE -ne 0) {
+        throw "Unable to inspect APK package: $Path"
+    }
+    $packageLine = $badging | Select-Object -First 1
+    $match = [regex]::Match($packageLine, "package:\s+name='([^']+)'"
+    )
+    if (-not $match.Success) {
+        throw "Unable to read package name from $Path"
+    }
+    return $match.Groups[1].Value
+}
+
+function Get-FileSha256 {
+    param([Parameter(Mandatory = $true)][string]$Path)
+
+    $stream = [System.IO.File]::OpenRead($Path)
+    try {
+        $sha256 = [System.Security.Cryptography.SHA256]::Create()
+        try {
+            $bytes = $sha256.ComputeHash($stream)
+            return ([System.BitConverter]::ToString($bytes)).Replace('-', '')
+        } finally {
+            $sha256.Dispose()
+        }
+    } finally {
+        $stream.Dispose()
+    }
+}
+
+$publishedManifest = [System.IO.File]::ReadAllText(
+    $releaseManifestPath,
+    [System.Text.Encoding]::UTF8
+) | ConvertFrom-Json
+$identity = [System.IO.File]::ReadAllText(
+    $releaseIdentityPath,
+    [System.Text.Encoding]::UTF8
+) | ConvertFrom-Json
+$publishedVersionCode = [int]$publishedManifest.build
+$trustedSigner = ([string]$identity.signerSha256).Trim().ToLowerInvariant()
+$expectedPackageName = ([string]$identity.packageName).Trim()
+
+if ($ExpectedVersionCode -lt $publishedVersionCode) {
     throw (
-        "New versionCode $ExpectedVersionCode must be greater than " +
-        "previous release versionCode $previousVersionCode."
+        "Build versionCode $ExpectedVersionCode cannot be lower than " +
+        "published versionCode $publishedVersionCode."
     )
 }
-$previousSigner = Get-ApkSignerSha256 -Path $previousReleaseApkPath
+if ($trustedSigner -notmatch '^[0-9a-f]{64}$') {
+    throw 'release_identity.json contains an invalid signerSha256.'
+}
+if (-not $expectedPackageName) {
+    throw 'release_identity.json contains an invalid packageName.'
+}
 
 $requiredApks = @(
     'app-arm64-v8a-release.apk',
@@ -100,23 +155,32 @@ foreach ($apkName in $requiredApks) {
         )
     }
 
-    $actualSigner = Get-ApkSignerSha256 -Path $apkPath
-    if ($actualSigner -ne $previousSigner) {
+    $actualPackageName = Get-ApkPackageName -Path $apkPath
+    if ($actualPackageName -ne $expectedPackageName) {
         throw (
-            "$apkName is signed by $actualSigner, but the previous release " +
-            "uses $previousSigner. It cannot cover-upgrade existing installs."
+            "$apkName uses package $actualPackageName; " +
+            "expected $expectedPackageName."
         )
     }
 
-    $hash = Get-FileHash -LiteralPath $apkPath -Algorithm SHA256
+    $actualSigner = Get-ApkSignerSha256 -Path $apkPath
+    if ($actualSigner -ne $trustedSigner) {
+        throw (
+            "$apkName is signed by $actualSigner, but the trusted release " +
+            "identity uses $trustedSigner."
+        )
+    }
+
+    $hash = Get-FileSha256 -Path $apkPath
     $sizeMb = [Math]::Round((Get-Item -LiteralPath $apkPath).Length / 1MB, 2)
     Write-Host (
         "$apkName VersionCode=$actualVersionCode Size=${sizeMb}MB " +
-        "SHA256=$($hash.Hash)"
+        "SHA256=$hash"
     )
 }
 
 Write-Host (
-    "Release verification passed. PreviousVersionCode=$previousVersionCode " +
-    "NewVersionCode=$ExpectedVersionCode SignerSHA256=$previousSigner"
+    "Release verification passed. PublishedVersionCode=$publishedVersionCode " +
+    "BuildVersionCode=$ExpectedVersionCode Package=$expectedPackageName " +
+    "SignerSHA256=$trustedSigner"
 )

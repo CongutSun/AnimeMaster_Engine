@@ -754,7 +754,7 @@ class _DetailPageState extends State<DetailPage>
     final imageUrl = detailData?['images']?['large']?.toString() ?? '';
 
     final theme = Theme.of(context);
-    final Color highlightOrange = const Color(0xFFFF9F0A);
+    const Color highlightOrange = Color(0xFFFF9F0A);
     final Color highlightBlue = theme.colorScheme.primary;
     final double topInset = MediaQuery.paddingOf(context).top;
     final SystemUiOverlayStyle overlayStyle =
@@ -784,10 +784,7 @@ class _DetailPageState extends State<DetailPage>
                       children: [
                         if (imageUrl.isNotEmpty)
                           Positioned.fill(
-                            child: _buildSafeImage(
-                              imageUrl: imageUrl,
-                              fit: BoxFit.cover,
-                            ),
+                            child: _buildSafeImage(imageUrl: imageUrl),
                           )
                         else
                           Positioned.fill(
@@ -889,7 +886,7 @@ class _DetailPageState extends State<DetailPage>
                                         const SizedBox(width: 4),
                                         Text(
                                           '${detailData?['rating']?['score'] ?? '暂无评分'}',
-                                          style: TextStyle(
+                                          style: const TextStyle(
                                             fontSize: 15,
                                             fontWeight: FontWeight.bold,
                                             color: highlightOrange,
@@ -1173,7 +1170,6 @@ class _DetailPageState extends State<DetailPage>
                               imageUrl: item['images']?['grid'] ?? '',
                               width: 52,
                               height: 52,
-                              fit: BoxFit.cover,
                               errorWidget: const Center(
                                 child: Icon(
                                   Icons.person,
@@ -1234,7 +1230,7 @@ class _DetailPageState extends State<DetailPage>
             child: Center(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
-                children: const <Widget>[
+                children: <Widget>[
                   Icon(
                     Icons.videocam_off_rounded,
                     size: 36,

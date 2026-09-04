@@ -12,7 +12,10 @@ class AnimeGrid extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (animeList.isEmpty) {
-      return const Text(AppStrings.noData, style: TextStyle(color: Colors.grey));
+      return const Text(
+        AppStrings.noData,
+        style: TextStyle(color: Colors.grey),
+      );
     }
     return LayoutBuilder(
       builder: (BuildContext context, BoxConstraints constraints) {

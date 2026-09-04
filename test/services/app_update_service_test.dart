@@ -9,11 +9,94 @@ void main() {
     service = const AppUpdateService();
   });
 
-  group('AppUpdateInfo.resolveDownloadUrl', () {
-    test('picks ABI-specific URL when available', () {
-      // _resolveDownloadUrl and _resolveSha256 are private but the
-      // openDownloadUrl public method exercises the resolution path.
-      // The URL resolution is tested through the model construction.
+  group('AppUpdateService package verification', () {
+    test('resolves universal package and checksum on unsupported ABI', () {
+      final AppUpdateInfo info = AppUpdateInfo.fromJson(<String, dynamic>{
+        'version': '2.4.1',
+        'build': 2046,
+        'apkUrl': 'https://example.com/fallback.apk',
+        'downloads': <String, dynamic>{
+          'universal': 'https://example.com/universal.apk',
+        },
+        'sha256': <String, dynamic>{'universal': 'a' * 64},
+      });
+
+      expect(
+        service.resolveDownloadUrl(info),
+        'https://example.com/universal.apk',
+      );
+      expect(service.resolveSha256(info), 'a' * 64);
+    });
+
+    test('accepts only complete SHA-256 values', () {
+      expect(service.isValidSha256('A1' * 32), isTrue);
+      expect(service.isValidSha256('abc123'), isFalse);
+      expect(service.isValidSha256('g' * 64), isFalse);
+    });
+
+    test(
+      'falls back to the legacy package URL without inventing a checksum',
+      () {
+        final AppUpdateInfo info = AppUpdateInfo.fromJson(<String, dynamic>{
+          'version': '2.4.1',
+          'build': 2046,
+          'apkUrl': 'https://example.com/fallback.apk',
+        });
+
+        expect(
+          service.resolveDownloadUrl(info),
+          'https://example.com/fallback.apk',
+        );
+        expect(service.resolveSha256(info), isNull);
+      },
+    );
+
+    test('compares semantic versions and build numbers safely', () {
+      expect(
+        service.debugIsRemoteNewer(
+          localVersion: '2.4.1',
+          localBuild: 2045,
+          remoteVersion: '2.4.1',
+          remoteBuild: 2046,
+        ),
+        isTrue,
+      );
+      expect(
+        service.debugIsRemoteNewer(
+          localVersion: '2.4.1',
+          localBuild: 2046,
+          remoteVersion: '2.4.0',
+          remoteBuild: 9999,
+        ),
+        isFalse,
+      );
+      expect(
+        service.debugIsRemoteNewer(
+          localVersion: '2.4.1',
+          localBuild: 2046,
+          remoteVersion: '2.5',
+          remoteBuild: 1,
+        ),
+        isTrue,
+      );
+      expect(
+        service.debugIsRemoteNewer(
+          localVersion: '2.4.1',
+          localBuild: 2046,
+          remoteVersion: '2.4.1',
+          remoteBuild: 2046,
+        ),
+        isFalse,
+      );
+      expect(
+        service.debugIsRemoteNewer(
+          localVersion: '2.4.2',
+          localBuild: 1,
+          remoteVersion: '2.4.1-beta1',
+          remoteBuild: 9999,
+        ),
+        isFalse,
+      );
     });
   });
 

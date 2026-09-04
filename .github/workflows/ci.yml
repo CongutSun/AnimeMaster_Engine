@@ -14,11 +14,11 @@ jobs:
       - uses: actions/checkout@v4
       - uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.47.x'
+          flutter-version: '3.41.x'
           channel: 'stable'
       - run: flutter pub get
-      # Keep legacy lint findings visible without hiding real analyzer errors.
-      - run: flutter analyze --no-fatal-infos --no-fatal-warnings
+      - run: dart format --output=none --set-exit-if-changed lib test example/lib
+      - run: flutter analyze
 
   worker:
     name: Worker Tests
@@ -29,8 +29,7 @@ jobs:
         with:
           node-version: '24'
       - run: node --check tools/bangumi_auth_worker/worker.js
-      - run: node --test tools/bangumi_auth_worker/year_ranking.test.mjs
-      - run: node --test tools/bangumi_auth_worker/app_update_manifest.test.mjs
+      - run: node --test tools/bangumi_auth_worker/*.test.mjs
 
   test:
     name: Run Tests
@@ -39,20 +38,44 @@ jobs:
       - uses: actions/checkout@v4
       - uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.47.x'
+          flutter-version: '3.41.x'
           channel: 'stable'
       - run: flutter pub get
       - run: flutter test --coverage
+      - run: dart run tool/check_coverage.dart coverage/lcov.info 17.5
 
   build-android:
     name: Build Android APK
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
     steps:
       - uses: actions/checkout@v4
       - uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.47.x'
+          flutter-version: '3.41.x'
           channel: 'stable'
       - run: flutter pub get
       - run: cd example && flutter build apk --debug
+
+  build-windows:
+    name: Build Windows App
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.41.x'
+          channel: 'stable'
+      - run: flutter pub get
+      - run: cd example && flutter build windows --debug
+
+  build-ios:
+    name: Build iOS App
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.41.x'
+          channel: 'stable'
+      - run: flutter pub get
+      - run: cd example && flutter build ios --debug --no-codesign

@@ -1,11 +1,11 @@
 name: animemaster
-description: "A professional commercial-grade Flutter FFI plugin engine for AnimeMaster."
-version: 2.3.7
-homepage:
+description: "AnimeMaster's Flutter application engine for anime discovery, tracking, downloading, and playback."
+version: 2.4.1
+homepage: https://github.com/CongutSun/AnimeMaster_Engine
 
 environment:
   sdk: ^3.11.4
-  flutter: '>=3.3.0'
+  flutter: '>=3.41.0'
 
 dependencies:
   flutter:
@@ -45,6 +45,7 @@ dependencies:
   url_launcher: ^6.3.2
   package_info_plus: ^9.0.1
   path_provider: ^2.1.5
+  path: ^1.9.1
   cached_network_image: ^3.4.1
   crypto: ^3.0.6
   flutter_web_auth_2: ^5.0.2
@@ -73,9 +74,5 @@ flutter:
         ffiPlugin: true
       ios:
         ffiPlugin: true
-      macos:
-        ffiPlugin: true
       windows:
-        ffiPlugin: true
-      linux:
         ffiPlugin: true

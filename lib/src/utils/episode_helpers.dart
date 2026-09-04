@@ -31,7 +31,10 @@ String episodePlainTitle(Map<String, dynamic> episode) {
 /// "第N集" prefix when it duplicates the episode number.
 String episodeTitle(Map<String, dynamic> episode) {
   final int number = episodeNumber(episode);
-  final String title = stripRedundantEpisodePrefix(episodePlainTitle(episode), number);
+  final String title = stripRedundantEpisodePrefix(
+    episodePlainTitle(episode),
+    number,
+  );
   if (title.isEmpty) {
     return number > 0 ? '第$number集' : '未命名剧集';
   }
@@ -91,8 +94,8 @@ List<String> extractAliases(
     if (cnName.isNotEmpty) cnName,
     if (originalName.isNotEmpty) originalName,
   };
-  if (detailData != null && detailData!['infobox'] is List) {
-    for (final Object? item in detailData!['infobox'] as List) {
+  if (detailData != null && detailData['infobox'] is List) {
+    for (final Object? item in detailData['infobox'] as List) {
       if (item is Map && item['key'] == '别名') {
         final Object? value = item['value'];
         if (value is List) {

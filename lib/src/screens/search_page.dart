@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
 import '../models/anime.dart';
-import '../utils/haptic_helper.dart';
 import '../viewmodels/search_view_model.dart';
 import '../utils/image_request.dart';
 import '../widgets/skeleton.dart';
@@ -234,15 +233,24 @@ class _SearchPageState extends State<SearchPage> {
                     children: <Widget>[
                       if (anime.score.isNotEmpty && anime.score != '暂无数据')
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 3,
+                          ),
                           decoration: BoxDecoration(
-                            color: const Color(0xFFFF9F0A).withValues(alpha: 0.12),
+                            color: const Color(
+                              0xFFFF9F0A,
+                            ).withValues(alpha: 0.12),
                             borderRadius: BorderRadius.circular(999),
                           ),
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: <Widget>[
-                              const Icon(Icons.star_rounded, size: 13, color: Color(0xFFFF9F0A)),
+                              const Icon(
+                                Icons.star_rounded,
+                                size: 13,
+                                color: Color(0xFFFF9F0A),
+                              ),
                               const SizedBox(width: 3),
                               Text(
                                 anime.score,

@@ -47,15 +47,15 @@ class BangumiApi {
   final ApiCacheManager<List<Map<String, String>>> _episodeCommentsCache =
       ApiCacheManager<List<Map<String, String>>>(maxSize: 120);
   final ApiCacheManager<List<dynamic>> _searchCache =
-      ApiCacheManager<List<dynamic>>(maxSize: 80);
+      ApiCacheManager<List<dynamic>>();
   final ApiCacheManager<List<Map<String, dynamic>>> _tagSubjectsCache =
-      ApiCacheManager<List<Map<String, dynamic>>>(maxSize: 80);
+      ApiCacheManager<List<Map<String, dynamic>>>();
   final ApiCacheManager<List<dynamic>> _characterSubjectsCache =
-      ApiCacheManager<List<dynamic>>(maxSize: 80);
+      ApiCacheManager<List<dynamic>>();
   final ApiCacheManager<List<dynamic>> _personSubjectsCache =
-      ApiCacheManager<List<dynamic>>(maxSize: 80);
+      ApiCacheManager<List<dynamic>>();
   final ApiCacheManager<List<Map<String, dynamic>>> _subjectEpisodesCache =
-      ApiCacheManager<List<Map<String, dynamic>>>(maxSize: 80);
+      ApiCacheManager<List<Map<String, dynamic>>>();
   final ApiCacheManager<int?> _episodeIdResolveCache = ApiCacheManager<int?>(
     maxSize: 120,
   );
@@ -106,42 +106,6 @@ class BangumiApi {
       throw NetworkException(e.message ?? 'Connection failed', e);
     }
     return <dynamic>[];
-  }
-
-  /// Generic cached GET that returns a [Map] result.
-  /// Throws [NetworkException] on connectivity failure and [ServerException]
-  /// on 5xx, so callers can distinguish errors from empty results.
-  Future<Map<String, dynamic>?> _cachedMapGet({
-    required ApiCacheManager<Map<String, dynamic>> cache,
-    required dynamic cacheKey,
-    required String url,
-    required String methodLabel,
-    Map<String, dynamic>? queryParameters,
-  }) async {
-    final Map<String, dynamic>? cached = cache.get(cacheKey);
-    if (cached != null) return cached;
-
-    try {
-      final Response<dynamic> response = await _dio.get(
-        url,
-        queryParameters: queryParameters,
-      );
-      if (response.statusCode == 200 && response.data is Map) {
-        final Map<String, dynamic> detail = Map<String, dynamic>.from(
-          response.data as Map,
-        );
-        cache.set(cacheKey, detail);
-        return detail;
-      }
-      final int? status = response.statusCode;
-      if (status != null && status >= 500) {
-        throw ServerException(url, status);
-      }
-    } on DioException catch (e) {
-      debugPrint('[BangumiApi.$methodLabel] DioException: ${e.message}');
-      throw NetworkException(e.message ?? 'Connection failed', e);
-    }
-    return null;
   }
 
   List<Map<String, String>> _parseSubjectCommentsDocument(

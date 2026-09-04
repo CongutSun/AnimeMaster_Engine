@@ -6,11 +6,13 @@ import {
 } from './year_ranking.mjs';
 
 const DEFAULT_CALLBACK_SCHEME = 'animemasteroauth';
+
+class RequestValidationError extends Error {}
 const PENDING_TTL_SECONDS = 600;
 const SESSION_EXCHANGE_TTL_SECONDS = 600;
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 60;
 const BANGUMI_API_USER_AGENT =
-  'CongutSun/AnimeMaster_Engine/2.3.7 (Cloudflare Workers; https://auth.congutsun.com)';
+  'CongutSun/AnimeMaster_Engine/2.4.1 (Cloudflare Workers; https://auth.congutsun.com)';
 const RESOURCE_PROXY_USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 const RESOURCE_PROXY_ALLOWED_HOSTS = new Set([
@@ -19,6 +21,11 @@ const RESOURCE_PROXY_ALLOWED_HOSTS = new Set([
   'share.dmhy.org',
 ]);
 const ALLOWED_BROWSER_ORIGINS = new Set(['https://auth.congutsun.com']);
+const RATE_LIMITS = {
+  authStart: { requests: 20, windowSeconds: 600 },
+  authSession: { requests: 60, windowSeconds: 600 },
+  bangumiProxy: { requests: 600, windowSeconds: 300 },
+};
 const BANGUMI_PROXY_TARGETS = {
   '/bangumi/api': 'https://api.bgm.tv',
   '/bangumi/web': 'https://bgm.tv',
@@ -39,46 +46,46 @@ const BANGUMI_PROXY_REQUEST_HEADERS = [
   'accept-language',
 ];
 const APP_UPDATE_MANIFEST = {
-  version: '2.3.7',
-  build: 2045,
+  version: '2.4.1',
+  build: 2046,
   apkUrl:
-    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.3.7/app-release.apk',
+    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.1/app-release.apk',
   apkUrls: {
     'android-arm64':
-      'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.3.7/app-arm64-v8a-release.apk',
+      'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.1/app-arm64-v8a-release.apk',
     'android-arm':
-      'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.3.7/app-armeabi-v7a-release.apk',
+      'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.1/app-armeabi-v7a-release.apk',
     'android-x64':
-      'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.3.7/app-x86_64-release.apk',
+      'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.1/app-x86_64-release.apk',
     universal:
-      'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.3.7/app-release.apk',
+      'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.1/app-release.apk',
   },
   sha256: {
-    'android-arm64': '0f1ed649389b2c6460a0fb77e48b5c77dfa7bbac1f6277d5ce9754a477a7ecae',
-    'android-arm': '98126b4c8396f5c42ecf0c296548c31217f4c5286f66a35cfd4365a8a64fc11c',
-    'android-x64': 'fffc05bd99ea190e89bdceeb7892e22b111cce97f5301c3ad53946ba5339d0f5',
-    universal: '1651eff40c39832b4980f22dea5d71f4c83caaf8551c51add4204e7003f8f5e7',
+    'android-arm64': 'f9fb15aec567455453f4ad0a5ef2fa4cabb259b5cf0c236d840b81c9f4688005',
+    'android-arm': 'c6a1cb51b29156aad769bb27a4d10ed0bbfb43f6f19e8d749ca718998cfca06f',
+    'android-x64': '5a0b59fb73f156e55a1f6003fd61a4ff8bd91a11b22263347695690c841e0280',
+    universal: 'f342a45a26355fea7acdc0603cd90774a6bf3328b3224f9d1c8793dbd4bd6638',
   },
   notes: [
-    '修复首次在线播放搜索遗漏动态站点列表、导致在线源始终为空的问题。',
-    '在线源会先加载内置站点列表，并在后台刷新远程健康状态、过滤已下线站点。',
-    '“全网磁力检索”更名为“番剧资源搜索”，明确同时支持磁力链接和 .torrent 种子。',
-    '资源搜索新增指定集数过滤，避免把分辨率、年份或合集范围误判为目标单集。',
-    '剧集列表和播放页可直接搜索下载当前单集，并自动带入番剧名称与集数。',
-    'Android 发布版本升级为 2.3.7+2045，可覆盖安装现有版本。',
+    '更新包下载后自动校验 HTTPS、SHA-256、应用包名、版本号和签名，再交由系统安装。',
+    '收紧 Bangumi OAuth 回调白名单并增加授权与代理接口限流。',
+    '强化下载任务删除边界，避免任务仍在写入或路径越界时误删文件。',
+    '远程在线源仅接受 HTTPS 公网地址，阻止本机与私有网络地址注入。',
+    '补齐 iOS OAuth 与相册权限声明、Windows FFI 构建配置及法律与隐私文档。',
+    '静态检查告警清零，新增安全回归测试与持续集成质量门禁。',
   ],
-  publishedAt: '2026-08-20T10:14:38+08:00',
+  publishedAt: '2026-09-04T14:53:23+08:00',
   forceUpdate: false,
 };
 const APK_DOWNLOAD_URLS = {
   'android-arm64':
-    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.3.7/app-arm64-v8a-release.apk',
+    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.1/app-arm64-v8a-release.apk',
   'android-arm':
-    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.3.7/app-armeabi-v7a-release.apk',
+    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.1/app-armeabi-v7a-release.apk',
   'android-x64':
-    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.3.7/app-x86_64-release.apk',
+    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.1/app-x86_64-release.apk',
   universal:
-    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.3.7/app-release.apk',
+    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.1/app-release.apk',
 };
 
 function applyCors(headers, request, methods = 'GET,POST,OPTIONS') {
@@ -98,6 +105,8 @@ function json(body, status = 200, request = null) {
     new Headers({
       'content-type': 'application/json; charset=utf-8',
       'cache-control': 'no-store',
+      'x-content-type-options': 'nosniff',
+      'referrer-policy': 'no-referrer',
     }),
     request,
   );
@@ -113,6 +122,7 @@ function redirect(location) {
     headers: {
       location,
       'cache-control': 'no-store',
+      'referrer-policy': 'no-referrer',
     },
   });
 }
@@ -556,11 +566,42 @@ function randomId(bytes = 16) {
 }
 
 function sanitizeCallbackScheme(value) {
-  const scheme = (value || DEFAULT_CALLBACK_SCHEME).trim();
-  if (!/^[a-zA-Z][a-zA-Z0-9+.-]*$/.test(scheme)) {
-    throw new Error('Invalid callback scheme.');
+  const scheme = (value || DEFAULT_CALLBACK_SCHEME).trim().toLowerCase();
+  if (scheme !== DEFAULT_CALLBACK_SCHEME) {
+    throw new RequestValidationError('Unsupported callback scheme.');
   }
-  return scheme;
+  return DEFAULT_CALLBACK_SCHEME;
+}
+
+async function sha256Hex(value) {
+  const bytes = new TextEncoder().encode(value);
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  return [...new Uint8Array(digest)]
+    .map((byte) => byte.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+async function enforceRateLimit(request, env, scope, config) {
+  if (!env.BANGUMI_AUTH_KV) {
+    return null;
+  }
+  const clientAddress =
+    request.headers.get('cf-connecting-ip') ||
+    request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
+    'unknown';
+  const windowId = Math.floor(Date.now() / (config.windowSeconds * 1000));
+  const clientKey = await sha256Hex(clientAddress);
+  const key = `rate:${scope}:${windowId}:${clientKey}`;
+  const count = Number.parseInt((await env.BANGUMI_AUTH_KV.get(key)) || '0', 10);
+  if (count >= config.requests) {
+    const response = json({ error: 'Too many requests.' }, 429, request);
+    response.headers.set('retry-after', `${config.windowSeconds}`);
+    return response;
+  }
+  await env.BANGUMI_AUTH_KV.put(key, `${count + 1}`, {
+    expirationTtl: config.windowSeconds + 60,
+  });
+  return null;
 }
 
 function buildAuthorizeUrl(env, state) {
@@ -864,6 +905,7 @@ async function handleSources(env) {
   if (!sources || !Array.isArray(sources) || sources.length === 0) {
     sources = DEFAULT_SOURCES;
   }
+  sources = sources.filter(isSafeSourceEntry);
   const healthRaw = await env.BANGUMI_AUTH_KV.get(HEALTH_KV_KEY, 'json');
   const health = healthRaw || {};
   const result = {
@@ -877,12 +919,45 @@ async function handleSources(env) {
   return json(result);
 }
 
+function isSafeSourceEntry(source) {
+  if (!source || typeof source !== 'object') return false;
+  if (`${source.name || ''}`.trim().length === 0) return false;
+  try {
+    const url = new URL(`${source.baseUrl || ''}`);
+    const host = url.hostname.toLowerCase().replace(/^\[|\]$/g, '');
+    if (url.protocol !== 'https:' || !host) return false;
+    if (
+      host === 'localhost' ||
+      host.endsWith('.localhost') ||
+      host.includes(':')
+    ) {
+      return false;
+    }
+    const match = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+    if (!match) return true;
+    const octets = match.slice(1).map(Number);
+    if (octets.some((value) => value < 0 || value > 255)) return false;
+    return !(
+      octets[0] === 0 ||
+      octets[0] === 10 ||
+      octets[0] === 127 ||
+      (octets[0] === 169 && octets[1] === 254) ||
+      (octets[0] === 172 && octets[1] >= 16 && octets[1] <= 31) ||
+      (octets[0] === 192 && octets[1] === 168) ||
+      octets[0] >= 224
+    );
+  } catch {
+    return false;
+  }
+}
+
 async function handleScheduled(env) {
   let sources = await env.BANGUMI_AUTH_KV.get(SOURCES_KV_KEY, 'json');
   if (!sources || !Array.isArray(sources) || sources.length === 0) {
     sources = DEFAULT_SOURCES;
     await env.BANGUMI_AUTH_KV.put(SOURCES_KV_KEY, JSON.stringify(sources));
   }
+  sources = sources.filter(isSafeSourceEntry);
 
   const healthRaw = await env.BANGUMI_AUTH_KV.get(HEALTH_KV_KEY, 'json');
   const health = healthRaw || {};
@@ -952,6 +1027,13 @@ export default {
       }
       const bangumiProxyPrefix = findBangumiProxyPrefix(url.pathname);
       if (bangumiProxyPrefix) {
+        const limited = await enforceRateLimit(
+          request,
+          env,
+          'bangumi-proxy',
+          RATE_LIMITS.bangumiProxy,
+        );
+        if (limited) return limited;
         return await handleBangumiProxy(request, bangumiProxyPrefix);
       }
       if (
@@ -970,6 +1052,13 @@ export default {
         request.method === 'GET' &&
         url.pathname === '/auth/bangumi/mobile/start'
       ) {
+        const limited = await enforceRateLimit(
+          request,
+          env,
+          'auth-start',
+          RATE_LIMITS.authStart,
+        );
+        if (limited) return limited;
         return await handleStart(request, env);
       }
       if (
@@ -982,6 +1071,13 @@ export default {
         request.method === 'GET' &&
         url.pathname === '/auth/bangumi/mobile/session'
       ) {
+        const limited = await enforceRateLimit(
+          request,
+          env,
+          'auth-session',
+          RATE_LIMITS.authSession,
+        );
+        if (limited) return limited;
         return await handleSession(request, env);
       }
       if (
@@ -998,13 +1094,15 @@ export default {
       }
       return json({ error: 'Not found.' }, 404);
     } catch (error) {
-      console.error(error);
+      if (!(error instanceof RequestValidationError)) {
+        console.error(error);
+      }
       return json(
         {
           error:
             error instanceof Error ? error.message : 'Unknown gateway error.',
         },
-        500,
+        error instanceof RequestValidationError ? 400 : 500,
       );
     }
   },
@@ -1012,3 +1110,5 @@ export default {
     await handleScheduled(env);
   },
 };
+
+export { isSafeSourceEntry };

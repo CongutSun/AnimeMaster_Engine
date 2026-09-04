@@ -50,6 +50,23 @@ if ($SplitPerAbi) {
         'the universal APK with one consistent versionCode.'
     )
 }
+
+function Get-FileSha256 {
+    param([Parameter(Mandatory = $true)][string]$Path)
+
+    $stream = [System.IO.File]::OpenRead($Path)
+    try {
+        $sha256 = [System.Security.Cryptography.SHA256]::Create()
+        try {
+            $bytes = $sha256.ComputeHash($stream)
+            return ([System.BitConverter]::ToString($bytes)).Replace('-', '')
+        } finally {
+            $sha256.Dispose()
+        }
+    } finally {
+        $stream.Dispose()
+    }
+}
 Invoke-Flutter build apk @commonReleaseArgs
 
 & (Join-Path $PSScriptRoot 'verify_release.ps1') `
@@ -65,17 +82,17 @@ if ($BuildAppBundle) {
 $apkOutputDir = Join-Path $projectRoot 'build\\app\\outputs\\flutter-apk'
 if (Test-Path $apkOutputDir) {
     Get-ChildItem $apkOutputDir -Filter 'app*-release.apk' | ForEach-Object {
-        $hash = Get-FileHash $_.FullName -Algorithm SHA256
+        $hash = Get-FileSha256 -Path $_.FullName
         $sizeMb = [Math]::Round($_.Length / 1MB, 2)
-        Write-Host "$($_.Name)  Size=${sizeMb}MB  SHA256=$($hash.Hash)"
+        Write-Host "$($_.Name)  Size=${sizeMb}MB  SHA256=$hash"
     }
 }
 
 $bundleOutputDir = Join-Path $projectRoot 'build\\app\\outputs\\bundle\\release'
 if ($BuildAppBundle -and (Test-Path $bundleOutputDir)) {
     Get-ChildItem $bundleOutputDir -Filter '*.aab' | ForEach-Object {
-        $hash = Get-FileHash $_.FullName -Algorithm SHA256
+        $hash = Get-FileSha256 -Path $_.FullName
         $sizeMb = [Math]::Round($_.Length / 1MB, 2)
-        Write-Host "$($_.Name)  Size=${sizeMb}MB  SHA256=$($hash.Hash)"
+        Write-Host "$($_.Name)  Size=${sizeMb}MB  SHA256=$hash"
     }
 }

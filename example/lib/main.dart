@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart';
-import 'package:animemaster/animemaster.dart'; 
+import 'package:animemaster/animemaster.dart';
 
 /// 应用程序主入口
 ///

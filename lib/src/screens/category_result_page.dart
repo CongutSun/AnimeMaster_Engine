@@ -138,7 +138,7 @@ class _CategoryResultPageState extends State<CategoryResultPage> {
                       style: TextStyle(fontSize: 14, color: Colors.grey),
                     ),
                   ),
-                  AnimeGrid(animeList: searchResults, isTop: false),
+                  AnimeGrid(animeList: searchResults),
                   if (isLoadingMore)
                     const Padding(
                       padding: EdgeInsets.symmetric(vertical: 24.0),
