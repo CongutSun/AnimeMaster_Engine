@@ -2,19 +2,26 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:dio/dio.dart';
+import 'package:dtorrent_parser/dtorrent_parser.dart';
 
 class TorrentCacheFetcher {
   static String extractHash(String input) {
     final RegExp regex = RegExp(
-      r'urn:btih:([a-zA-Z0-9]+)',
+      r'urn:btih:([a-zA-Z0-9]+)(?:&|$)',
       caseSensitive: false,
     );
     final Match? match = regex.firstMatch(input);
     if (match != null) {
-      return match.group(1)!.toUpperCase();
+      final value = match.group(1)!.toUpperCase();
+      return RegExp(r'^(?:[A-F0-9]{40}|[A-Z2-7]{32})$').hasMatch(value)
+          ? value
+          : '';
     }
 
-    final RegExp rawHashRegex = RegExp(r'^[a-zA-Z0-9]{32,40}$');
+    final RegExp rawHashRegex = RegExp(
+      r'^(?:[a-fA-F0-9]{40}|[a-zA-Z2-7]{32})$',
+    );
     if (rawHashRegex.hasMatch(input)) {
       return input.toUpperCase();
     }
@@ -41,7 +48,11 @@ class TorrentCacheFetcher {
     return hex.toUpperCase();
   }
 
-  static Future<Uint8List?> fetchFromHttpCache(String magnetUrl) async {
+  static Future<Uint8List?> fetchFromHttpCache(
+    String magnetUrl, {
+    CancelToken? cancelToken,
+  }) async {
+    if (cancelToken?.isCancelled == true) throw cancelToken!.cancelError!;
     String hash = extractHash(magnetUrl);
     if (hash.isEmpty) {
       return null;
@@ -63,6 +74,7 @@ class TorrentCacheFetcher {
     final Completer<Uint8List?> completer = Completer<Uint8List?>();
     int pendingRequests = requestUrls.length;
     bool resolved = false;
+    final clients = <HttpClient>[];
 
     final Timer globalTimeout = Timer(const Duration(seconds: 7), () {
       if (!resolved) {
@@ -76,7 +88,7 @@ class TorrentCacheFetcher {
 
     for (final String url in requestUrls) {
       unawaited(
-        _fetchSingleNode(url).then((Uint8List? bytes) {
+        _fetchSingleNode(url, hash, clients).then((Uint8List? bytes) {
           if (bytes != null && bytes.isNotEmpty && !resolved) {
             resolved = true;
             globalTimeout.cancel();
@@ -94,13 +106,30 @@ class TorrentCacheFetcher {
       );
     }
 
-    return completer.future;
+    try {
+      return await Future.any<Uint8List?>([
+        completer.future,
+        if (cancelToken != null)
+          cancelToken.whenCancel.then<Uint8List?>((error) => throw error),
+      ]);
+    } finally {
+      resolved = true;
+      globalTimeout.cancel();
+      for (final client in clients) {
+        client.close(force: true);
+      }
+    }
   }
 
-  static Future<Uint8List?> _fetchSingleNode(String url) async {
+  static Future<Uint8List?> _fetchSingleNode(
+    String url,
+    String hash,
+    List<HttpClient> clients,
+  ) async {
     final HttpClient client = HttpClient()
       ..connectionTimeout = const Duration(seconds: 4)
       ..idleTimeout = const Duration(seconds: 4);
+    clients.add(client);
 
     try {
       final HttpClientRequest request = await client.getUrl(Uri.parse(url));
@@ -115,11 +144,15 @@ class TorrentCacheFetcher {
       );
 
       if (response.statusCode == 200 || response.statusCode == 201) {
-        final Uint8List bytes = await consolidateHttpClientResponseBytes(
-          response,
-        );
+        final collected = <int>[];
+        await for (final chunk in response) {
+          collected.addAll(chunk);
+          if (collected.length > 4 * 1024 * 1024) return null;
+        }
+        final bytes = Uint8List.fromList(collected);
         if (bytes.isNotEmpty && bytes.first == 100) {
-          return bytes;
+          final torrent = await Torrent.parseFromBytes(bytes);
+          if (torrent.infoHash.toUpperCase() == hash) return bytes;
         }
       }
     } catch (_) {

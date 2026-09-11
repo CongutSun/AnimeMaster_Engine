@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:dio/dio.dart';
 
 import '../coordinator/torrent_media_resolver.dart';
 import '../managers/download_manager.dart';
@@ -14,7 +15,7 @@ class MagnetActionHelper {
   static const double _playbackBufferThreshold = 0.03;
   static const int _startupProbeBytes = 512 * 1024;
 
-  static Future<void> process(
+  static Future<String?> process(
     BuildContext context,
     String rawSource, {
     required bool autoPlay,
@@ -23,49 +24,61 @@ class MagnetActionHelper {
     String episodeLabel = '',
     int bangumiSubjectId = 0,
     int bangumiEpisodeId = 0,
+    String fallbackSource = '',
   }) async {
     bool loadingDialogOpen = false;
+    final cancelToken = CancelToken();
+    final stage = ValueNotifier<String>('正在获取资源文件信息…');
+    DialogRoute<void>? loadingRoute;
+    final navigator = Navigator.of(context, rootNavigator: true);
 
-    unawaited(
-      showDialog<void>(
-        context: context,
-        barrierDismissible: false,
-        builder: (BuildContext dialogContext) => PopScope(
-          canPop: false,
-          child: Dialog(
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: <Widget>[
-                  const SizedBox(
-                    width: 24,
-                    height: 24,
-                    child: CircularProgressIndicator(
-                      color: Colors.blueAccent,
-                      strokeWidth: 3,
+    loadingRoute = DialogRoute<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext dialogContext) => PopScope(
+        canPop: false,
+        onPopInvokedWithResult: (didPop, result) {
+          if (!didPop) cancelToken.cancel('用户取消');
+        },
+        child: Dialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                const SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: CircularProgressIndicator(
+                    color: Colors.blueAccent,
+                    strokeWidth: 3,
+                  ),
+                ),
+                const SizedBox(height: 20),
+                ValueListenableBuilder<String>(
+                  valueListenable: stage,
+                  builder: (context, message, _) => Text(
+                    message,
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.bold,
                     ),
                   ),
-                  const SizedBox(width: 20),
-                  Expanded(
-                    child: Text(
-                      autoPlay ? '正在准备任务并建立播放链路...' : '正在解析资源并创建下载任务...',
-                      style: const TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
+                ),
+                TextButton(
+                  onPressed: () => cancelToken.cancel('用户取消'),
+                  child: const Text('取消'),
+                ),
+              ],
             ),
           ),
         ),
       ),
     );
+    unawaited(navigator.push(loadingRoute));
     loadingDialogOpen = true;
 
     void closeLoadingDialog() {
@@ -73,13 +86,7 @@ class MagnetActionHelper {
         return;
       }
 
-      final NavigatorState navigator = Navigator.of(
-        context,
-        rootNavigator: true,
-      );
-      if (navigator.canPop()) {
-        navigator.pop();
-      }
+      if (loadingRoute?.isActive == true) navigator.removeRoute(loadingRoute!);
       loadingDialogOpen = false;
     }
 
@@ -92,40 +99,87 @@ class MagnetActionHelper {
         episodeLabel: episodeLabel,
         bangumiSubjectId: bangumiSubjectId,
         bangumiEpisodeId: bangumiEpisodeId,
+        fallbackSource: fallbackSource,
+        cancelToken: cancelToken,
+        onStage: (message) => stage.value = message,
       );
 
+      if (cancelToken.isCancelled) throw cancelToken.cancelError!;
+      closeLoadingDialog();
+      if (!context.mounted) return null;
+      var taskInfo = preparedTask.taskInfo;
+      if (preparedTask.mediaItems.length > 1) {
+        final selected = await showDialog<int>(
+          context: context,
+          builder: (ctx) => SimpleDialog(
+            title: Text(autoPlay ? '选择播放文件' : '确认合集下载'),
+            children: [
+              const Padding(
+                padding: EdgeInsets.all(16),
+                child: Text('此资源包含多个文件，将下载整个资源包。请选择播放文件；如只想下载一集，请取消并选择单集资源。'),
+              ),
+              for (int i = 0; i < preparedTask.mediaItems.length; i++)
+                SimpleDialogOption(
+                  onPressed: () => Navigator.pop(ctx, i),
+                  child: Text(preparedTask.mediaItems[i].fileName),
+                ),
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('取消'),
+              ),
+            ],
+          ),
+        );
+        if (selected == null || !context.mounted) return null;
+        final item = preparedTask.mediaItems[selected];
+        taskInfo = taskInfo.copyWith(
+          targetPath: item.filePath,
+          targetSize: item.fileSize,
+          episodeLabel: item.episodeLabel,
+          bangumiEpisodeId: selected == preparedTask.initialIndex
+              ? taskInfo.bangumiEpisodeId
+              : 0,
+        );
+      }
+
       await DownloadManager().addTask(
-        preparedTask.taskInfo,
+        taskInfo,
         preparedTask.torrentBytes,
         streamOptimized: autoPlay,
       );
 
       closeLoadingDialog();
       if (!context.mounted) {
-        return;
+        return null;
       }
 
       if (autoPlay) {
-        await _openPreparedPlayback(context, preparedTask.taskInfo);
+        await _openPreparedPlayback(context, taskInfo);
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('任务已加入缓存中心。'),
+            content: Text('任务已加入下载中心。'),
             backgroundColor: Colors.green,
           ),
         );
       }
     } catch (error) {
       closeLoadingDialog();
+      if (cancelToken.isCancelled) return null;
+      final message = _friendlyErrorText(error);
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('解析异常：${_friendlyErrorText(error)}'),
-            backgroundColor: Colors.redAccent,
-          ),
+          SnackBar(content: Text(message), backgroundColor: Colors.redAccent),
         );
       }
+      return message;
+    } finally {
+      closeLoadingDialog();
+      // Route removal disposes the listener before releasing the notifier.
+      await Future<void>.delayed(Duration.zero);
+      stage.dispose();
     }
+    return null;
   }
 
   static String _friendlyErrorText(Object error) {
@@ -310,9 +364,7 @@ class _WaitProgressDialogState extends State<_WaitProgressDialog> {
                   : '已缓存 ${percent.toStringAsFixed(1)}%，正在优先下载目标视频的起播片段。',
             ),
             const SizedBox(height: 16),
-            LinearProgressIndicator(
-              value: (_progress / widget.threshold).clamp(0, 1).toDouble(),
-            ),
+            const LinearProgressIndicator(),
             const SizedBox(height: 12),
             const Text(
               '保留少量起播缓冲可降低未写入片段导致的花屏、噪点和卡顿。',

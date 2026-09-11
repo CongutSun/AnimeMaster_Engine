@@ -25,7 +25,7 @@ class DownloadCenterPage extends StatelessWidget {
         final ColorScheme colors = Theme.of(context).colorScheme;
 
         return Scaffold(
-          appBar: AppBar(title: const Text('缓存中心')),
+          appBar: AppBar(title: const Text('下载中心')),
           body: tasks.isEmpty
               ? const Center(
                   child: Text(

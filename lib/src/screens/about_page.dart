@@ -151,6 +151,16 @@ class _AboutPageState extends State<AboutPage> {
                   ),
                   SizedBox(height: 12),
                   _LogEntry(
+                    version: '2.4.2',
+                    items: <String>[
+                      '修复追番进度更新后重新进入显示旧进度的问题，并保护连续操作和筛选切换。',
+                      '磁力解析接入节点元数据获取、完整性校验和可取消的等待流程。',
+                      '资源搜索分离下载与播放，折叠高级筛选，逐源显示结果并保留失败提示。',
+                      '下载入口统一为下载中心，合集下载前明确范围并支持选择播放文件。',
+                    ],
+                  ),
+                  SizedBox(height: 14),
+                  _LogEntry(
                     version: '2.4.1',
                     items: <String>[
                       '加固 Bangumi OAuth 回调绑定、速率限制和客户端请求校验。',

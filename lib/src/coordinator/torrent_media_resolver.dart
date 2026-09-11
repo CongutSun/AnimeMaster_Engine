@@ -14,6 +14,7 @@ import '../utils/magnet_optimizer.dart';
 import '../utils/episode_helpers.dart';
 import '../utils/task_title_parser.dart';
 import '../utils/torrent_cache_fetcher.dart';
+import '../services/torrent_metadata_service.dart';
 
 class ResolvedMediaInfo {
   final String title;
@@ -83,6 +84,9 @@ class TorrentMediaResolver {
     String episodeLabel = '',
     int bangumiSubjectId = 0,
     int bangumiEpisodeId = 0,
+    String fallbackSource = '',
+    CancelToken? cancelToken,
+    ValueChanged<String>? onStage,
   }) async {
     final String normalizedSource = rawSource.trim();
     if (normalizedSource.isEmpty) {
@@ -94,7 +98,25 @@ class TorrentMediaResolver {
         ? normalizedSource
         : MagnetOptimizer.optimize(normalizedSource);
 
-    final Uint8List torrentBytes = await _loadTorrentBytes(optimizedSource);
+    onStage?.call('正在获取资源文件信息…');
+    Uint8List torrentBytes;
+    try {
+      torrentBytes = await _loadTorrentBytes(
+        optimizedSource,
+        cancelToken,
+        onStage,
+      );
+    } catch (error) {
+      if (cancelToken?.isCancelled == true) throw cancelToken!.cancelError!;
+      if (fallbackSource.isEmpty || fallbackSource == rawSource) rethrow;
+      onStage?.call('直链暂不可用，正在尝试磁力链接…');
+      torrentBytes = await _loadTorrentBytes(
+        MagnetOptimizer.optimize(fallbackSource),
+        cancelToken,
+        onStage,
+      );
+    }
+    if (cancelToken?.isCancelled == true) throw cancelToken!.cancelError!;
     final Torrent torrent = await Torrent.parseFromBytes(torrentBytes);
     final List<TorrentFile> playableFiles = _collectPlayableFiles(torrent);
 
@@ -203,9 +225,15 @@ class TorrentMediaResolver {
     return preparedTask.mediaInfo;
   }
 
-  Future<Uint8List> _loadTorrentBytes(String source) async {
+  Future<Uint8List> _loadTorrentBytes(
+    String source,
+    CancelToken? cancelToken,
+    ValueChanged<String>? onStage,
+  ) async {
     if (source.toLowerCase().startsWith('http')) {
-      return _fetchTorrentFromUrl(source);
+      final bytes = await _fetchTorrentFromUrl(source, cancelToken);
+      await Torrent.parseFromBytes(bytes);
+      return bytes;
     }
 
     String hash = TorrentCacheFetcher.extractHash(source);
@@ -219,19 +247,27 @@ class TorrentMediaResolver {
 
     final Uint8List? cachedBytes = await _readCachedTorrentBytes(hash);
     if (cachedBytes != null && cachedBytes.isNotEmpty) {
-      return cachedBytes;
+      try {
+        final parsed = await Torrent.parseFromBytes(cachedBytes);
+        if (parsed.infoHash.toUpperCase() == hash) return cachedBytes;
+      } catch (_) {
+        /* Try network if the local metadata is damaged. */
+      }
     }
 
     final Uint8List? fetchedBytes =
-        await TorrentCacheFetcher.fetchFromHttpCache(source);
-    if (fetchedBytes == null || fetchedBytes.isEmpty) {
-      throw Exception(
-        '无法获取种子元数据。当前资源未提供 .torrent 直链，且公共缓存节点未返回有效文件。'
-        '建议优先选择带 .torrent 直链的检索结果，或稍后重试。',
-      );
-    }
-
-    return fetchedBytes;
+        await TorrentCacheFetcher.fetchFromHttpCache(
+          source,
+          cancelToken: cancelToken,
+        );
+    if (cancelToken?.isCancelled == true) throw cancelToken!.cancelError!;
+    if (fetchedBytes != null) return fetchedBytes;
+    onStage?.call('正在连接种子节点获取文件信息，最长约 60 秒…');
+    return TorrentMetadataService().fetch(
+      source,
+      hash,
+      cancelToken: cancelToken,
+    );
   }
 
   Future<Uint8List?> _readCachedTorrentBytes(String hash) async {
@@ -259,13 +295,19 @@ class TorrentMediaResolver {
     return null;
   }
 
-  Future<Uint8List> _fetchTorrentFromUrl(String url) async {
+  Future<Uint8List> _fetchTorrentFromUrl(
+    String url,
+    CancelToken? cancelToken,
+  ) async {
     final List<String> candidateUrls = _buildCandidateTorrentUrls(url);
     Object? lastError;
 
     for (final String candidateUrl in candidateUrls) {
       try {
-        return await _fetchTorrentCandidate(candidateUrl);
+        if (cancelToken?.isCancelled == true) throw cancelToken!.cancelError!;
+        final bytes = await _fetchTorrentCandidate(candidateUrl, cancelToken);
+        await Torrent.parseFromBytes(bytes);
+        return bytes;
       } catch (error) {
         lastError = error;
         debugPrint(
@@ -280,10 +322,14 @@ class TorrentMediaResolver {
     throw Exception('HTTP torrent download failed.');
   }
 
-  Future<Uint8List> _fetchTorrentCandidate(String url) async {
+  Future<Uint8List> _fetchTorrentCandidate(
+    String url,
+    CancelToken? cancelToken,
+  ) async {
     try {
       final Response<dynamic> response = await DioClient().dio.get<dynamic>(
         url,
+        cancelToken: cancelToken,
         options: Options(
           responseType: ResponseType.bytes,
           receiveTimeout: const Duration(seconds: 30),

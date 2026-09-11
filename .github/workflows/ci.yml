@@ -41,8 +41,16 @@ jobs:
           flutter-version: '3.41.x'
           channel: 'stable'
       - run: flutter pub get
-      - run: flutter test --coverage
-      - run: dart run tool/check_coverage.dart coverage/lcov.info 17.5
+      - name: Unit tests and unit coverage gate
+        run: |
+          find test -mindepth 1 -maxdepth 1 ! -name widgets \( -type d -o -name '*_test.dart' \) -print0 | xargs -0 flutter test --coverage --coverage-path coverage/unit/lcov.info
+          dart run tool/check_coverage.dart coverage/unit/lcov.info 17.5
+      - name: All tests and combined coverage report
+        run: flutter test --coverage --coverage-path coverage/all/lcov.info
+      - uses: actions/upload-artifact@v4
+        with:
+          name: coverage-reports
+          path: coverage/
 
   build-android:
     name: Build Android APK

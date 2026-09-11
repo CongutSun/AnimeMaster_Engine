@@ -19,18 +19,32 @@ class MagnetApi {
     String quality = '',
     String exclude = '',
     int? targetEpisodeNumber,
+    void Function(List<Map<String, String>> results)? onResults,
+    void Function(String source, bool succeeded)? onSourceComplete,
   }) async {
+    final partial = <String, Map<String, String>>{};
     final Iterable<Future<List<Map<String, String>>>> futures = selectedSources
-        .map(
-          (Map<String, String> source) => _fetchFromSource(
-            source: source,
-            keyword: keyword,
-            mustInclude: mustInclude,
-            quality: quality,
-            exclude: exclude,
-            targetEpisodeNumber: targetEpisodeNumber,
-          ),
-        );
+        .map((Map<String, String> source) async {
+          try {
+            final items = await _fetchFromSource(
+              source: source,
+              keyword: keyword,
+              mustInclude: mustInclude,
+              quality: quality,
+              exclude: exclude,
+              targetEpisodeNumber: targetEpisodeNumber,
+            );
+            for (final item in items) {
+              partial[_resultKey(item)] = item;
+            }
+            onResults?.call(partial.values.toList());
+            onSourceComplete?.call(source['name'] ?? '未知源', true);
+            return items;
+          } catch (_) {
+            onSourceComplete?.call(source['name'] ?? '未知源', false);
+            return <Map<String, String>>[];
+          }
+        });
 
     final List<List<Map<String, String>>> results = await Future.wait(futures);
     final Map<String, Map<String, String>> deduplicated =
@@ -38,17 +52,20 @@ class MagnetApi {
 
     for (final List<Map<String, String>> sourceResults in results) {
       for (final Map<String, String> item in sourceResults) {
-        final String key = item['torrent']?.trim().isNotEmpty == true
-            ? item['torrent']!.trim()
-            : item['magnet']?.trim().isNotEmpty == true
-            ? item['magnet']!.trim()
-            : '${item['source']}|${item['title']}';
+        final String key = _resultKey(item);
         deduplicated[key] = item;
       }
     }
 
     return deduplicated.values.toList();
   }
+
+  static String _resultKey(Map<String, String> item) =>
+      item['torrent']?.trim().isNotEmpty == true
+      ? item['torrent']!.trim()
+      : (item['magnet']?.trim().isNotEmpty == true
+            ? item['magnet']!.trim()
+            : '${item['source']}|${item['title']}');
 
   static Future<List<Map<String, String>>> _fetchFromSource({
     required Map<String, String> source,
@@ -72,7 +89,7 @@ class MagnetApi {
     try {
       final Uint8List? feedBytes = await _requestFeedBytes(candidateUrls);
       if (feedBytes == null || feedBytes.isEmpty) {
-        return <Map<String, String>>[];
+        throw StateError('搜索源暂不可用');
       }
 
       final RssFeed feed = RssFeed.parse(utf8.decode(feedBytes));
@@ -154,7 +171,7 @@ class MagnetApi {
       debugPrint(
         '[MagnetApi] Fetch failed for source ${source['name']}: $error',
       );
-      return <Map<String, String>>[];
+      rethrow;
     }
   }
 
@@ -255,15 +272,12 @@ class MagnetApi {
       }
 
       final dynamic data = response.data;
-      if (data is Uint8List) {
-        return data;
-      }
-      if (data is List<int>) {
-        return Uint8List.fromList(data);
-      }
-      if (data is List) {
-        return Uint8List.fromList(List<int>.from(data));
-      }
+      // Do not let a proxy's HTML error page win the request race.
+      final bytes = Uint8List.fromList(List<int>.from(data as List));
+      final xml = utf8.decode(bytes);
+      if (!xml.contains('<rss') && !xml.contains('<feed')) return null;
+      RssFeed.parse(xml);
+      return bytes;
     } catch (_) {}
 
     return null;

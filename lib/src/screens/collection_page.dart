@@ -19,6 +19,9 @@ class _CollectionPageState extends State<CollectionPage> {
   int currentType = 3;
   int currentSubjectType = 2;
   String _lastLoadedAcc = '';
+  int _loadGeneration = 0;
+  String? _loadError;
+  final Set<int> _updatingIds = <int>{};
 
   final Map<int, String> typeMap = {
     1: '想看 (Wish)',
@@ -37,107 +40,150 @@ class _CollectionPageState extends State<CollectionPage> {
   void didChangeDependencies() {
     super.didChangeDependencies();
     final provider = Provider.of<SettingsProvider>(context);
-    if (provider.isLoaded && provider.bgmAcc != _lastLoadedAcc) {
+    if (provider.isLoaded &&
+        (provider.bgmAcc != _lastLoadedAcc || _loadGeneration == 0)) {
       _lastLoadedAcc = provider.bgmAcc;
       if (_lastLoadedAcc.isNotEmpty) {
         _loadCollection();
       } else {
-        setState(() => isLoading = false);
+        _loadGeneration++;
+        setState(() {
+          isLoading = false;
+          collectionList = [];
+        });
       }
     }
   }
 
   Future<void> _loadCollection() async {
-    setState(() => isLoading = true);
-
-    final username = Provider.of<SettingsProvider>(
-      context,
-      listen: false,
-    ).bgmAcc;
-
-    if (username.isNotEmpty) {
+    if (!mounted) return;
+    final generation = ++_loadGeneration;
+    final settings = context.read<SettingsProvider>();
+    final username = settings.bgmAcc;
+    final type = currentType;
+    final subjectType = currentSubjectType;
+    setState(() {
+      isLoading = true;
+      _loadError = null;
+    });
+    try {
+      await settings.ensureBangumiAccessToken();
+      if (!mounted ||
+          generation != _loadGeneration ||
+          settings.bgmAcc != username) {
+        return;
+      }
       final rawResults = await BangumiApi.instance.getUserCollectionList(
         username,
-        type: currentType,
-        subjectType: currentSubjectType,
+        type: type,
+        subjectType: subjectType,
+        token: settings.bgmToken,
       );
-      if (mounted) {
+      if (mounted &&
+          generation == _loadGeneration &&
+          settings.bgmAcc == username) {
         setState(() {
           collectionList = rawResults.map((e) => Anime.fromJson(e)).toList();
         });
       }
+    } catch (_) {
+      if (mounted && generation == _loadGeneration) {
+        setState(() => _loadError = '收藏加载失败，请检查网络后重试。');
+      }
+    } finally {
+      if (mounted && generation == _loadGeneration) {
+        setState(() => isLoading = false);
+      }
     }
-    if (mounted) setState(() => isLoading = false);
   }
 
-  // ✨ 核心修复：番剧专属的直通更新（结合了你原本创建新实例来规避 final 报错的优秀写法）
-  Future<void> _directAddEp(int index) async {
-    final SettingsProvider settings = Provider.of<SettingsProvider>(
-      context,
-      listen: false,
-    );
-    await settings.ensureBangumiAccessToken();
-    if (!mounted) {
-      return;
-    }
-    final String token = settings.bgmToken;
-
-    if (token.isEmpty) {
-      ScaffoldMessenger.of(
+  Future<void> _directAddEp(int subjectId) async {
+    if (!_updatingIds.add(subjectId)) return;
+    setState(() {});
+    try {
+      final SettingsProvider settings = Provider.of<SettingsProvider>(
         context,
-      ).showSnackBar(const SnackBar(content: Text('缺少 Token，请先在设置中配置！')));
-      return;
-    }
-
-    final anime = collectionList[index];
-    int currentEp = anime.epStatus;
-    int totalEp = anime.eps;
-
-    if (totalEp > 0 && currentEp >= totalEp) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('已经看完啦！')));
-      return;
-    }
-
-    setState(() {
-      collectionList[index] = Anime(
-        id: anime.id,
-        name: anime.name,
-        nameCn: anime.nameCn,
-        imageUrl: anime.imageUrl,
-        score: anime.score,
-        eps: anime.eps,
-        epStatus: currentEp + 1,
+        listen: false,
       );
-    });
+      final account = settings.bgmAcc;
+      await settings.ensureBangumiAccessToken();
+      if (!mounted || settings.bgmAcc != account) {
+        return;
+      }
+      final String token = settings.bgmToken;
 
-    bool success = await BangumiApi.instance.updateEpisodeStatus(
-      anime.id,
-      token,
-      currentEp + 1,
-    );
+      if (token.isEmpty) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('缺少 Token，请先在设置中配置！')));
+        return;
+      }
 
-    if (!mounted) return;
+      final index = collectionList.indexWhere((item) => item.id == subjectId);
+      if (index < 0) return;
+      final anime = collectionList[index];
+      int currentEp = anime.epStatus;
+      int totalEp = anime.eps;
 
-    if (success) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('✅ 《${anime.displayName}》 进度已更新为 ${currentEp + 1}'),
-          duration: const Duration(seconds: 1),
-        ),
-      );
-    } else {
-      // 失败回滚：把旧的数据还原回去
+      if (totalEp > 0 && currentEp >= totalEp) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('已经看完啦！')));
+        return;
+      }
+
       setState(() {
-        collectionList[index] = anime;
+        collectionList[index] = Anime(
+          id: anime.id,
+          name: anime.name,
+          nameCn: anime.nameCn,
+          imageUrl: anime.imageUrl,
+          score: anime.score,
+          eps: anime.eps,
+          epStatus: currentEp + 1,
+        );
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('❌ 同步失败，请检查网络！'),
-          backgroundColor: Colors.red,
-        ),
+
+      bool success = await BangumiApi.instance.updateEpisodeStatus(
+        anime.id,
+        token,
+        currentEp + 1,
       );
+
+      if (!mounted || settings.bgmAcc != account) return;
+
+      if (success) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('✅ 《${anime.displayName}》 进度已更新为 ${currentEp + 1}'),
+            duration: const Duration(seconds: 1),
+          ),
+        );
+      } else {
+        // 失败回滚：把旧的数据还原回去
+        setState(() {
+          final rollbackIndex = collectionList.indexWhere(
+            (item) => item.id == subjectId,
+          );
+          if (rollbackIndex >= 0) collectionList[rollbackIndex] = anime;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('❌ 同步失败，请检查网络！'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('同步失败，请重试。')));
+      }
+    } finally {
+      if (mounted) await _loadCollection();
+      _updatingIds.remove(subjectId);
+      if (mounted) setState(() {});
     }
   }
 
@@ -305,6 +351,19 @@ class _CollectionPageState extends State<CollectionPage> {
                         style: TextStyle(color: Colors.grey),
                       ),
                     )
+                  : _loadError != null
+                  ? Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(_loadError!),
+                          TextButton(
+                            onPressed: _loadCollection,
+                            child: const Text('重试'),
+                          ),
+                        ],
+                      ),
+                    )
                   : collectionList.isEmpty
                   ? const Center(
                       child: Text(
@@ -350,8 +409,8 @@ class _CollectionPageState extends State<CollectionPage> {
                                 MouseRegion(
                                   cursor: SystemMouseCursors.click,
                                   child: GestureDetector(
-                                    onTap: () {
-                                      Navigator.push(
+                                    onTap: () async {
+                                      await Navigator.push(
                                         context,
                                         MaterialPageRoute(
                                           builder: (context) => DetailPage(
@@ -361,6 +420,7 @@ class _CollectionPageState extends State<CollectionPage> {
                                           ),
                                         ),
                                       );
+                                      if (mounted) await _loadCollection();
                                     },
                                     child: Text(
                                       anime.displayName,
@@ -385,7 +445,7 @@ class _CollectionPageState extends State<CollectionPage> {
                                         children: <Widget>[
                                           Text(
                                             currentSubjectType == 2
-                                                ? '放送进度 ${anime.epStatus} / $totalEpStr 集'
+                                                ? '观看进度 ${anime.epStatus} / $totalEpStr 集'
                                                 : '阅读进度 ${anime.epStatus} / $totalEpStr 话(卷)',
                                             style: TextStyle(
                                               fontSize: 13,
@@ -410,7 +470,7 @@ class _CollectionPageState extends State<CollectionPage> {
                                     // ✨ UI 判断：书籍弹出弹窗，番剧直通+1
                                     if (currentSubjectType == 1) ...[
                                       SizedBox(
-                                        height: 32,
+                                        height: 48,
                                         child: FilledButton.tonalIcon(
                                           onPressed: () =>
                                               _showUpdateBottomSheet(
@@ -438,13 +498,17 @@ class _CollectionPageState extends State<CollectionPage> {
                                     ] else if (currentSubjectType == 2 &&
                                         currentType == 3) ...[
                                       SizedBox(
-                                        height: 32,
+                                        height: 48,
                                         child: FilledButton.icon(
                                           onPressed:
-                                              (anime.eps > 0 &&
-                                                  anime.epStatus >= anime.eps)
+                                              (_updatingIds.contains(
+                                                    anime.id,
+                                                  ) ||
+                                                  (anime.eps > 0 &&
+                                                      anime.epStatus >=
+                                                          anime.eps))
                                               ? null
-                                              : () => _directAddEp(index),
+                                              : () => _directAddEp(anime.id),
                                           icon: const Icon(
                                             Icons.done_rounded,
                                             size: 18,

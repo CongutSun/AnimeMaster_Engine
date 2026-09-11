@@ -27,7 +27,7 @@
 
 ## 日常发版
 
-1. 修改 `example/pubspec.yaml` 的 `version`，例如 `2.4.1+2046`。
+1. 修改 `example/pubspec.yaml` 的 `version`，例如 `2.4.2+2047`。
 2. 在 `example` 目录执行 `.\tool\build_release.ps1`，一次生成三个 ABI APK和通用 APK，并自动验证版本号、签名与 SHA256。
 3. `-SplitPerAbi` 仅为兼容旧命令保留，脚本不会再把它传给 Flutter。
 4. 如果需要同时生成应用市场包，追加 `-BuildAppBundle`。
@@ -64,8 +64,8 @@ cd <项目目录>\example
 
 ```json
 {
-  "version": "2.4.1",
-  "build": 2046,
+  "version": "2.4.2",
+  "build": 2047,
   "apkUrl": "https://your-domain.com/anime/app-release.apk",
   "notes": [
     "修复磁力解析超时",

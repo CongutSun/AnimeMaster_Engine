@@ -930,6 +930,7 @@ class BangumiApi {
     String username, {
     int type = 3,
     int subjectType = 2,
+    String token = '',
   }) async {
     if (username.isEmpty) return [];
     try {
@@ -940,14 +941,21 @@ class BangumiApi {
           'type': type,
           'limit': 100,
         },
+        options: Options(
+          headers: {
+            if (token.isNotEmpty) 'Authorization': 'Bearer $token',
+            'Cache-Control': 'no-cache',
+          },
+        ),
       );
       if (response.statusCode == 200 && response.data is Map) {
         return response.data['data'] is List ? response.data['data'] : [];
       }
     } catch (e) {
       debugPrint('[BangumiApi.getUserCollectionList] Exception: $e');
+      rethrow;
     }
-    return [];
+    throw StateError('无法读取收藏列表，请稍后重试。');
   }
 
   Future<bool> updateCollection(

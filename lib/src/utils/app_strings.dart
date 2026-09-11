@@ -125,7 +125,7 @@ class AppStrings {
 
   // ── Toolbar ──
   static const String toolbarCollection = '收藏';
-  static const String toolbarDownloadCenter = '缓存中心';
+  static const String toolbarDownloadCenter = '下载中心';
   static const String toolbarSettings = '设置';
   static const String toolbarClear = '清空';
   static const String toolbarSearch = '搜索番剧或书籍';

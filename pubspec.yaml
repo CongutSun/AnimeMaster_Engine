@@ -1,6 +1,6 @@
 name: animemaster
 description: "AnimeMaster's Flutter application engine for anime discovery, tracking, downloading, and playback."
-version: 2.4.1
+version: 2.4.2
 homepage: https://github.com/CongutSun/AnimeMaster_Engine
 
 environment:
@@ -23,6 +23,7 @@ dependencies:
   dio: ^5.9.2
   dtorrent_parser: ^1.0.0
   dtorrent_task: ^0.4.1
+  dtorrent_tracker: ^1.3.20
   
   # 数据解析与状态管理 (Data Parsing & State Management)
   html: ^0.15.6
