@@ -5,6 +5,9 @@ import {
   selectYearRankingSubjects,
 } from './year_ranking.mjs';
 
+import { handleDandanplay } from './dandanplay.mjs';
+export { DandanplayGateway } from './dandanplay.mjs';
+
 const DEFAULT_CALLBACK_SCHEME = 'animemasteroauth';
 
 class RequestValidationError extends Error {}
@@ -12,7 +15,7 @@ const PENDING_TTL_SECONDS = 600;
 const SESSION_EXCHANGE_TTL_SECONDS = 600;
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 60;
 const BANGUMI_API_USER_AGENT =
-  'CongutSun/AnimeMaster_Engine/2.4.2 (Cloudflare Workers; https://auth.congutsun.com)';
+  'CongutSun/AnimeMaster_Engine/2.4.3 (Cloudflare Workers; https://auth.congutsun.com)';
 const RESOURCE_PROXY_USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 const RESOURCE_PROXY_ALLOWED_HOSTS = new Set([
@@ -46,42 +49,41 @@ const BANGUMI_PROXY_REQUEST_HEADERS = [
   'accept-language',
 ];
 const APP_UPDATE_MANIFEST = {
-  "version": "2.4.2",
-  "build": 2047,
-  "apkUrl": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.2/app-release.apk",
+  "version": "2.4.3",
+  "build": 2048,
+  "apkUrl": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.3/app-release.apk",
   "notes": [
-    "修复“我的二次元库”点击“看完+1”后重新进入显示旧进度的问题，收藏读取绕过公共缓存。",
-    "追番进度增加重复提交保护，修复切换筛选和请求返回顺序导致的显示问题；详情页返回后自动刷新。",
-    "磁力链接支持通过 DHT 与 Tracker 获取节点元数据，并校验内容哈希；种子直链失败时自动尝试备用磁力链接。",
-    "资源解析支持取消，失败原因保留在结果卡片中，便于重试或复制链接。",
-    "搜索结果分离“下载”和“播放”，高级筛选折叠展示，支持逐源返回、来源故障提示和结果排序。",
-    "下载入口统一为“下载中心”，多文件资源下载前明确整包范围并可选择播放文件。",
-    "Android 发布版本升级为 2.4.2+2047，可覆盖安装现有版本。"
+    "内置弹弹play 接入，无需填写密钥即可加载弹幕。",
+    "支持文件识别、Bangumi 剧集映射和跨启动保存的手动匹配，多候选时提示选择。",
+    "弹幕缓存支持断网降级，播放器提供刷新和发送入口，并展示共享剩余额度。",
+    "新增热播榜、飙升榜、新番热播和新番列表，可查看剧集并搜索资源。",
+    "服务端提供压缩缓存、白名单代理、全局额度控制与重复发送保护。",
+    "Android 版本为 2.4.3+2048；弹弹play 账号同步暂未获得开放权限。"
   ],
-  "publishedAt": "2026-09-11T19:18:58+08:00",
+  "publishedAt": "2026-09-14T23:21:50.244Z",
   "forceUpdate": false,
   "apkUrls": {
-    "android-arm64": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.2/app-arm64-v8a-release.apk",
-    "android-arm": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.2/app-armeabi-v7a-release.apk",
-    "android-x64": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.2/app-x86_64-release.apk",
-    "universal": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.2/app-release.apk"
+    "android-arm64": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.3/app-arm64-v8a-release.apk",
+    "android-arm": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.3/app-armeabi-v7a-release.apk",
+    "android-x64": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.3/app-x86_64-release.apk",
+    "universal": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.3/app-release.apk"
   },
   "sha256": {
-    "android-arm64": "318db945c9694876606b350d22b4361a6d104f72315f12b52dd0946f45da4064",
-    "android-arm": "ca33a5a9474c142d6938009c61dcba88388d584fdcfb4fc81ec8802fce846579",
-    "android-x64": "e37df0a9b8501e5d2a3130a5a08615152f9b1faff95362dd6b41102aff5cf5c2",
-    "universal": "fc07940fa45b77cb8ffe4d5c0a9778057b51e87fb0af66f9fffc7a650f427861"
+    "android-arm64": "196981c89df856c1ffcaf0101b51513e33395fdac9b227d7c006d31d8603ba9c",
+    "android-arm": "82fafdbe3e86cb22dd3688aa2e6e901a03bbfe781d3b15cc663c134f353039ca",
+    "android-x64": "7076223733a86ed40005072ba91fa5f51a7131e9af7665221ee41b5ff2f9dd92",
+    "universal": "0c41309d9898e3b7cc93885ff8692245d491dd6edbe0188e3b765ca74288c5dc"
   }
 };
 const APK_DOWNLOAD_URLS = {
   'android-arm64':
-    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.2/app-arm64-v8a-release.apk',
+    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.3/app-arm64-v8a-release.apk',
   'android-arm':
-    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.2/app-armeabi-v7a-release.apk',
+    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.3/app-armeabi-v7a-release.apk',
   'android-x64':
-    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.2/app-x86_64-release.apk',
+    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.3/app-x86_64-release.apk',
   universal:
-    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.2/app-release.apk',
+    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.3/app-release.apk',
 };
 
 function applyCors(headers, request, methods = 'GET,POST,OPTIONS') {
@@ -1013,6 +1015,9 @@ export default {
       }
 
       const url = new URL(request.url);
+      if (url.pathname.startsWith('/dandanplay/')) {
+        return await handleDandanplay(request, env);
+      }
       if (request.method === 'GET' && url.pathname === '/health') {
         return json({ ok: true });
       }

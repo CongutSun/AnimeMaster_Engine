@@ -53,6 +53,7 @@ class AnimekoDanmakuService {
         : 'Bangumi #$episodeId';
 
     return DandanplayLoadResult(
+      source: 'animeko',
       match: DandanplayMatchResult(
         episodeId: episodeId,
         animeId: bangumiSubjectId,

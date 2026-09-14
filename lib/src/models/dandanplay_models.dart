@@ -19,12 +19,20 @@ class DandanplayMatchResult {
       animeId: int.tryParse(json['animeId']?.toString() ?? '') ?? 0,
       animeTitle: json['animeTitle']?.toString() ?? '',
       episodeTitle: json['episodeTitle']?.toString() ?? '',
-      shift: double.tryParse(json['shift']?.toString() ?? '') ?? 0,
+      shift: _finiteSeconds(json['shift']),
     );
   }
 
   String get displayTitle =>
       '${animeTitle.trim()}${episodeTitle.trim().isNotEmpty ? ' · ${episodeTitle.trim()}' : ''}';
+
+  Map<String, dynamic> toJson() => {
+    'episodeId': episodeId,
+    'animeId': animeId,
+    'animeTitle': animeTitle,
+    'episodeTitle': episodeTitle,
+    'shift': shift,
+  };
 }
 
 class DandanplayComment {
@@ -58,9 +66,13 @@ class DandanplayComment {
 
     return DandanplayComment(
       id: int.tryParse(json['cid']?.toString() ?? '') ?? 0,
-      appearAt: Duration(milliseconds: (seconds * 1000).round()),
+      appearAt: Duration(
+        milliseconds:
+            (seconds.isFinite ? seconds.clamp(0, 86401) * 1000 : 86401000)
+                .round(),
+      ),
       mode: mode,
-      color: color,
+      color: color.clamp(0, 0xffffff),
       userId: userId,
       text: json['m']?.toString() ?? '',
     );
@@ -82,6 +94,33 @@ class DandanplayComment {
 class DandanplayLoadResult {
   final DandanplayMatchResult match;
   final List<DandanplayComment> comments;
+  final String source;
+  final bool isStale;
 
-  const DandanplayLoadResult({required this.match, required this.comments});
+  const DandanplayLoadResult({
+    required this.match,
+    required this.comments,
+    this.source = 'dandanplay',
+    this.isStale = false,
+  });
+}
+
+double _finiteSeconds(Object? value) {
+  final number = double.tryParse(value?.toString() ?? '') ?? 0;
+  return number.isFinite ? number.clamp(-86400, 86400).toDouble() : 0;
+}
+
+class DandanplayException implements Exception {
+  const DandanplayException(this.message, {this.code = '', this.status});
+  final String message;
+  final String code;
+  final int? status;
+  @override
+  String toString() => message;
+}
+
+class DandanplayMatchRequired extends DandanplayException {
+  const DandanplayMatchRequired(this.candidates)
+    : super('找到多个可能的剧集，请手动匹配弹幕。', code: 'ambiguous_match');
+  final List<DandanplayMatchResult> candidates;
 }

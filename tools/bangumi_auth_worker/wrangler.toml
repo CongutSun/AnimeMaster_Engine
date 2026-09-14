@@ -14,7 +14,17 @@ id = "cde856e4cf7e4af28d946732ee4342af"
 [triggers]
 crons = [ "0 */6 * * *" ]
 
+[[durable_objects.bindings]]
+name = "DANDANPLAY_GATEWAY"
+class_name = "DandanplayGateway"
+
+[[migrations]]
+tag = "dandanplay-v1"
+new_sqlite_classes = ["DandanplayGateway"]
+
 # Required secrets:
 # wrangler secret put BANGUMI_CLIENT_ID
 # wrangler secret put BANGUMI_CLIENT_SECRET
 # wrangler secret put BANGUMI_CALLBACK_URL
+# wrangler secret put DANDANPLAY_APP_ID
+# wrangler secret put DANDANPLAY_APP_SECRET

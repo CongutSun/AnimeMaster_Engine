@@ -151,6 +151,16 @@ class _AboutPageState extends State<AboutPage> {
                   ),
                   SizedBox(height: 12),
                   _LogEntry(
+                    version: '2.4.3',
+                    items: <String>[
+                      '内置弹弹play 接入，支持文件识别、Bangumi 剧集映射和跨启动保存的手动匹配。',
+                      '新增热播榜、飙升榜、新番热播与新番列表，支持查看剧集并搜索下载资源。',
+                      '播放器支持发送弹幕，展示共享剩余额度并保护重复提交。',
+                      '弹幕缓存支持断网降级，数据由弹弹play开放弹幕网络提供。',
+                    ],
+                  ),
+                  SizedBox(height: 14),
+                  _LogEntry(
                     version: '2.4.2',
                     items: <String>[
                       '修复追番进度更新后重新进入显示旧进度的问题，并保护连续操作和筛选切换。',

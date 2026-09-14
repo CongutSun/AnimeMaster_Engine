@@ -12,6 +12,7 @@ import '../widgets/anime_grid.dart';
 import '../widgets/section_header.dart';
 import '../widgets/skeleton.dart';
 import '../widgets/top_tool_bar.dart';
+import 'dandanplay_discovery_page.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -156,6 +157,21 @@ class _HomePageState extends State<HomePage> {
                     ? AnimeGrid(animeList: snapshot.todayAnime)
                     : _buildWeekSchedule(snapshot),
                 const SizedBox(height: 32),
+                Card(
+                  child: ListTile(
+                    leading: const Icon(Icons.trending_up_rounded),
+                    title: const Text('热播与新番'),
+                    subtitle: const Text('弹弹play 热播榜、飙升榜与新番列表'),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute<void>(
+                        builder: (_) => const DandanplayDiscoveryPage(),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 24),
                 const SectionHeader(
                   icon: Icons.emoji_events_rounded,
                   title: '本年度高分榜单',

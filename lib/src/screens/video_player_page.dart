@@ -21,6 +21,7 @@ import '../models/playable_media.dart';
 import '../providers/settings_provider.dart';
 import '../services/animeko_danmaku_service.dart';
 import '../services/dandanplay_service.dart';
+import '../widgets/dandanplay_send_sheet.dart';
 import '../services/online_episode_source_service.dart';
 import '../services/picture_in_picture_service.dart';
 import '../utils/media_duration_probe.dart';
@@ -120,6 +121,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
   bool _autoNextInFlight = false;
   String? _completedMediaKey;
   List<DandanplayComment> _danmakuComments = <DandanplayComment>[];
+  DandanplayMatchResult? _dandanplayMatch;
   List<_ActiveDanmakuItem> _activeDanmaku = <_ActiveDanmakuItem>[];
   String _danmakuStatusText = '';
   bool _danmakuEnabled = true;
@@ -1402,9 +1404,8 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
         _danmakuComments = <DandanplayComment>[];
         _activeDanmaku = <_ActiveDanmakuItem>[];
         _isDanmakuLoading = true;
-        _danmakuStatusText = settings.hasDandanplayCredentials
-            ? '正在匹配弹幕...'
-            : '正在加载 Animeko 公益弹幕...';
+        _dandanplayMatch = null;
+        _danmakuStatusText = '正在匹配弹弹play 弹幕…';
       });
     }
 
@@ -1412,6 +1413,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
       final DandanplayLoadResult result = await _loadBestAvailableDanmaku(
         media,
         settings,
+        forceReload: forceReload,
       );
 
       if (!mounted || serial != _danmakuSerial) {
@@ -1420,10 +1422,11 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
 
       setState(() {
         _danmakuComments = result.comments;
+        _dandanplayMatch = result.source == 'dandanplay' ? result.match : null;
         _isDanmakuLoading = false;
         _danmakuStatusText = result.comments.isEmpty
-            ? '未找到弹幕'
-            : '已加载 ${result.comments.length} 条弹幕';
+            ? '已匹配到剧集，当前暂无弹幕'
+            : '${result.source == 'dandanplay' ? '弹弹play' : 'Animeko'} · ${result.comments.length} 条弹幕${result.isStale ? '（离线缓存）' : ''}';
       });
 
       _resyncDanmakuCursor(_effectivePosition);
@@ -1440,8 +1443,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
         _isDanmakuLoading = false;
         _danmakuStatusText = _friendlyDanmakuError(error);
       });
-      if (settings.hasDandanplayCredentials &&
-          _shouldSuggestManualDanmakuMatch(error)) {
+      if (_shouldSuggestManualDanmakuMatch(error)) {
         _showManualDanmakuMatchPrompt();
       }
     }
@@ -1449,19 +1451,24 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
 
   Future<DandanplayLoadResult> _loadBestAvailableDanmaku(
     PlayableMedia media,
-    SettingsProvider settings,
-  ) async {
+    SettingsProvider settings, {
+    bool forceReload = false,
+  }) async {
     Object? dandanplayError;
 
-    if (settings.hasDandanplayCredentials) {
+    {
       try {
         return await _createDandanplayService(settings).loadDanmaku(
           displayTitle: media.title,
           localFilePath: _resolveLocalFilePath(media),
           subjectTitle: _resolveSubjectTitle(media),
           episodeLabel: _resolveEpisodeLabel(media),
+          bangumiSubjectId: media.bangumiSubjectId,
+          fileReady: media.isLocal,
+          forceReload: forceReload,
         );
       } catch (error) {
+        if (error is DandanplayMatchRequired) rethrow;
         dandanplayError = error;
       }
     }
@@ -1475,10 +1482,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
         bangumiEpisodeId: media.bangumiEpisodeId,
       );
     } catch (_) {
-      if (dandanplayError != null) {
-        throw dandanplayError;
-      }
-      rethrow;
+      throw dandanplayError;
     }
   }
 
@@ -1661,15 +1665,6 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
     }
 
     final SettingsProvider settings = context.read<SettingsProvider>();
-    if (!settings.hasDandanplayCredentials) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('弹弹play 手动匹配需要 AppId/AppSecret；当前会自动尝试 Animeko 公益弹幕。'),
-        ),
-      );
-      return;
-    }
-
     final DandanplayService service = _createDandanplayService(settings);
     final String initialAnimeKeyword = service.buildSuggestedAnimeKeyword(
       displayTitle: media.title,
@@ -1711,13 +1706,6 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
 
     final SettingsProvider settings = context.read<SettingsProvider>();
     final DandanplayService service = _createDandanplayService(settings);
-    service.rememberManualMatch(
-      displayTitle: media.title,
-      localFilePath: _resolveLocalFilePath(media),
-      subjectTitle: _resolveSubjectTitle(media),
-      episodeLabel: _resolveEpisodeLabel(media),
-      match: match,
-    );
 
     final int serial = ++_danmakuSerial;
     _cancelDanmakuTicker();
@@ -1725,12 +1713,20 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
       setState(() {
         _isDanmakuLoading = true;
         _danmakuStatusText = '正在加载手动匹配的弹幕...';
+        _dandanplayMatch = null;
         _danmakuComments = <DandanplayComment>[];
         _activeDanmaku = <_ActiveDanmakuItem>[];
       });
     }
 
     try {
+      await service.rememberManualMatch(
+        displayTitle: media.title,
+        localFilePath: _resolveLocalFilePath(media),
+        subjectTitle: _resolveSubjectTitle(media),
+        episodeLabel: _resolveEpisodeLabel(media),
+        match: match,
+      );
       final DandanplayLoadResult result = await service.loadDanmakuFromMatch(
         match,
       );
@@ -1739,6 +1735,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
       }
       setState(() {
         _danmakuComments = result.comments;
+        _dandanplayMatch = result.match;
         _isDanmakuLoading = false;
         _danmakuEnabled = true;
         _danmakuStatusText = result.comments.isEmpty
@@ -1764,6 +1761,39 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
         context,
       ).showSnackBar(SnackBar(content: Text(_danmakuStatusText)));
     }
+  }
+
+  Future<void> _showSendDanmaku() async {
+    final match = _dandanplayMatch;
+    final media = _activeMedia;
+    if (match == null || media == null) return;
+    final service = _createDandanplayService(context.read<SettingsProvider>());
+    final position = _effectivePosition;
+    final resume = _isPlaying;
+    _cancelControlsAutoHide();
+    if (resume) await _player.pause();
+    if (!mounted) return;
+    final sent = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      isDismissible: false,
+      enableDrag: false,
+      builder: (_) => DandanplaySendSheet(
+        service: service,
+        match: match,
+        position: position,
+      ),
+    );
+    if (!mounted || !identical(media, _activeMedia)) return;
+    if (sent == true) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('弹幕已发送，显示可能稍有延迟。')));
+      unawaited(_prepareDanmakuForMedia(media, forceReload: true));
+    }
+    if (resume) await _player.play();
+    _scheduleControlsAutoHide();
   }
 
   Future<void> _showRateSheet() async {
@@ -2784,12 +2814,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
                                 ),
                               ),
                             ),
-                            if (_danmakuComments.isEmpty &&
-                                !_isDanmakuLoading &&
-                                _activeMedia != null &&
-                                context
-                                    .read<SettingsProvider>()
-                                    .hasDandanplayCredentials)
+                            if (!_isDanmakuLoading && _activeMedia != null)
                               TextButton(
                                 onPressed: _showManualDanmakuSearchSheet,
                                 style: TextButton.styleFrom(
@@ -2797,6 +2822,24 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
                                   visualDensity: VisualDensity.compact,
                                 ),
                                 child: const Text('手动匹配'),
+                              ),
+                            if (!_isDanmakuLoading && _dandanplayMatch != null)
+                              TextButton(
+                                onPressed: _showSendDanmaku,
+                                style: TextButton.styleFrom(
+                                  foregroundColor: Colors.white,
+                                ),
+                                child: const Text('发送'),
+                              ),
+                            if (!_isDanmakuLoading && _activeMedia != null)
+                              IconButton(
+                                tooltip: '刷新弹幕',
+                                color: Colors.white,
+                                onPressed: () => _prepareDanmakuForMedia(
+                                  _activeMedia!,
+                                  forceReload: true,
+                                ),
+                                icon: const Icon(Icons.refresh),
                               ),
                           ],
                         ),

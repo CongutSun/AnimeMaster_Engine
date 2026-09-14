@@ -17,6 +17,7 @@ import '../services/bangumi_oauth_service.dart';
 import '../utils/app_strings.dart';
 import '../utils/image_request.dart';
 import 'about_page.dart';
+import 'dandanplay_discovery_page.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -1120,33 +1121,55 @@ class _SettingsPageState extends State<SettingsPage> {
             ),
             const SizedBox(height: 6),
             const Text(
-              '未填写时会使用 Animeko 公益弹幕源；填写后优先使用弹弹play 聚合弹幕。AppSecret 不会内嵌到 APK。',
+              '已内置弹弹play 接入，无需填写密钥。支持自动识别、手动匹配和弹幕缓存；服务不可用时尝试备用弹幕源。',
               style: TextStyle(fontSize: 12, color: Colors.grey),
             ),
             const SizedBox(height: 12),
-            TextField(
-              controller: dandanAppIdController,
-              decoration: const InputDecoration(labelText: 'AppId'),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: dandanAppSecretController,
-              obscureText: true,
-              decoration: const InputDecoration(labelText: 'AppSecret'),
-            ),
-            const SizedBox(height: 12),
-            Align(
-              alignment: Alignment.centerRight,
-              child: FilledButton.icon(
-                onPressed: isSaving ? null : _saveSettings,
-                icon: isSaving
-                    ? const SizedBox.square(
-                        dimension: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.save_outlined),
-                label: Text(isSaving ? '保存中…' : '保存凭据'),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.local_fire_department_outlined),
+              title: const Text('热播与新番'),
+              subtitle: const Text('热播榜、飙升榜与新番列表'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const DandanplayDiscoveryPage(),
+                ),
               ),
+            ),
+            const Text(
+              '播放匹配成功后可发送弹幕。当前发送额度由全应用共享：每日 10 条、每月 240 条。弹弹play 账号同步暂未开放。',
+              style: TextStyle(fontSize: 12),
+            ),
+            ExpansionTile(
+              title: const Text('自定义接入（可选）'),
+              subtitle: const Text('仅供拥有个人应用凭据的用户使用'),
+              children: [
+                TextField(
+                  controller: dandanAppIdController,
+                  decoration: const InputDecoration(labelText: 'AppId'),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: dandanAppSecretController,
+                  obscureText: true,
+                  decoration: const InputDecoration(labelText: 'AppSecret'),
+                ),
+                const SizedBox(height: 12),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: FilledButton.icon(
+                    onPressed: isSaving ? null : _saveSettings,
+                    icon: isSaving
+                        ? const SizedBox.square(
+                            dimension: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.save_outlined),
+                    label: Text(isSaving ? '保存中…' : '保存自定义接入'),
+                  ),
+                ),
+              ],
             ),
           ],
         ),

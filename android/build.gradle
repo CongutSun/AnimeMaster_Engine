@@ -1,7 +1,7 @@
 // The Android Gradle Plugin builds the native code with the Android NDK.
 
 group = "com.animemaster.engine"
-version = "2.4.2"
+version = "2.4.3"
 
 buildscript {
     repositories {

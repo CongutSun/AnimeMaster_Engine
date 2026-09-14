@@ -10,3 +10,13 @@ id = "replace_with_your_kv_namespace_id"
 # wrangler secret put BANGUMI_CLIENT_ID
 # wrangler secret put BANGUMI_CLIENT_SECRET
 # wrangler secret put BANGUMI_CALLBACK_URL
+# wrangler secret put DANDANPLAY_APP_ID
+# wrangler secret put DANDANPLAY_APP_SECRET
+
+[[durable_objects.bindings]]
+name = "DANDANPLAY_GATEWAY"
+class_name = "DandanplayGateway"
+
+[[migrations]]
+tag = "dandanplay-v1"
+new_sqlite_classes = ["DandanplayGateway"]
