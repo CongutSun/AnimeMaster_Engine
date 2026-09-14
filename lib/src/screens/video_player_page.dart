@@ -22,6 +22,7 @@ import '../providers/settings_provider.dart';
 import '../services/animeko_danmaku_service.dart';
 import '../services/dandanplay_service.dart';
 import '../widgets/dandanplay_send_sheet.dart';
+import '../widgets/danmaku_overlay.dart';
 import '../services/online_episode_source_service.dart';
 import '../services/picture_in_picture_service.dart';
 import '../utils/media_duration_probe.dart';
@@ -122,7 +123,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
   String? _completedMediaKey;
   List<DandanplayComment> _danmakuComments = <DandanplayComment>[];
   DandanplayMatchResult? _dandanplayMatch;
-  List<_ActiveDanmakuItem> _activeDanmaku = <_ActiveDanmakuItem>[];
+  List<ActiveDanmakuItem> _activeDanmaku = <ActiveDanmakuItem>[];
   String _danmakuStatusText = '';
   bool _danmakuEnabled = true;
   bool _danmakuShowBackground = true;
@@ -1385,7 +1386,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
   }) async {
     final int serial = ++_danmakuSerial;
     _cancelDanmakuTicker();
-    _activeDanmaku = <_ActiveDanmakuItem>[];
+    _activeDanmaku = <ActiveDanmakuItem>[];
     _nextDanmakuIndex = 0;
     _danmakuSeed = 0;
 
@@ -1402,7 +1403,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
     if (mounted) {
       setState(() {
         _danmakuComments = <DandanplayComment>[];
-        _activeDanmaku = <_ActiveDanmakuItem>[];
+        _activeDanmaku = <ActiveDanmakuItem>[];
         _isDanmakuLoading = true;
         _dandanplayMatch = null;
         _danmakuStatusText = '正在匹配弹弹play 弹幕…';
@@ -1439,7 +1440,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
       }
       setState(() {
         _danmakuComments = <DandanplayComment>[];
-        _activeDanmaku = <_ActiveDanmakuItem>[];
+        _activeDanmaku = <ActiveDanmakuItem>[];
         _isDanmakuLoading = false;
         _danmakuStatusText = _friendlyDanmakuError(error);
       });
@@ -1569,14 +1570,14 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
     }
 
     final Duration threshold = _position + const Duration(milliseconds: 350);
-    final List<_ActiveDanmakuItem> pending = <_ActiveDanmakuItem>[];
+    final List<ActiveDanmakuItem> pending = <ActiveDanmakuItem>[];
 
     while (_nextDanmakuIndex < _danmakuComments.length &&
         _danmakuComments[_nextDanmakuIndex].appearAt <= threshold) {
       final DandanplayComment comment = _danmakuComments[_nextDanmakuIndex];
       if (comment.appearAt + const Duration(seconds: 1) >= _position) {
         pending.add(
-          _ActiveDanmakuItem(
+          ActiveDanmakuItem(
             id: DateTime.now().microsecondsSinceEpoch + _nextDanmakuIndex,
             comment: comment,
             lane: _resolveDanmakuLane(comment.mode),
@@ -1591,7 +1592,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
     }
 
     setState(() {
-      _activeDanmaku = <_ActiveDanmakuItem>[..._activeDanmaku, ...pending];
+      _activeDanmaku = <ActiveDanmakuItem>[..._activeDanmaku, ...pending];
     });
   }
 
@@ -1618,7 +1619,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
     }
     if (mounted) {
       setState(() {
-        _activeDanmaku = <_ActiveDanmakuItem>[];
+        _activeDanmaku = <ActiveDanmakuItem>[];
       });
     }
     if (_danmakuEnabled) {
@@ -1636,7 +1637,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
       _cancelDanmakuTicker();
       if (mounted) {
         setState(() {
-          _activeDanmaku = <_ActiveDanmakuItem>[];
+          _activeDanmaku = <ActiveDanmakuItem>[];
         });
       }
       _scheduleControlsAutoHide();
@@ -1715,7 +1716,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
         _danmakuStatusText = '正在加载手动匹配的弹幕...';
         _dandanplayMatch = null;
         _danmakuComments = <DandanplayComment>[];
-        _activeDanmaku = <_ActiveDanmakuItem>[];
+        _activeDanmaku = <ActiveDanmakuItem>[];
       });
     }
 
@@ -1915,7 +1916,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
                           update(() {
                             _danmakuEnabled = value;
                             if (!value) {
-                              _activeDanmaku = <_ActiveDanmakuItem>[];
+                              _activeDanmaku = <ActiveDanmakuItem>[];
                             }
                           });
                           if (value) {
@@ -2333,7 +2334,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
     }
     setState(() {
       _activeDanmaku = _activeDanmaku
-          .where((_ActiveDanmakuItem item) => item.id != id)
+          .where((ActiveDanmakuItem item) => item.id != id)
           .toList();
     });
   }
@@ -2506,7 +2507,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
           if (showPlayer && _danmakuEnabled && _activeDanmaku.isNotEmpty)
             Positioned.fill(
               child: IgnorePointer(
-                child: _DanmakuOverlay(
+                child: DanmakuOverlay(
                   items: _activeDanmaku,
                   fontSize: _danmakuFontSize,
                   opacity: _danmakuOpacity,
@@ -3860,228 +3861,6 @@ class _DanmakuMatchSheetState extends State<_DanmakuMatchSheet> {
                   ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _ActiveDanmakuItem {
-  final int id;
-  final DandanplayComment comment;
-  final int lane;
-
-  const _ActiveDanmakuItem({
-    required this.id,
-    required this.comment,
-    required this.lane,
-  });
-}
-
-class _DanmakuOverlay extends StatelessWidget {
-  final List<_ActiveDanmakuItem> items;
-  final double fontSize;
-  final double opacity;
-  final double speed;
-  final bool showBackground;
-  final bool showStroke;
-  final bool paused;
-  final ValueChanged<int> onCompleted;
-
-  const _DanmakuOverlay({
-    required this.items,
-    required this.fontSize,
-    required this.opacity,
-    required this.speed,
-    required this.showBackground,
-    required this.showStroke,
-    required this.paused,
-    required this.onCompleted,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (BuildContext context, BoxConstraints constraints) {
-        return Stack(
-          clipBehavior: Clip.none,
-          children: items
-              .map(
-                (_ActiveDanmakuItem item) => _DanmakuBullet(
-                  key: ValueKey<int>(item.id),
-                  item: item,
-                  viewportSize: constraints.biggest,
-                  fontSize: fontSize,
-                  opacity: opacity,
-                  speed: speed,
-                  showBackground: showBackground,
-                  showStroke: showStroke,
-                  paused: paused,
-                  onCompleted: () => onCompleted(item.id),
-                ),
-              )
-              .toList(),
-        );
-      },
-    );
-  }
-}
-
-class _DanmakuBullet extends StatefulWidget {
-  final _ActiveDanmakuItem item;
-  final Size viewportSize;
-  final double fontSize;
-  final double opacity;
-  final double speed;
-  final bool showBackground;
-  final bool showStroke;
-  final bool paused;
-  final VoidCallback onCompleted;
-
-  const _DanmakuBullet({
-    super.key,
-    required this.item,
-    required this.viewportSize,
-    required this.fontSize,
-    required this.opacity,
-    required this.speed,
-    required this.showBackground,
-    required this.showStroke,
-    required this.paused,
-    required this.onCompleted,
-  });
-
-  @override
-  State<_DanmakuBullet> createState() => _DanmakuBulletState();
-}
-
-class _DanmakuBulletState extends State<_DanmakuBullet>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _controller;
-  late final double _cachedTextWidth;
-  late final bool _skipOpacityWrapper;
-
-  @override
-  void initState() {
-    super.initState();
-
-    final int baseDurationMs = widget.item.comment.mode == 1
-        ? (7000 + widget.item.comment.text.length * 80).clamp(6500, 12000)
-        : 4000;
-    final int durationMs = (baseDurationMs / widget.speed).round().clamp(
-      2600,
-      18000,
-    );
-    _controller =
-        AnimationController(
-            vsync: this,
-            duration: Duration(milliseconds: durationMs),
-          )
-          ..addStatusListener((AnimationStatus status) {
-            if (status == AnimationStatus.completed && mounted) {
-              widget.onCompleted();
-            }
-          })
-          ..forward();
-
-    _cachedTextWidth = math.max(
-      120.0,
-      widget.item.comment.text.runes.length * widget.fontSize,
-    );
-    _skipOpacityWrapper =
-        widget.item.comment.mode == 1 && widget.opacity >= 0.99;
-  }
-
-  @override
-  void didUpdateWidget(covariant _DanmakuBullet oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (widget.paused != oldWidget.paused) {
-      if (widget.paused) {
-        _controller.stop();
-      } else {
-        _controller.forward();
-      }
-    }
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final double laneHeight = widget.fontSize + 14;
-
-    return AnimatedBuilder(
-      animation: _controller,
-      builder: (BuildContext context, Widget? child) {
-        final int mode = widget.item.comment.mode;
-        final double progress = _controller.value;
-        final double top = switch (mode) {
-          4 =>
-            widget.viewportSize.height -
-                90 -
-                (widget.item.lane + 1) * laneHeight,
-          5 => 12 + widget.item.lane * laneHeight,
-          _ => 12 + widget.item.lane * laneHeight,
-        };
-
-        final double left = mode == 1
-            ? widget.viewportSize.width -
-                  (widget.viewportSize.width + _cachedTextWidth + 32) * progress
-            : (widget.viewportSize.width - _cachedTextWidth) / 2;
-        final double opacity = mode == 1
-            ? 1
-            : (progress < 0.15
-                  ? progress / 0.15
-                  : (progress > 0.85 ? (1 - progress) / 0.15 : 1));
-
-        final Widget positioned = Positioned(
-          left: left,
-          top: top,
-          child: child!,
-        );
-
-        if (_skipOpacityWrapper) {
-          return positioned;
-        }
-
-        return Opacity(
-          opacity: (opacity * widget.opacity).clamp(0, 1),
-          child: positioned,
-        );
-      },
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: widget.showBackground
-              ? Colors.black.withValues(alpha: 0.14)
-              : Colors.transparent,
-          borderRadius: BorderRadius.circular(6),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-          child: Text(
-            widget.item.comment.text,
-            maxLines: 1,
-            overflow: TextOverflow.fade,
-            softWrap: false,
-            style: TextStyle(
-              color: Color(0xFF000000 | widget.item.comment.color),
-              fontSize: widget.fontSize,
-              fontWeight: FontWeight.w600,
-              shadows: widget.showStroke
-                  ? const <Shadow>[
-                      Shadow(
-                        color: Colors.black87,
-                        blurRadius: 3,
-                        offset: Offset(0.8, 0.8),
-                      ),
-                    ]
-                  : const <Shadow>[],
-            ),
-          ),
-        ),
       ),
     );
   }

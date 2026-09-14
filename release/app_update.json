@@ -1,27 +1,26 @@
 {
-  "version": "2.4.3",
-  "build": 2048,
-  "apkUrl": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.3/app-release.apk",
+  "version": "2.4.4",
+  "build": 2049,
+  "apkUrl": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.4/app-release.apk",
   "notes": [
-    "内置弹弹play 接入，无需填写密钥即可加载弹幕。",
-    "支持文件识别、Bangumi 剧集映射和跨启动保存的手动匹配，多候选时提示选择。",
-    "弹幕缓存支持断网降级，播放器提供刷新和发送入口，并展示共享剩余额度。",
-    "新增热播榜、飙升榜、新番热播和新番列表，可查看剧集并搜索资源。",
-    "服务端提供压缩缓存、白名单代理、全局额度控制与重复发送保护。",
-    "Android 版本为 2.4.3+2048；弹弹play 账号同步暂未获得开放权限。"
+    "修复弹幕布局错误引发的灰白屏，适用于在线源和本地源视频的共用播放器。",
+    "修复顶部／底部固定弹幕，以及降低滚动弹幕不透明度后的渲染异常。",
+    "弹幕兼容横竖屏切换，现有弹幕即时响应不透明度调整。",
+    "暂停状态下新弹幕保持静止，恢复播放后继续移动。",
+    "新增实际弹幕组件渲染回归测试；Android 版本为 2.4.4+2049。"
   ],
-  "publishedAt": "2026-09-14T23:21:50.244Z",
+  "publishedAt": "2026-09-14T23:44:08.311Z",
   "forceUpdate": false,
   "apkUrls": {
-    "android-arm64": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.3/app-arm64-v8a-release.apk",
-    "android-arm": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.3/app-armeabi-v7a-release.apk",
-    "android-x64": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.3/app-x86_64-release.apk",
-    "universal": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.3/app-release.apk"
+    "android-arm64": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.4/app-arm64-v8a-release.apk",
+    "android-arm": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.4/app-armeabi-v7a-release.apk",
+    "android-x64": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.4/app-x86_64-release.apk",
+    "universal": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.4/app-release.apk"
   },
   "sha256": {
-    "android-arm64": "196981c89df856c1ffcaf0101b51513e33395fdac9b227d7c006d31d8603ba9c",
-    "android-arm": "82fafdbe3e86cb22dd3688aa2e6e901a03bbfe781d3b15cc663c134f353039ca",
-    "android-x64": "7076223733a86ed40005072ba91fa5f51a7131e9af7665221ee41b5ff2f9dd92",
-    "universal": "0c41309d9898e3b7cc93885ff8692245d491dd6edbe0188e3b765ca74288c5dc"
+    "android-arm64": "d6eb7b842698930fb61c86c2074b550c4bd6fc640bcb9a4e1ff6d421ce4f904e",
+    "android-arm": "44b66c31c927296092f34ec336d707e89d88a511353a799aeb57816f708f40ec",
+    "android-x64": "df92ace681fc6b14d525da00e7521da5acd14137bd8f1269741d693dabc2284f",
+    "universal": "a61402ffd8aaa4bf6f085169fa637e2c27ac7524601b73315f15e8d608d261f0"
   }
 }

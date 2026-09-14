@@ -151,6 +151,15 @@ class _AboutPageState extends State<AboutPage> {
                   ),
                   SizedBox(height: 12),
                   _LogEntry(
+                    version: '2.4.4',
+                    items: <String>[
+                      '修复在线和本地视频播放时，固定弹幕或不透明度调整触发的灰白屏。',
+                      '弹幕显示兼容横竖屏切换，已显示的弹幕即时响应不透明度调整。',
+                      '暂停状态下新弹幕保持静止，恢复播放后继续移动。',
+                    ],
+                  ),
+                  SizedBox(height: 14),
+                  _LogEntry(
                     version: '2.4.3',
                     items: <String>[
                       '内置弹弹play 接入，支持文件识别、Bangumi 剧集映射和跨启动保存的手动匹配。',
