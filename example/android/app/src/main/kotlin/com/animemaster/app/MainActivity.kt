@@ -2,6 +2,7 @@ package com.animemaster.app
 
 import android.app.PictureInPictureParams
 import android.content.Intent
+import android.content.Context
 import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
 import android.os.Build
@@ -14,28 +15,29 @@ import java.io.File
 import java.security.MessageDigest
 
 class MainActivity : FlutterActivity() {
-    private val backgroundChannel = "com.animemaster.app/background_download"
     private val pictureInPictureChannel = "com.animemaster.app/picture_in_picture"
     private val appUpdateChannel = "com.animemaster.app/app_update"
     private var autoEnterPictureInPicture = false
     private var pictureInPicturePlaybackActive = false
 
+    override fun provideFlutterEngine(context: Context): FlutterEngine =
+        (application as DownloadApplication).getOrCreateEngine()
+
+    override fun shouldDestroyEngineWithHost(): Boolean = false
+
+    override fun onResume() {
+        super.onResume()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED &&
+            !getPreferences(MODE_PRIVATE).getBoolean("notification_permission_requested", false)
+        ) {
+            getPreferences(MODE_PRIVATE).edit().putBoolean("notification_permission_requested", true).apply()
+            requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 24019)
+        }
+    }
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, backgroundChannel)
-            .setMethodCallHandler { call, result ->
-                when (call.method) {
-                    "start" -> {
-                        startBackgroundDownloadService()
-                        result.success(null)
-                    }
-                    "stop" -> {
-                        stopService(Intent(this, BackgroundDownloadService::class.java))
-                        result.success(null)
-                    }
-                    else -> result.notImplemented()
-                }
-            }
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, pictureInPictureChannel)
             .setMethodCallHandler { call, result ->
                 when (call.method) {
@@ -79,13 +81,10 @@ class MainActivity : FlutterActivity() {
         super.onUserLeaveHint()
     }
 
-    private fun startBackgroundDownloadService() {
-        val intent = Intent(this, BackgroundDownloadService::class.java)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            startForegroundService(intent)
-        } else {
-            startService(intent)
-        }
+    override fun cleanUpFlutterEngine(flutterEngine: FlutterEngine) {
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, pictureInPictureChannel).setMethodCallHandler(null)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, appUpdateChannel).setMethodCallHandler(null)
+        super.cleanUpFlutterEngine(flutterEngine)
     }
 
     private fun enterPictureInPictureIfPossible(): Boolean {

@@ -13,6 +13,7 @@ import '../repositories/download_task_repository.dart';
 import '../services/background_download_service.dart';
 import '../utils/app_storage_paths.dart';
 import '../utils/tracker_pool.dart';
+import '../utils/transfer_policy.dart';
 
 List<DownloadTaskInfo> _decodeLegacyDownloadTasks(String tasksJson) {
   final Object? decoded = jsonDecode(tasksJson);
@@ -33,11 +34,11 @@ class DownloadManager extends ChangeNotifier {
   static final DownloadManager _instance = DownloadManager._internal();
   factory DownloadManager() => _instance;
 
-  static const int _maxActiveDownloads = 1;
+  static const int _maxActiveDownloads = TransferPolicy.maxActiveDownloads;
   static const int _maxActiveSeedsWhenIdle = 1;
-  static const int _normalPeerCap = 22;
-  static const int _playbackPeerCap = 32;
-  static const int _tailPeerCap = 34;
+  static const int _normalPeerCap = TransferPolicy.peerCap;
+  static const int _playbackPeerCap = TransferPolicy.playbackPeerCap;
+  static const int _tailPeerCap = TransferPolicy.playbackPeerCap;
   static const int _seedPeerCap = 6;
   static const double _lowSpeedThresholdKb = 96.0;
   static const Duration _speedSampleInterval = Duration(seconds: 3);
@@ -60,15 +61,21 @@ class DownloadManager extends ChangeNotifier {
   final Map<String, DateTime> _lastPeerRefreshTimes = <String, DateTime>{};
   final Map<String, Timer> _peerWarmupTimers = <String, Timer>{};
   final Set<String> _streamOptimizedTasks = <String>{};
+  final Map<String, TrackerRotation> _trackerRotations =
+      <String, TrackerRotation>{};
+  final Expando<DateTime> _peerFirstSeen = Expando<DateTime>();
+  Future<void>? _initialization;
 
   String? _playbackPriorityHash;
   bool _isScheduling = false;
+  bool _scheduleAgain = false;
   Timer? _speedTimer;
   Timer? _maintenanceTimer;
   final DownloadTaskRepository _taskRepository =
       DownloadTaskRepository.instance;
 
   DownloadManager._internal() {
+    BackgroundDownloadService.initialize(pauseAll);
     _startTimersIfNeeded();
   }
 
@@ -94,12 +101,15 @@ class DownloadManager extends ChangeNotifier {
   List<DownloadTaskInfo> get allTasks => _taskConfigs.values.toList();
   bool hasTask(String hash) => _activeTasks.containsKey(hash);
 
-  Future<void> initPersistedTasks() async {
+  Future<void> initPersistedTasks() => _initialization ??= _restoreTasks();
+
+  Future<void> _restoreTasks() async {
     final List<DownloadTaskInfo> persistedTasks =
         await _loadPersistedTaskConfigs();
     bool hasMigratedTask = false;
 
     if (persistedTasks.isEmpty) {
+      _syncBackgroundService();
       return;
     }
 
@@ -382,6 +392,13 @@ class DownloadManager extends ChangeNotifier {
     if (task == null || config == null) {
       return;
     }
+    if (enforceSchedule) {
+      await _enforceConcurrency(preferredHash: preferred ? hash : null);
+      return;
+    }
+
+    await _persistTask(hash);
+    await BackgroundDownloadService.setActive(true);
 
     if (task.state == TaskState.paused) {
       task.resume();
@@ -407,11 +424,7 @@ class DownloadManager extends ChangeNotifier {
     if (!config.isCompleted) {
       _boostPeerDiscovery(hash);
     }
-    if (enforceSchedule) {
-      await _enforceConcurrency(preferredHash: preferred ? hash : null);
-    } else {
-      _syncBackgroundService();
-    }
+    _syncBackgroundService();
   }
 
   Future<void> prepareForPlayback(String hash) async {
@@ -576,6 +589,10 @@ class DownloadManager extends ChangeNotifier {
             ?.where((Peer peer) => !peer.isDisposed)
             .toList(growable: false) ??
         <Peer>[];
+    final DateTime now = DateTime.now();
+    for (final Peer peer in peers) {
+      _peerFirstSeen[peer] ??= now;
+    }
     if (peers.length <= maxPeers) {
       return;
     }
@@ -588,7 +605,16 @@ class DownloadManager extends ChangeNotifier {
     }
 
     final List<Peer> disposablePeers =
-        peers.where((Peer peer) => !peer.isSeeder).toList(growable: false)
+        peers
+            .where(
+              (Peer peer) => TransferPolicy.canTrimPeer(
+                age: now.difference(_peerFirstSeen[peer]!),
+                downloadSpeed: peer.currentDownloadSpeed,
+                hasPendingRequests: peer.requestBuffer.isNotEmpty,
+                seeding: seeding,
+              ),
+            )
+            .toList(growable: false)
           ..sort(
             (Peer a, Peer b) => _peerScore(
               a,
@@ -681,7 +707,9 @@ class DownloadManager extends ChangeNotifier {
   }
 
   Future<void> _enforceConcurrency({String? preferredHash}) async {
+    if (preferredHash != null) _playbackPriorityHash = preferredHash;
     if (_isScheduling) {
+      _scheduleAgain = true;
       return;
     }
 
@@ -721,7 +749,8 @@ class DownloadManager extends ChangeNotifier {
         ...allowedSeeds,
       };
 
-      for (final MapEntry<String, TorrentTask> entry in _activeTasks.entries) {
+      for (final MapEntry<String, TorrentTask> entry
+          in _activeTasks.entries.toList(growable: false)) {
         final String hash = entry.key;
         final TorrentTask task = entry.value;
         final DownloadTaskInfo? config = _taskConfigs[hash];
@@ -738,7 +767,16 @@ class DownloadManager extends ChangeNotifier {
           _queuedStates[hash] = false;
           if (task.state == TaskState.paused ||
               task.state == TaskState.stopped) {
-            await _startOrResumeTask(hash, enforceSchedule: false);
+            try {
+              await _startOrResumeTask(hash, enforceSchedule: false);
+            } catch (error) {
+              debugPrint('Failed to start download $hash: $error');
+              _activeTasks[hash]?.pause();
+              _pausedStates[hash] = true;
+              config.isPaused = true;
+              await _persistTask(hash);
+              _scheduleAgain = true;
+            }
           }
         } else {
           _queuedStates[hash] = true;
@@ -754,6 +792,10 @@ class DownloadManager extends ChangeNotifier {
       _syncBackgroundService();
     } finally {
       _isScheduling = false;
+      if (_scheduleAgain) {
+        _scheduleAgain = false;
+        await _enforceConcurrency();
+      }
     }
   }
 
@@ -858,15 +900,17 @@ class DownloadManager extends ChangeNotifier {
 
   void _requestPeerSources(TorrentTask task, {required int trackerLimit}) {
     task.requestPeersFromDHT();
-
-    int announced = 0;
-    for (final String tracker in TrackerPool.robustTrackers) {
-      if (announced >= trackerLimit) {
-        break;
-      }
+    final String hash = task.metaInfo.infoHashBuffer.join(',');
+    final TrackerRotation rotation = _trackerRotations.putIfAbsent(
+      hash,
+      TrackerRotation.new,
+    );
+    for (final Uri tracker in rotation.next(
+      task.metaInfo.announces,
+      trackerLimit,
+    )) {
       try {
-        task.startAnnounceUrl(Uri.parse(tracker), task.metaInfo.infoHashBuffer);
-        announced++;
+        task.startAnnounceUrl(tracker, task.metaInfo.infoHashBuffer);
       } catch (_) {}
     }
   }
@@ -970,6 +1014,9 @@ class DownloadManager extends ChangeNotifier {
     }
     return _activeTasks[hash]?.progress ?? 0.0;
   }
+
+  int getConnectedPeers(String hash) =>
+      _activeTasks[hash]?.connectedPeersNumber ?? 0;
 
   double getSpeed(String hash) => _currentSpeeds[hash] ?? 0.0;
   double getUploadSpeed(String hash) => _currentUploadSpeeds[hash] ?? 0.0;
@@ -1089,6 +1136,21 @@ class DownloadManager extends ChangeNotifier {
     });
 
     unawaited(BackgroundDownloadService.setActive(hasActiveTransfer));
+  }
+
+  Future<void> pauseAll() async {
+    for (final String hash in _activeTasks.keys) {
+      _activeTasks[hash]?.pause();
+      _pausedStates[hash] = true;
+      _queuedStates[hash] = false;
+      _taskConfigs[hash]?.isPaused = true;
+      _peerWarmupTimers.remove(hash)?.cancel();
+      _currentSpeeds[hash] = 0;
+      _currentUploadSpeeds[hash] = 0;
+    }
+    await _persistAllTasks();
+    await BackgroundDownloadService.setActive(false);
+    notifyListeners();
   }
 
   @override

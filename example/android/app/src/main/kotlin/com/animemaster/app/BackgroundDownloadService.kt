@@ -4,19 +4,21 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
+import android.app.PendingIntent
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
+import android.net.wifi.WifiManager
 
 class BackgroundDownloadService : Service() {
     private var wakeLock: PowerManager.WakeLock? = null
+    private var wifiLock: WifiManager.WifiLock? = null
 
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
-        acquireWakeLock()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -30,16 +32,37 @@ class BackgroundDownloadService : Service() {
         } else {
             startForeground(NOTIFICATION_ID, notification)
         }
+        acquireWakeLock()
+        acquireWifiLock()
+        // A sticky restart must restore the actual Dart download owner as well.
+        (application as DownloadApplication).getOrCreateEngine()
         return START_STICKY
+    }
+
+    override fun onTimeout(startId: Int, fgsType: Int) {
+        (application as DownloadApplication).pauseDownloads()
+        stopSelf()
     }
 
     override fun onDestroy() {
         wakeLock?.takeIf { it.isHeld }?.release()
         wakeLock = null
+        wifiLock?.takeIf { it.isHeld }?.release()
+        wifiLock = null
         super.onDestroy()
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
+
+    @Suppress("DEPRECATION")
+    private fun acquireWifiLock() {
+        if (wifiLock?.isHeld == true) return
+        val manager = applicationContext.getSystemService(WIFI_SERVICE) as WifiManager
+        wifiLock = manager.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "AnimeMaster:DownloadWifi").apply {
+            setReferenceCounted(false)
+            acquire()
+        }
+    }
 
     private fun acquireWakeLock() {
         if (wakeLock?.isHeld == true) {
@@ -83,6 +106,10 @@ class BackgroundDownloadService : Service() {
             .setSmallIcon(android.R.drawable.stat_sys_download)
             .setContentTitle("AnimeMaster 正在下载")
             .setContentText("下载和做种任务会在后台继续运行")
+            .setContentIntent(PendingIntent.getActivity(
+                this, 0, Intent(this, MainActivity::class.java),
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            ))
             .setOngoing(true)
             .setCategory(Notification.CATEGORY_SERVICE)
             .build()

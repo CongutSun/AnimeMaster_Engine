@@ -1,26 +1,26 @@
 {
-  "version": "2.4.4",
-  "build": 2049,
-  "apkUrl": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.4/app-release.apk",
+  "version": "2.4.5",
+  "build": 2050,
+  "apkUrl": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.5/app-release.apk",
   "notes": [
-    "修复弹幕布局错误引发的灰白屏，适用于在线源和本地源视频的共用播放器。",
-    "修复顶部／底部固定弹幕，以及降低滚动弹幕不透明度后的渲染异常。",
-    "弹幕兼容横竖屏切换，现有弹幕即时响应不透明度调整。",
-    "暂停状态下新弹幕保持静止，恢复播放后继续移动。",
-    "新增实际弹幕组件渲染回归测试；Android 版本为 2.4.4+2049。"
+    "支持 3 个并行下载任务及播放优先调度。",
+    "保留有效传输连接，Tracker 补充发现覆盖全部地址。",
+    "Android 后台使用共享运行引擎，系统重建服务时恢复已保存任务。",
+    "下载中心提供连接状态和后台运行设置入口。",
+    "支持系统后台服务超时后的暂停和进度保存。"
   ],
-  "publishedAt": "2026-09-14T23:44:08.311Z",
+  "publishedAt": "2026-09-15T14:19:20Z",
   "forceUpdate": false,
   "apkUrls": {
-    "android-arm64": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.4/app-arm64-v8a-release.apk",
-    "android-arm": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.4/app-armeabi-v7a-release.apk",
-    "android-x64": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.4/app-x86_64-release.apk",
-    "universal": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.4/app-release.apk"
+    "android-arm64": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.5/app-arm64-v8a-release.apk",
+    "android-arm": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.5/app-armeabi-v7a-release.apk",
+    "android-x64": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.5/app-x86_64-release.apk",
+    "universal": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.5/app-release.apk"
   },
   "sha256": {
-    "android-arm64": "d6eb7b842698930fb61c86c2074b550c4bd6fc640bcb9a4e1ff6d421ce4f904e",
-    "android-arm": "44b66c31c927296092f34ec336d707e89d88a511353a799aeb57816f708f40ec",
-    "android-x64": "df92ace681fc6b14d525da00e7521da5acd14137bd8f1269741d693dabc2284f",
-    "universal": "a61402ffd8aaa4bf6f085169fa637e2c27ac7524601b73315f15e8d608d261f0"
+    "android-arm64": "e78b59904ff34efb725c3818543b8b71549525f87b845827cff6246620cc2fdb",
+    "android-arm": "c259e9cc3448efbd9adf4bc3caa5f1e3c028bb66ff5e2778f22c1966b1611c03",
+    "android-x64": "78ccb566e9ab6d9b0d92ee5326eba780e709dc6174a3c756735f5955d5c3a4a1",
+    "universal": "24efe6bc00bfe7c4b729bc54e884655a4d1decc7fcae6670e738c05490f95c5a"
   }
 }

@@ -7,6 +7,7 @@ import '../core/service_locator.dart';
 import '../managers/download_manager.dart';
 import '../models/download_task_info.dart';
 import '../models/playable_media.dart';
+import '../services/background_download_service.dart';
 import '../utils/magnet_action_helper.dart';
 import '../utils/task_title_parser.dart';
 import '../utils/torrent_stream_server.dart';
@@ -25,7 +26,38 @@ class DownloadCenterPage extends StatelessWidget {
         final ColorScheme colors = Theme.of(context).colorScheme;
 
         return Scaffold(
-          appBar: AppBar(title: const Text('下载中心')),
+          appBar: AppBar(
+            title: const Text('下载中心'),
+            actions: <Widget>[
+              if (Platform.isAndroid)
+                IconButton(
+                  tooltip: '后台下载设置',
+                  icon: const Icon(Icons.battery_saver_outlined),
+                  onPressed: () => showDialog<void>(
+                    context: context,
+                    builder: (BuildContext dialogContext) => AlertDialog(
+                      title: const Text('后台下载'),
+                      content: const Text(
+                        '下载时请允许通知，并在系统应用设置中允许后台运行或选择“不限制”电池用量。系统强行停止应用后，需要重新打开才能继续。',
+                      ),
+                      actions: <Widget>[
+                        TextButton(
+                          onPressed: () => Navigator.pop(dialogContext),
+                          child: const Text('关闭'),
+                        ),
+                        TextButton(
+                          onPressed: () {
+                            Navigator.pop(dialogContext);
+                            BackgroundDownloadService.openSettings();
+                          },
+                          child: const Text('打开系统设置'),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+            ],
+          ),
           body: tasks.isEmpty
               ? const Center(
                   child: Text(
@@ -200,6 +232,19 @@ class DownloadCenterPage extends StatelessWidget {
                             Row(
                               mainAxisAlignment: MainAxisAlignment.end,
                               children: <Widget>[
+                                if (!isPaused && !isQueued && !isCompleted)
+                                  Expanded(
+                                    child: Text(
+                                      manager.getConnectedPeers(config.hash) ==
+                                              0
+                                          ? '正在寻找可用连接…'
+                                          : '已连接 ${manager.getConnectedPeers(config.hash)} 个节点',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: colors.onSurfaceVariant,
+                                      ),
+                                    ),
+                                  ),
                                 IconButton(
                                   tooltip: '播放',
                                   icon: const Icon(
