@@ -16,11 +16,14 @@ import '../services/online_episode_source_service.dart';
 import '../services/picture_in_picture_service.dart';
 import '../utils/cached_media_playback.dart';
 import '../utils/media_duration_probe.dart';
+import '../utils/player_tap_handler.dart';
+import '../utils/haptic_helper.dart';
 import '../utils/playback_progress_store.dart';
 import '../utils/episode_helpers.dart';
 import '../utils/format_helpers.dart';
 import '../utils/task_title_parser.dart';
 import '../widgets/playback_action_prompt.dart';
+import '../widgets/playback_seek_slider.dart';
 import 'magnet_config_page.dart';
 import 'video_player_page.dart';
 
@@ -50,6 +53,7 @@ class EpisodeWatchPage extends StatefulWidget {
 
 class _EpisodeWatchPageState extends State<EpisodeWatchPage>
     with SingleTickerProviderStateMixin, WidgetsBindingObserver {
+  final PlayerTapHandler _playerTaps = PlayerTapHandler();
   late final Player _player;
   late final VideoController _controller;
   late final TabController _tabController;
@@ -1086,6 +1090,7 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
   }
 
   Future<void> _togglePlayPause() async {
+    quickHaptic();
     if (_isPlaying) {
       await _player.pause();
     } else {
@@ -1110,6 +1115,7 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
   }
 
   void _toggleInlineControls() {
+    quickHaptic();
     if (!mounted) {
       return;
     }
@@ -1503,6 +1509,7 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
             onToggleControls: _toggleInlineControls,
             onTogglePlay: _togglePlayPause,
             onDoubleTap: _handleInlineDoubleTap,
+            taps: _playerTaps,
             onSeek: _seekInlineTo,
             onHorizontalDragStart: _handleInlineHorizontalDragStart,
             onHorizontalDragUpdate: _handleInlineHorizontalDragUpdate,
@@ -1649,6 +1656,7 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
 }
 
 class _EmbeddedEpisodePlayer extends StatelessWidget {
+  final PlayerTapHandler taps;
   final VideoController controller;
   final bool detached;
   final bool isPreparing;
@@ -1675,6 +1683,7 @@ class _EmbeddedEpisodePlayer extends StatelessWidget {
   final Widget? playbackPrompt;
 
   const _EmbeddedEpisodePlayer({
+    required this.taps,
     required this.controller,
     required this.detached,
     required this.isPreparing,
@@ -1741,8 +1750,9 @@ class _EmbeddedEpisodePlayer extends StatelessWidget {
           Positioned.fill(
             child: GestureDetector(
               behavior: HitTestBehavior.opaque,
-              onTap: onToggleControls,
-              onDoubleTap: onDoubleTap,
+              onTapUp: (details) =>
+                  taps.handle(details, onToggleControls, onDoubleTap),
+              onTapCancel: taps.reset,
               onHorizontalDragStart: onHorizontalDragStart,
               onHorizontalDragUpdate: onHorizontalDragUpdate,
               onHorizontalDragEnd: onHorizontalDragEnd,
@@ -1873,11 +1883,6 @@ class _InlinePlayerBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final int maxMs = duration.inMilliseconds <= 0
-        ? 1
-        : duration.inMilliseconds;
-    final double value = position.inMilliseconds.clamp(0, maxMs).toDouble();
-
     return DecoratedBox(
       decoration: const BoxDecoration(
         gradient: LinearGradient(
@@ -1920,13 +1925,10 @@ class _InlinePlayerBar extends StatelessWidget {
                     overlayRadius: 10,
                   ),
                 ),
-                child: Slider(
-                  value: value,
-                  max: maxMs.toDouble(),
-                  activeColor: Colors.white,
-                  inactiveColor: Colors.white30,
-                  onChanged: (double next) =>
-                      onSeek(Duration(milliseconds: next.round())),
+                child: PlaybackSeekSlider(
+                  position: position,
+                  duration: duration,
+                  onSeek: onSeek,
                 ),
               ),
             ),

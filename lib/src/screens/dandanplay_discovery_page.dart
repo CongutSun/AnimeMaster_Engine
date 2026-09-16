@@ -2,12 +2,23 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import '../services/dandanplay_service.dart';
+import '../api/bangumi_api.dart';
+import '../models/anime.dart';
+import '../widgets/anime_grid.dart';
+import '../utils/haptic_helper.dart';
 import 'detail_page.dart';
 import 'magnet_config_page.dart';
 
 class DandanplayDiscoveryPage extends StatefulWidget {
-  const DandanplayDiscoveryPage({super.key, this.service});
+  const DandanplayDiscoveryPage({
+    super.key,
+    this.service,
+    this.initialCategory = 'hot',
+    this.yearTop,
+  });
   final DandanplayService? service;
+  final String initialCategory;
+  final List<Anime>? yearTop;
   @override
   State<DandanplayDiscoveryPage> createState() =>
       _DandanplayDiscoveryPageState();
@@ -15,7 +26,8 @@ class DandanplayDiscoveryPage extends StatefulWidget {
 
 class _DandanplayDiscoveryPageState extends State<DandanplayDiscoveryPage> {
   late final DandanplayService _service = widget.service ?? DandanplayService();
-  String _category = 'hot';
+  late String _category = widget.initialCategory;
+  List<Anime>? _yearTop;
   String _period = 'week';
   int _generation = 0;
   bool _loading = true;
@@ -26,6 +38,7 @@ class _DandanplayDiscoveryPageState extends State<DandanplayDiscoveryPage> {
   @override
   void initState() {
     super.initState();
+    _yearTop = widget.yearTop;
     _load();
   }
 
@@ -38,6 +51,19 @@ class _DandanplayDiscoveryPageState extends State<DandanplayDiscoveryPage> {
       _summary = {};
     });
     try {
+      if (_category == 'rating') {
+        final results =
+            _yearTop ??
+            (await BangumiApi.instance.getYearTop())
+                .map(Anime.fromJson)
+                .toList();
+        if (!mounted || generation != _generation) return;
+        setState(() {
+          _yearTop = results;
+          _loading = false;
+        });
+        return;
+      }
       final data = await _service.discovery(
         category: _category,
         period: _period,
@@ -66,7 +92,7 @@ class _DandanplayDiscoveryPageState extends State<DandanplayDiscoveryPage> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('热播与新番')),
+    appBar: AppBar(title: const Text('发现动漫')),
     body: Center(
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 900),
@@ -79,6 +105,7 @@ class _DandanplayDiscoveryPageState extends State<DandanplayDiscoveryPage> {
                 runSpacing: 4,
                 children: [
                   for (final entry in const {
+                    'rating': '年度高分',
                     'hot': '热播榜',
                     'rising': '飙升榜',
                     'new': '新番热播',
@@ -89,6 +116,7 @@ class _DandanplayDiscoveryPageState extends State<DandanplayDiscoveryPage> {
                       selected: _category == entry.key,
                       onSelected: (selected) {
                         if (selected && _category != entry.key) {
+                          quickHaptic();
                           _category = entry.key;
                           _load();
                         }
@@ -122,7 +150,9 @@ class _DandanplayDiscoveryPageState extends State<DandanplayDiscoveryPage> {
             Padding(
               padding: const EdgeInsets.all(12),
               child: Text(
-                '数据来源：弹弹play开放弹幕网络\n${_summary['dateFrom'] ?? ''}${_summary['dateTo'] == null ? '' : ' 至 ${_summary['dateTo']}'}',
+                _category == 'rating'
+                    ? '${DateTime.now().year} 年作品 · Bangumi 综合排名（非播放热度）'
+                    : '数据来源：弹弹play开放弹幕网络 · ${_category == 'season' ? '当季放送目录' : '播放热度，非评分排名'}\n${_summary['dateFrom'] ?? ''}${_summary['dateTo'] == null ? '' : ' 至 ${_summary['dateTo']}'}',
                 textAlign: TextAlign.center,
                 style: Theme.of(context).textTheme.bodySmall,
               ),
@@ -146,6 +176,11 @@ class _DandanplayDiscoveryPageState extends State<DandanplayDiscoveryPage> {
                           ],
                         ),
                       ),
+                    )
+                  : _category == 'rating'
+                  ? SingleChildScrollView(
+                      padding: const EdgeInsets.all(16),
+                      child: AnimeGrid(animeList: _yearTop ?? [], isTop: true),
                     )
                   : _items.isEmpty
                   ? const Center(child: Text('当前没有可显示的榜单。'))

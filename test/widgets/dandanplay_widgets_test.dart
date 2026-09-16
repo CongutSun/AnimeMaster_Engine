@@ -62,6 +62,31 @@ const match = DandanplayMatchResult(
 
 void main() {
   testWidgets(
+    'yearly ranking shares discovery navigation without fetching heat',
+    (tester) async {
+      final service = FakeService();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: DandanplayDiscoveryPage(
+            service: service,
+            initialCategory: 'rating',
+            yearTop: const [],
+          ),
+        ),
+      );
+      await tester.pump();
+      expect(find.text('发现动漫'), findsOneWidget);
+      expect(find.text('年度高分'), findsOneWidget);
+      expect(service.calls, isEmpty);
+      await tester.tap(find.text('热播榜'));
+      await tester.pump();
+      expect(service.calls.containsKey('hot'), isTrue);
+      service.calls['hot']!.complete({'bangumiList': []});
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+    },
+  );
+  testWidgets(
     'switching discovery tabs discards older responses on narrow screens',
     (tester) async {
       tester.view.physicalSize = const Size(390, 844);

@@ -10,6 +10,8 @@ Widget scene({
   bool paused = false,
   Size size = const Size(800, 450),
   VoidCallback? completed,
+  Duration? position,
+  double playbackRate = 1,
 }) => MaterialApp(
   home: Scaffold(
     backgroundColor: Colors.black,
@@ -39,6 +41,8 @@ Widget scene({
           showStroke: true,
           paused: paused,
           onCompleted: (_) => completed?.call(),
+          position: position,
+          playbackRate: playbackRate,
         ),
       ),
     ),
@@ -46,6 +50,40 @@ Widget scene({
 );
 
 void main() {
+  testWidgets('seek restores screen position and backwards seek rewinds it', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      scene(paused: true, position: const Duration(seconds: 4)),
+    );
+    final middle = tester.widget<Positioned>(find.byType(Positioned)).left!;
+    expect(middle, greaterThan(0));
+    expect(middle, lessThan(600));
+    await tester.pumpWidget(
+      scene(paused: true, position: const Duration(seconds: 2)),
+    );
+    expect(
+      tester.widget<Positioned>(find.byType(Positioned)).left!,
+      greaterThan(middle),
+    );
+    await tester.pump(const Duration(seconds: 2));
+    expect(tester.takeException(), isNull);
+  });
+  testWidgets('playback rate scales remaining bullet animation', (
+    tester,
+  ) async {
+    await tester.pumpWidget(scene(position: Duration.zero, playbackRate: 2));
+    await tester.pump(const Duration(seconds: 2));
+    final fast = tester.widget<Positioned>(find.byType(Positioned)).left!;
+    await tester.pumpWidget(
+      scene(paused: true, position: const Duration(seconds: 4)),
+    );
+    expect(
+      tester.widget<Positioned>(find.byType(Positioned)).left!,
+      closeTo(fast, 1),
+    );
+    expect(tester.takeException(), isNull);
+  });
   for (final mode in [1, 4, 5]) {
     for (final opacity in [1.0, 0.8, 0.35]) {
       testWidgets(

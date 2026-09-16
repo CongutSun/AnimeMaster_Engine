@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -6,7 +7,7 @@ import '../providers/settings_provider.dart';
 /// Call before any interactive action. Checks the haptic setting.
 void maybeHaptic(BuildContext context) {
   if (context.read<SettingsProvider>().enableHapticFeedback) {
-    HapticFeedback.lightImpact();
+    _pulse();
   }
 }
 
@@ -30,7 +31,7 @@ class HapticNavigatorObserver extends NavigatorObserver {
   void _fireIfEnabled() {
     // NavigatorObserver doesn't have BuildContext, so we use a static flag.
     if (_hapticsGloballyEnabled) {
-      HapticFeedback.lightImpact();
+      _pulse();
     }
   }
 
@@ -45,6 +46,17 @@ class HapticNavigatorObserver extends NavigatorObserver {
 /// Quick haptic for switches/toggles — checks global flag.
 void quickHaptic() {
   if (HapticNavigatorObserver._hapticsGloballyEnabled) {
-    HapticFeedback.lightImpact();
+    _pulse();
   }
+}
+
+DateTime? _lastPulse;
+void _pulse() {
+  final now = DateTime.now();
+  if (_lastPulse != null &&
+      now.difference(_lastPulse!) < const Duration(milliseconds: 80)) {
+    return;
+  }
+  _lastPulse = now;
+  unawaited(HapticFeedback.mediumImpact().catchError((Object _) {}));
 }

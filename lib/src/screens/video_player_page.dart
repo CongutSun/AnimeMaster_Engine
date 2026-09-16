@@ -26,6 +26,8 @@ import '../widgets/danmaku_overlay.dart';
 import '../services/online_episode_source_service.dart';
 import '../services/picture_in_picture_service.dart';
 import '../utils/media_duration_probe.dart';
+import '../utils/player_tap_handler.dart';
+import '../utils/haptic_helper.dart';
 import '../utils/playback_progress_store.dart';
 import '../utils/torrent_stream_server.dart';
 import '../widgets/playback_action_prompt.dart';
@@ -60,6 +62,8 @@ class VideoPlayerPage extends StatefulWidget {
 
 class _VideoPlayerPageState extends State<VideoPlayerPage>
     with WidgetsBindingObserver {
+  final PlayerTapHandler _playerTaps = PlayerTapHandler();
+  int _danmakuItemId = 0;
   static const List<double> _supportedRates = <double>[
     0.75,
     1.0,
@@ -1031,6 +1035,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
   }
 
   void _toggleControls() {
+    quickHaptic();
     if (!mounted) {
       return;
     }
@@ -1146,7 +1151,6 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
       _position = target;
       _dragPosition = target;
     });
-    _resyncDanmakuCursor(target);
     _showHorizontalSeekIndicator(target);
   }
 
@@ -1304,6 +1308,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
   }
 
   Future<void> _togglePlayPause() async {
+    quickHaptic();
     if (_isPlaying) {
       await _player.pause();
     } else {
@@ -1354,15 +1359,11 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
       _position = target;
       _dragPosition = target;
     });
-    _resyncDanmakuCursor(target);
-
     _sliderSeekThrottle?.cancel();
-    _sliderSeekThrottle = Timer(const Duration(milliseconds: 80), () {
-      unawaited(_player.seek(target));
-    });
   }
 
   Future<void> _finishSliderSeek(double value) async {
+    quickHaptic();
     final Duration target = Duration(milliseconds: value.round());
     _sliderSeekThrottle?.cancel();
     _sliderSeekThrottle = null;
@@ -1563,22 +1564,24 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
 
   void _pumpDanmaku() {
     if (!_danmakuEnabled ||
+        _dragPosition != null ||
         !_isPlaying ||
         _isBuffering ||
         _danmakuComments.isEmpty) {
       return;
     }
 
-    final Duration threshold = _position + const Duration(milliseconds: 350);
+    final Duration threshold = _position;
     final List<ActiveDanmakuItem> pending = <ActiveDanmakuItem>[];
 
     while (_nextDanmakuIndex < _danmakuComments.length &&
         _danmakuComments[_nextDanmakuIndex].appearAt <= threshold) {
       final DandanplayComment comment = _danmakuComments[_nextDanmakuIndex];
-      if (comment.appearAt + const Duration(seconds: 1) >= _position) {
+      if (comment.appearAt + const Duration(seconds: 1) >= _position &&
+          _activeDanmaku.length + pending.length < 60) {
         pending.add(
           ActiveDanmakuItem(
-            id: DateTime.now().microsecondsSinceEpoch + _nextDanmakuIndex,
+            id: ++_danmakuItemId,
             comment: comment,
             lane: _resolveDanmakuLane(comment.mode),
           ),
@@ -1611,15 +1614,36 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
 
   void _resyncDanmakuCursor(Duration position) {
     _cancelDanmakuTicker();
-    _nextDanmakuIndex = 0;
+    int low = 0;
+    int high = _danmakuComments.length;
+    final start = position - const Duration(seconds: 18);
+    while (low < high) {
+      final middle = (low + high) ~/ 2;
+      if (_danmakuComments[middle].appearAt < start) {
+        low = middle + 1;
+      } else {
+        high = middle;
+      }
+    }
+    _nextDanmakuIndex = low;
+    _danmakuSeed = low;
+    final restored = <ActiveDanmakuItem>[];
     while (_nextDanmakuIndex < _danmakuComments.length &&
-        _danmakuComments[_nextDanmakuIndex].appearAt <
-            position - const Duration(milliseconds: 300)) {
+        _danmakuComments[_nextDanmakuIndex].appearAt <= position) {
+      final comment = _danmakuComments[_nextDanmakuIndex];
+      final lane = _resolveDanmakuLane(comment.mode);
+      if (position - comment.appearAt <
+              danmakuDuration(comment, _danmakuSpeed) &&
+          restored.length < 60) {
+        restored.add(
+          ActiveDanmakuItem(id: ++_danmakuItemId, comment: comment, lane: lane),
+        );
+      }
       _nextDanmakuIndex++;
     }
     if (mounted) {
       setState(() {
-        _activeDanmaku = <ActiveDanmakuItem>[];
+        _activeDanmaku = restored;
       });
     }
     if (_danmakuEnabled) {
@@ -1628,6 +1652,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
   }
 
   Future<void> _toggleDanmaku() async {
+    quickHaptic();
     final bool nextEnabled = !_danmakuEnabled;
     setState(() {
       _danmakuEnabled = nextEnabled;
@@ -2477,8 +2502,14 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
           Positioned.fill(
             child: GestureDetector(
               behavior: HitTestBehavior.opaque,
-              onTap: showPlayer ? _toggleControls : null,
-              onDoubleTap: showPlayer ? _handlePlayerDoubleTap : null,
+              onTapUp: showPlayer
+                  ? (details) => _playerTaps.handle(
+                      details,
+                      _toggleControls,
+                      _handlePlayerDoubleTap,
+                    )
+                  : null,
+              onTapCancel: _playerTaps.reset,
               onVerticalDragStart: showPlayer ? _handleVerticalDragStart : null,
               onVerticalDragUpdate: showPlayer
                   ? _handleVerticalDragUpdate
@@ -2514,7 +2545,9 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
                   speed: _danmakuSpeed,
                   showBackground: _danmakuShowBackground,
                   showStroke: _danmakuShowStroke,
-                  paused: !_isPlaying,
+                  paused: !_isPlaying || _isBuffering || _dragPosition != null,
+                  position: _position,
+                  playbackRate: _rate,
                   onCompleted: _removeDanmakuItem,
                 ),
               ),
@@ -2588,8 +2621,9 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
 
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTap: _toggleControls,
-      onDoubleTap: _handlePlayerDoubleTap,
+      onTapUp: (details) =>
+          _playerTaps.handle(details, _toggleControls, _handlePlayerDoubleTap),
+      onTapCancel: _playerTaps.reset,
       onVerticalDragStart: _handleVerticalDragStart,
       onVerticalDragUpdate: _handleVerticalDragUpdate,
       onVerticalDragEnd: _handleVerticalDragEnd,

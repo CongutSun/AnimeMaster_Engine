@@ -40,7 +40,7 @@ class SettingsProvider with ChangeNotifier {
   bool _enablePictureInPicture = false;
   String _resumePlaybackBehavior = 'ask';
   bool _autoPlayNextEpisode = false;
-  bool _enableHapticFeedback = true;
+  bool _enableHapticFeedback = false;
   late final Future<void> _loadFuture;
 
   final FlutterSecureStorage _secureStorage = const FlutterSecureStorage();

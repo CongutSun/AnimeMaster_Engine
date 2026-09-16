@@ -160,25 +160,20 @@ class _HomePageState extends State<HomePage> {
                 Card(
                   child: ListTile(
                     leading: const Icon(Icons.trending_up_rounded),
-                    title: const Text('热播与新番'),
-                    subtitle: const Text('弹弹play 热播榜、飙升榜与新番列表'),
+                    title: const Text('发现动漫'),
+                    subtitle: const Text('年度高分 · 近期热播 · 当季新番'),
                     trailing: const Icon(Icons.chevron_right),
                     onTap: () => Navigator.push(
                       context,
                       MaterialPageRoute<void>(
-                        builder: (_) => const DandanplayDiscoveryPage(),
+                        builder: (_) => DandanplayDiscoveryPage(
+                          initialCategory: 'rating',
+                          yearTop: snapshot.topAnime,
+                        ),
                       ),
                     ),
                   ),
                 ),
-                const SizedBox(height: 24),
-                const SectionHeader(
-                  icon: Icons.emoji_events_rounded,
-                  title: '本年度高分榜单',
-                  iconColor: Color(0xFFFF9F0A),
-                ),
-                const SizedBox(height: 16),
-                AnimeGrid(animeList: snapshot.topAnime, isTop: true),
                 const SizedBox(height: 40),
               ],
             ),

@@ -1,5 +1,3 @@
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 
 import '../models/dandanplay_models.dart';
@@ -16,6 +14,13 @@ class ActiveDanmakuItem {
   });
 }
 
+Duration danmakuDuration(DandanplayComment comment, double speed) => Duration(
+  milliseconds: ((comment.mode == 1 ? 9000 : 4000) / speed).round().clamp(
+    2600,
+    18000,
+  ),
+);
+
 class DanmakuOverlay extends StatelessWidget {
   final List<ActiveDanmakuItem> items;
   final double fontSize;
@@ -25,6 +30,8 @@ class DanmakuOverlay extends StatelessWidget {
   final bool showStroke;
   final bool paused;
   final ValueChanged<int> onCompleted;
+  final Duration? position;
+  final double playbackRate;
 
   const DanmakuOverlay({
     super.key,
@@ -36,6 +43,8 @@ class DanmakuOverlay extends StatelessWidget {
     required this.showStroke,
     required this.paused,
     required this.onCompleted,
+    this.position,
+    this.playbackRate = 1,
   });
 
   @override
@@ -56,6 +65,8 @@ class DanmakuOverlay extends StatelessWidget {
                   showBackground: showBackground,
                   showStroke: showStroke,
                   paused: paused,
+                  position: position,
+                  playbackRate: playbackRate,
                   onCompleted: () => onCompleted(item.id),
                 ),
               )
@@ -76,6 +87,8 @@ class _DanmakuBullet extends StatefulWidget {
   final bool showStroke;
   final bool paused;
   final VoidCallback onCompleted;
+  final Duration? position;
+  final double playbackRate;
 
   const _DanmakuBullet({
     super.key,
@@ -88,6 +101,8 @@ class _DanmakuBullet extends StatefulWidget {
     required this.showStroke,
     required this.paused,
     required this.onCompleted,
+    required this.position,
+    required this.playbackRate,
   });
 
   @override
@@ -102,13 +117,10 @@ class _DanmakuBulletState extends State<_DanmakuBullet>
   void initState() {
     super.initState();
 
-    final int baseDurationMs = widget.item.comment.mode == 1
-        ? (7000 + widget.item.comment.text.length * 80).clamp(6500, 12000)
-        : 4000;
-    final int durationMs = (baseDurationMs / widget.speed).round().clamp(
-      2600,
-      18000,
-    );
+    final int durationMs =
+        (danmakuDuration(widget.item.comment, widget.speed).inMilliseconds /
+                widget.playbackRate)
+            .round();
     _controller =
         AnimationController(
           vsync: this,
@@ -118,19 +130,34 @@ class _DanmakuBulletState extends State<_DanmakuBullet>
             widget.onCompleted();
           }
         });
-    if (!widget.paused) _controller.forward();
+    _syncPosition();
   }
 
   @override
   void didUpdateWidget(covariant _DanmakuBullet oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.paused != oldWidget.paused) {
-      if (widget.paused) {
-        _controller.stop();
-      } else {
-        _controller.forward();
-      }
+    if (widget.position != oldWidget.position ||
+        widget.paused != oldWidget.paused ||
+        widget.speed != oldWidget.speed ||
+        widget.playbackRate != oldWidget.playbackRate) {
+      _syncPosition();
     }
+  }
+
+  void _syncPosition() {
+    final duration = danmakuDuration(widget.item.comment, widget.speed);
+    _controller.stop();
+    _controller.duration = Duration(
+      microseconds: (duration.inMicroseconds / widget.playbackRate).round(),
+    );
+    if (widget.position != null) {
+      final progress =
+          (widget.position! - widget.item.comment.appearAt).inMicroseconds /
+          duration.inMicroseconds;
+      // Completion callbacks must not mutate the parent during its build.
+      _controller.value = progress.clamp(0, 0.999999);
+    }
+    if (!widget.paused) _controller.forward();
   }
 
   @override
@@ -142,10 +169,20 @@ class _DanmakuBulletState extends State<_DanmakuBullet>
   @override
   Widget build(BuildContext context) {
     final double laneHeight = widget.fontSize + 14;
-    final double textWidth = math.max(
-      120.0,
-      widget.item.comment.text.runes.length * widget.fontSize,
-    );
+    final painter = TextPainter(
+      text: TextSpan(
+        text: widget.item.comment.text,
+        style: TextStyle(
+          fontSize: widget.fontSize,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+      textScaler: MediaQuery.textScalerOf(context),
+      maxLines: 1,
+    )..layout();
+    final double textWidth = painter.width + 16;
+    painter.dispose();
 
     return AnimatedBuilder(
       animation: _controller,

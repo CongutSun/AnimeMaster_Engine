@@ -15,6 +15,7 @@ import '../services/app_update_service.dart';
 import '../services/bangumi_auth_gateway_service.dart';
 import '../services/bangumi_oauth_service.dart';
 import '../utils/app_strings.dart';
+import '../utils/haptic_helper.dart';
 import '../utils/image_request.dart';
 import 'about_page.dart';
 import 'dandanplay_discovery_page.dart';
@@ -1076,9 +1077,13 @@ class _SettingsPageState extends State<SettingsPage> {
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
               title: const Text('触觉反馈'),
-              subtitle: const Text('开启后，切换标签页和点击按钮时会有轻微的震动反馈。'),
+              subtitle: const Text(
+                '播放操作、榜单切换和页面导航时反馈；需要设备支持并开启系统触感。开启此项可立即体验。',
+              ),
               value: context.watch<SettingsProvider>().enableHapticFeedback,
               onChanged: (bool value) {
+                HapticNavigatorObserver.syncFromSettings(value);
+                if (value) quickHaptic();
                 unawaited(
                   context.read<SettingsProvider>().updateHapticFeedback(value),
                 );
