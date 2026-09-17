@@ -7,6 +7,8 @@ import 'package:flutter/foundation.dart';
 
 import '../config/embedded_credentials.dart';
 import '../utils/task_title_parser.dart';
+import '../models/rss_resource.dart';
+import '../services/rss_feed_service.dart';
 import 'dio_client.dart';
 
 class MagnetApi {
@@ -15,6 +17,8 @@ class MagnetApi {
   static Future<List<Map<String, String>>> searchTorrents({
     required String keyword,
     required List<Map<String, String>> selectedSources,
+    List<String> aliases = const [],
+    RssFeedService? feedService,
     String mustInclude = '',
     String quality = '',
     String exclude = '',
@@ -33,6 +37,8 @@ class MagnetApi {
               quality: quality,
               exclude: exclude,
               targetEpisodeNumber: targetEpisodeNumber,
+              aliases: aliases,
+              feedService: feedService,
             );
             for (final item in items) {
               partial[_resultKey(item)] = item;
@@ -74,10 +80,59 @@ class MagnetApi {
     required String quality,
     required String exclude,
     required int? targetEpisodeNumber,
+    required List<String> aliases,
+    RssFeedService? feedService,
   }) async {
     final String rawUrl = source['url']?.trim() ?? '';
     if (rawUrl.isEmpty) {
       return <Map<String, String>>[];
+    }
+    if (source['enabled'] == 'false') return [];
+    final isFixed = isSubscriptionSource(source);
+    final publicSearch =
+        rawUrl ==
+            'https://share.dmhy.org/topics/rss/rss.xml?keyword={keyword}' ||
+        rawUrl == 'https://mikanani.me/RSS/Search?searchstr={keyword}';
+    if (isFixed || !publicSearch) {
+      final feed = await (feedService ?? RssFeedService.instance).fetch(
+        rawUrl.replaceAll('{keyword}', Uri.encodeComponent(keyword)),
+      );
+      return feed.items
+          .where(
+            (item) =>
+                item.downloadUrl.isNotEmpty &&
+                (!isFixed ||
+                    RssFeedService.matchesTitle(item.title, [
+                      keyword,
+                      ...aliases,
+                    ])) &&
+                (mustInclude.isEmpty ||
+                    item.title.toLowerCase().contains(
+                      mustInclude.toLowerCase(),
+                    )) &&
+                (quality.isEmpty ||
+                    item.title.toLowerCase().contains(quality.toLowerCase())) &&
+                (exclude.isEmpty ||
+                    !item.title.toLowerCase().contains(
+                      exclude.toLowerCase(),
+                    )) &&
+                (targetEpisodeNumber == null ||
+                    TaskTitleParser.matchesEpisodeNumber(
+                      item.title,
+                      targetEpisodeNumber,
+                    )),
+          )
+          .map(
+            (item) => <String, String>{
+              'title': '[${source['name']}] ${item.title}',
+              'magnet': item.magnet,
+              'torrent': item.torrent,
+              'url': item.detailUrl,
+              'date': item.publishedAt?.toIso8601String() ?? '',
+              'source': source['name'] ?? '',
+            },
+          )
+          .toList();
     }
 
     final String requestUrl = rawUrl.replaceAll(

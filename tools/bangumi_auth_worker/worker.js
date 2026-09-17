@@ -15,7 +15,7 @@ const PENDING_TTL_SECONDS = 600;
 const SESSION_EXCHANGE_TTL_SECONDS = 600;
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 60;
 const BANGUMI_API_USER_AGENT =
-  'CongutSun/AnimeMaster_Engine/2.4.6 (Cloudflare Workers; https://auth.congutsun.com)';
+  'CongutSun/AnimeMaster_Engine/2.4.7 (Cloudflare Workers; https://auth.congutsun.com)';
 const RESOURCE_PROXY_USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 const RESOURCE_PROXY_ALLOWED_HOSTS = new Set([
@@ -49,39 +49,39 @@ const BANGUMI_PROXY_REQUEST_HEADERS = [
   'accept-language',
 ];
 const APP_UPDATE_MANIFEST = {
-  "version": "2.4.6",
-  "build": 2051,
-  "apkUrl": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.6/app-release.apk",
+  "version": "2.4.7",
+  "build": 2052,
+  "apkUrl": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.7/app-release.apk",
   "notes": [
-    "播放器控制栏即时响应，进度条松手后跳转。",
-    "弹幕随播放时间恢复屏内位置，并同步暂停、缓冲和倍速。",
-    "发现动漫统一展示年度高分、热播、飙升及新番。",
-    "播放操作、榜单切换及导航支持触觉反馈。"
+    "支持固定 RSS / Atom 订阅、关键词搜索和连接测试。",
+    "订阅更新按在看番剧匹配资源，支持筛选规则与手动确认集数。",
+    "保留下载与忽略状态，私人地址安全存储且不经过公共代理。",
+    "首页、追番库及设置提供统一入口，适配窄屏与深色模式。"
   ],
-  "publishedAt": "2026-09-16T13:15:50Z",
+  "publishedAt": "2026-09-17T06:28:43Z",
   "forceUpdate": false,
   "apkUrls": {
-    "android-arm64": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.6/app-arm64-v8a-release.apk",
-    "android-arm": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.6/app-armeabi-v7a-release.apk",
-    "android-x64": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.6/app-x86_64-release.apk",
-    "universal": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.6/app-release.apk"
+    "android-arm64": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.7/app-arm64-v8a-release.apk",
+    "android-arm": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.7/app-armeabi-v7a-release.apk",
+    "android-x64": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.7/app-x86_64-release.apk",
+    "universal": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.7/app-release.apk"
   },
   "sha256": {
-    "android-arm64": "1698991c6a3839b5b5e6b9333816b85dab9a130fafd7f2acb360de5a71d5eb6f",
-    "android-arm": "607f3cd36dfd319af37a1003d6e226606d17dfbce9b23988681f536dfb265c83",
-    "android-x64": "2d337ee1c305da4c91d8787c41b064783e003d9e5ef115fdc228783cc69e6344",
-    "universal": "304b4771a5795878707d3e18e1ffd2ca3d0cbc03ed4dfe914d0a76806795312a"
+    "android-arm64": "09e6b7c12a28e646cb21b5db66a33544f6cae63540925620a9032422a2b4e81e",
+    "android-arm": "77a6284d18a645001a67812f43948bba4898bc98d7863bfe01ac6a612869597d",
+    "android-x64": "8062ecfd094b4f55885f20c981e76c061020315141d0f63a51e8d1d155209cca",
+    "universal": "30471ae36354659264ff73506288483c476262c3dcf3cf66c5eff6ae9be87d67"
   }
 };
 const APK_DOWNLOAD_URLS = {
   'android-arm64':
-    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.6/app-arm64-v8a-release.apk',
+    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.7/app-arm64-v8a-release.apk',
   'android-arm':
-    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.6/app-armeabi-v7a-release.apk',
+    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.7/app-armeabi-v7a-release.apk',
   'android-x64':
-    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.6/app-x86_64-release.apk',
+    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.7/app-x86_64-release.apk',
   universal:
-    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.6/app-release.apk',
+    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.7/app-release.apk',
 };
 
 function applyCors(headers, request, methods = 'GET,POST,OPTIONS') {

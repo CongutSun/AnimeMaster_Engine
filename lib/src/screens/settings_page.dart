@@ -14,7 +14,7 @@ import '../providers/settings_provider.dart';
 import '../services/app_update_service.dart';
 import '../services/bangumi_auth_gateway_service.dart';
 import '../services/bangumi_oauth_service.dart';
-import '../utils/app_strings.dart';
+import '../widgets/rss_sources_card.dart';
 import '../utils/haptic_helper.dart';
 import '../utils/image_request.dart';
 import 'about_page.dart';
@@ -32,11 +32,8 @@ class _SettingsPageState extends State<SettingsPage> {
   final TextEditingController dandanAppIdController = TextEditingController();
   final TextEditingController dandanAppSecretController =
       TextEditingController();
-  final TextEditingController rssNameController = TextEditingController();
-  final TextEditingController rssUrlController = TextEditingController();
 
   String themeMode = 'Light';
-  int selectedRssIndex = -1;
   bool autoCheckUpdates = true;
   bool enablePictureInPicture = false;
   String resumePlaybackBehavior = 'ask';
@@ -58,8 +55,6 @@ class _SettingsPageState extends State<SettingsPage> {
     bgController.dispose();
     dandanAppIdController.dispose();
     dandanAppSecretController.dispose();
-    rssNameController.dispose();
-    rssUrlController.dispose();
     super.dispose();
   }
 
@@ -435,56 +430,6 @@ class _SettingsPageState extends State<SettingsPage> {
     ).showSnackBar(const SnackBar(content: Text('Bangumi 授权已清除。')));
   }
 
-  void _addRss(SettingsProvider provider) {
-    final String name = rssNameController.text.trim();
-    final String url = rssUrlController.text.trim();
-
-    if (name.isEmpty || !url.contains('{keyword}')) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('RSS 名称不能为空，且 URL 必须包含 {keyword}。')),
-      );
-      return;
-    }
-
-    final Uri? uri = Uri.tryParse(url);
-    if (uri == null || (uri.scheme != 'http' && uri.scheme != 'https')) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('请输入合法的 HTTP 或 HTTPS 地址。')));
-      return;
-    }
-
-    provider.addRssSource(name, url);
-    rssNameController.clear();
-    rssUrlController.clear();
-  }
-
-  void _deleteRss(SettingsProvider provider) {
-    if (selectedRssIndex < 0) return;
-    showDialog<bool>(
-      context: context,
-      builder: (BuildContext dialogContext) => AlertDialog(
-        title: const Text(AppStrings.deleteRssConfirm),
-        content: const Text(AppStrings.deleteRssMessage),
-        actions: <Widget>[
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text(AppStrings.cancel),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text(AppStrings.deleteConfirm),
-          ),
-        ],
-      ),
-    ).then((bool? confirmed) {
-      if (confirmed == true && mounted) {
-        provider.removeRssSource(selectedRssIndex);
-        setState(() => selectedRssIndex = -1);
-      }
-    });
-  }
-
   @override
   Widget build(BuildContext context) {
     final SettingsProvider provider = context.watch<SettingsProvider>();
@@ -526,7 +471,7 @@ class _SettingsPageState extends State<SettingsPage> {
           _buildSectionLabel(
             icon: Icons.hub_outlined,
             title: '数据与弹幕',
-            subtitle: '弹幕凭据和 RSS 搜索源',
+            subtitle: '弹幕凭据和 RSS 资源源',
           ),
           const SizedBox(height: 8),
           _buildDandanplayCard(provider),
@@ -1182,80 +1127,7 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
-  Widget _buildRssCard(SettingsProvider provider) {
-    final ColorScheme colors = Theme.of(context).colorScheme;
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            const Text(
-              'RSS 资源搜索源',
-              style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
-            ),
-            const SizedBox(height: 12),
-            Container(
-              constraints: const BoxConstraints(maxHeight: 220),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.grey.withValues(alpha: 0.25)),
-              ),
-              child: ListView.builder(
-                shrinkWrap: true,
-                itemCount: provider.rssSources.length,
-                itemBuilder: (BuildContext context, int index) {
-                  final Map<String, String> item = provider.rssSources[index];
-                  final bool isSelected = selectedRssIndex == index;
-                  return ListTile(
-                    selected: isSelected,
-                    selectedTileColor: colors.primary.withValues(alpha: 0.08),
-                    title: Text(item['name'] ?? '未知源'),
-                    subtitle: Text(item['url'] ?? ''),
-                    onTap: () {
-                      setState(() {
-                        selectedRssIndex = index;
-                      });
-                    },
-                  );
-                },
-              ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: rssNameController,
-              decoration: const InputDecoration(labelText: '站点名称'),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: rssUrlController,
-              decoration: const InputDecoration(
-                labelText: 'RSS 地址',
-                hintText: '必须包含 {keyword}',
-              ),
-            ),
-            const SizedBox(height: 12),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: <Widget>[
-                OutlinedButton.icon(
-                  onPressed: () => _deleteRss(provider),
-                  icon: const Icon(Icons.delete_outline),
-                  label: const Text('删除'),
-                ),
-                const SizedBox(width: 8),
-                FilledButton.icon(
-                  onPressed: () => _addRss(provider),
-                  icon: const Icon(Icons.add),
-                  label: const Text('添加'),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+  Widget _buildRssCard(SettingsProvider provider) => const RssSourcesCard();
 
   Widget _buildUpdateCard() {
     return Card(

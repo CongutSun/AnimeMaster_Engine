@@ -9,6 +9,7 @@ import '../config/bangumi_gateway_config.dart';
 import '../core/engine_bridge.dart';
 import '../models/bangumi_auth_gateway_models.dart';
 import '../models/bangumi_user_profile.dart';
+import '../models/rss_resource.dart';
 import '../services/bangumi_auth_gateway_service.dart';
 import '../services/bangumi_oauth_service.dart';
 
@@ -87,7 +88,9 @@ class SettingsProvider with ChangeNotifier {
       dandanplayAppId.trim().isNotEmpty &&
       dandanplayAppSecret.trim().isNotEmpty;
 
-  List<Map<String, String>> get rssSources => _rssSources;
+  List<Map<String, String>> get rssSources => _rssSources
+      .map((item) => Map<String, String>.unmodifiable(item))
+      .toList(growable: false);
   bool get isLoaded => _isLoaded;
 
   String get closeAction => _closeAction;
@@ -151,7 +154,8 @@ class SettingsProvider with ChangeNotifier {
     _dandanplayAppSecret =
         await _secureStorage.read(key: 'dandanplay_app_secret') ?? '';
 
-    final String? rssString = prefs.getString('rss_sources');
+    final String? secureRss = await _secureStorage.read(key: 'rss_sources_v2');
+    final String? rssString = secureRss ?? prefs.getString('rss_sources');
     if (rssString != null) {
       final List<dynamic> decoded = jsonDecode(rssString);
       _rssSources = decoded
@@ -168,6 +172,15 @@ class SettingsProvider with ChangeNotifier {
           'url': 'https://mikanani.me/RSS/Search?searchstr={keyword}',
         },
       ];
+    }
+    if (secureRss == null && rssString != null) {
+      await _secureStorage.write(
+        key: 'rss_sources_v2',
+        value: jsonEncode(_rssSources),
+      );
+      await prefs.remove('rss_sources');
+    } else if (secureRss != null) {
+      await prefs.remove('rss_sources');
     }
 
     if (_shouldRefreshBangumiToken()) {
@@ -388,23 +401,42 @@ class SettingsProvider with ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> addRssSource(String name, String url) async {
-    _rssSources.add(<String, String>{'name': name.trim(), 'url': url.trim()});
-    await _saveRssToPrefs();
-    notifyListeners();
+  Future<void> addRssSource(String name, String url, {String? type}) async {
+    if (_rssSources.any((s) => s['url'] == url.trim())) {
+      throw const FormatException('该订阅地址已添加。');
+    }
+    await _saveRssSources([
+      ..._rssSources,
+      {
+        'id': rssSourceId({'url': url.trim()}),
+        'name': name.trim(),
+        'url': url.trim(),
+        'type': type ?? (url.contains('{keyword}') ? 'search' : 'subscription'),
+        'enabled': 'true',
+      },
+    ]);
+  }
+
+  Future<void> updateRssSource(int index, Map<String, String> source) async {
+    if (index < 0 || index >= _rssSources.length) return;
+    final next = _rssSources.map((s) => Map<String, String>.from(s)).toList();
+    next[index] = {...source, 'id': rssSourceId(_rssSources[index])};
+    await _saveRssSources(next);
   }
 
   Future<void> removeRssSource(int index) async {
     if (index >= 0 && index < _rssSources.length) {
-      _rssSources.removeAt(index);
-      await _saveRssToPrefs();
-      notifyListeners();
+      final next = List<Map<String, String>>.from(_rssSources)..removeAt(index);
+      await _saveRssSources(next);
     }
   }
 
-  Future<void> _saveRssToPrefs() async {
+  Future<void> _saveRssSources(List<Map<String, String>> next) async {
+    await _secureStorage.write(key: 'rss_sources_v2', value: jsonEncode(next));
     final SharedPreferences prefs = await SharedPreferences.getInstance();
-    await prefs.setString('rss_sources', jsonEncode(_rssSources));
+    await prefs.remove('rss_sources');
+    _rssSources = next;
+    notifyListeners();
   }
 
   String _normalizeBangumiAuthGatewayUrl(String? value) {

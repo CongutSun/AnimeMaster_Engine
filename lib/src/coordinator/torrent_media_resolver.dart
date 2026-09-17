@@ -5,7 +5,6 @@ import 'package:dtorrent_parser/dtorrent_parser.dart';
 import 'package:flutter/foundation.dart';
 
 import '../api/bangumi_api.dart';
-import '../api/dio_client.dart';
 import '../config/embedded_credentials.dart';
 import '../managers/download_manager.dart';
 import '../models/download_task_info.dart';
@@ -64,6 +63,9 @@ class _ResolvedBangumiEpisode {
 }
 
 class TorrentMediaResolver {
+  static final Dio _torrentDio = Dio(
+    BaseOptions(connectTimeout: const Duration(seconds: 15)),
+  );
   static const List<String> _videoExtensions = <String>[
     '.mp4',
     '.mkv',
@@ -310,9 +312,7 @@ class TorrentMediaResolver {
         return bytes;
       } catch (error) {
         lastError = error;
-        debugPrint(
-          '[TorrentMediaResolver] Torrent candidate failed: $candidateUrl $error',
-        );
+        debugPrint('[TorrentMediaResolver] Torrent candidate failed.');
       }
     }
 
@@ -327,11 +327,12 @@ class TorrentMediaResolver {
     CancelToken? cancelToken,
   ) async {
     try {
-      final Response<dynamic> response = await DioClient().dio.get<dynamic>(
+      final Response<dynamic> response = await _torrentDio.get<dynamic>(
         url,
         cancelToken: cancelToken,
         options: Options(
           responseType: ResponseType.bytes,
+          followRedirects: _isPublicTorrentUrl(url),
           receiveTimeout: const Duration(seconds: 30),
           sendTimeout: const Duration(seconds: 15),
           headers: const <String, String>{
@@ -358,13 +359,8 @@ class TorrentMediaResolver {
       }
 
       return bytes;
-    } on DioException catch (error) {
-      debugPrint('[TorrentMediaResolver] HTTP torrent fetch failed: $error');
-      final Object? inner = error.error;
-      if (inner is Exception) {
-        throw inner;
-      }
-      throw Exception('HTTP 种子下载失败：${error.message ?? '未知错误'}');
+    } on DioException {
+      throw Exception('HTTP 种子下载失败，请检查网络与资源地址是否有效。');
     }
   }
 
@@ -372,22 +368,32 @@ class TorrentMediaResolver {
     final Uri? uri = Uri.tryParse(url);
     final String host = uri?.host.toLowerCase() ?? '';
     final List<String> candidates = <String>[url];
+    if (!_isPublicTorrentUrl(url)) return candidates;
 
-    if (host.contains('mikanani.me')) {
+    if (host == 'mikanani.me') {
       final String mirrorUrl = url.replaceAll('mikanani.me', 'mikanime.tv');
       candidates.add(mirrorUrl);
       candidates.add(_proxyUrl('torrent', url));
       candidates.add(_proxyUrl('torrent', mirrorUrl));
-    } else if (host.contains('mikanime.tv')) {
+    } else if (host == 'mikanime.tv') {
       final String mirrorUrl = url.replaceAll('mikanime.tv', 'mikanani.me');
       candidates.add(mirrorUrl);
       candidates.add(_proxyUrl('torrent', url));
       candidates.add(_proxyUrl('torrent', mirrorUrl));
-    } else if (host.contains('share.dmhy.org')) {
+    } else if (host == 'share.dmhy.org') {
       candidates.add(_proxyUrl('torrent', url));
     }
 
     return candidates.toSet().toList();
+  }
+
+  static bool _isPublicTorrentUrl(String url) {
+    final uri = Uri.tryParse(url);
+    return uri != null &&
+        !uri.hasQuery &&
+        uri.userInfo.isEmpty &&
+        ['mikanani.me', 'mikanime.tv', 'share.dmhy.org'].contains(uri.host) &&
+        RegExp(r'/[a-fA-F0-9]{40}\.torrent$').hasMatch(uri.path);
   }
 
   String _proxyUrl(String mode, String targetUrl) {

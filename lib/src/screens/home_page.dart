@@ -1,5 +1,6 @@
 import 'dart:io' show File;
 import 'dart:ui';
+import 'dart:async';
 
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
@@ -13,6 +14,8 @@ import '../widgets/section_header.dart';
 import '../widgets/skeleton.dart';
 import '../widgets/top_tool_bar.dart';
 import 'dandanplay_discovery_page.dart';
+import '../services/rss_inbox_store.dart';
+import '../widgets/rss_inbox_entry_point.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -21,20 +24,45 @@ class HomePage extends StatefulWidget {
   State<HomePage> createState() => _HomePageState();
 }
 
-class _HomePageState extends State<HomePage> {
+class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   late final HomeViewModel _viewModel;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _viewModel = HomeViewModel();
     _viewModel.load();
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _viewModel.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final settings = context.watch<SettingsProvider>();
+    if (settings.isLoaded) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          unawaited(RssInboxStore.instance.refresh(settings.rssSources));
+        }
+      });
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && mounted) {
+      final settings = context.read<SettingsProvider>();
+      if (settings.isLoaded) {
+        unawaited(RssInboxStore.instance.refresh(settings.rssSources));
+      }
+    }
   }
 
   Widget _buildWeekSchedule(HomeContentSnapshot snapshot) {
@@ -174,6 +202,7 @@ class _HomePageState extends State<HomePage> {
                     ),
                   ),
                 ),
+                const RssInboxEntryPoint(),
                 const SizedBox(height: 40),
               ],
             ),

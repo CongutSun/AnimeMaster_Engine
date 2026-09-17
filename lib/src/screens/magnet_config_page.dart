@@ -75,7 +75,9 @@ class _MagnetConfigPageState extends State<MagnetConfigPage> {
       listen: false,
     );
     setState(() {
-      selectedSources = List<Map<String, String>>.from(provider.rssSources);
+      selectedSources = provider.rssSources
+          .where((s) => s['enabled'] != 'false')
+          .toList();
     });
   }
 
@@ -116,6 +118,9 @@ class _MagnetConfigPageState extends State<MagnetConfigPage> {
 
     final List<Map<String, String>> results = await MagnetApi.searchTorrents(
       keyword: keywordController.text.trim(),
+      aliases: keywordController.text.trim() == widget.animeName.trim()
+          ? widget.aliases
+          : const [],
       selectedSources: List.of(selectedSources),
       mustInclude: includeController.text.trim(),
       quality: qualityController.text.trim(),
@@ -234,7 +239,9 @@ class _MagnetConfigPageState extends State<MagnetConfigPage> {
   Widget build(BuildContext context) {
     final List<Map<String, String>> allSources = context
         .watch<SettingsProvider>()
-        .rssSources;
+        .rssSources
+        .where((s) => s['enabled'] != 'false')
+        .toList();
     final sortedResults = List<Map<String, String>>.of(searchResults)
       ..sort((a, b) {
         if (_sortOrder == '推荐') {

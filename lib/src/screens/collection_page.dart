@@ -4,6 +4,7 @@ import '../providers/settings_provider.dart';
 import '../api/bangumi_api.dart';
 import '../models/anime.dart';
 import 'detail_page.dart';
+import '../widgets/rss_inbox_entry_point.dart';
 
 class CollectionPage extends StatefulWidget {
   const CollectionPage({super.key});
@@ -253,6 +254,7 @@ class _CollectionPageState extends State<CollectionPage> {
         body: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            const RssInboxEntryPoint(),
             Container(
               padding: const EdgeInsets.symmetric(
                 horizontal: 16.0,

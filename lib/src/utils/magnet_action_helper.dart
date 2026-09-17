@@ -25,6 +25,7 @@ class MagnetActionHelper {
     int bangumiSubjectId = 0,
     int bangumiEpisodeId = 0,
     String fallbackSource = '',
+    VoidCallback? onTaskAdded,
   }) async {
     bool loadingDialogOpen = false;
     final cancelToken = CancelToken();
@@ -147,6 +148,7 @@ class MagnetActionHelper {
         preparedTask.torrentBytes,
         streamOptimized: autoPlay,
       );
+      onTaskAdded?.call();
 
       closeLoadingDialog();
       if (!context.mounted) {

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:typed_data';
 import 'package:animemaster/src/api/dio_client.dart';
 import 'package:animemaster/src/api/magnet_api.dart';
+import 'package:animemaster/src/services/rss_feed_service.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -39,6 +40,7 @@ void main() {
       final partial = Completer<void>();
       final statuses = <String, bool>{};
       final search = MagnetApi.searchTorrents(
+        feedService: RssFeedService(dio: Dio()..httpClientAdapter = adapter),
         keyword: 'test',
         selectedSources: [
           {'name': 'fast', 'url': 'https://fast.example/rss'},
