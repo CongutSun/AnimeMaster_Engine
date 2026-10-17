@@ -119,15 +119,17 @@ class PlaybackProgressStore {
   }
 
   static String keyFor(PlayableMedia media) {
-    final String identity = media.bangumiEpisodeId > 0
-        ? 'bgm_ep:${media.bangumiEpisodeId}'
-        : <String>[
-            media.localFilePath,
-            media.url,
-            media.subjectTitle,
-            media.episodeLabel,
-            media.title,
-          ].where((String value) => value.trim().isNotEmpty).join('|');
+    final String identity =
+        media.bilibili?.identity ??
+        (media.bangumiEpisodeId > 0
+            ? 'bgm_ep:${media.bangumiEpisodeId}'
+            : <String>[
+                media.localFilePath,
+                media.url,
+                media.subjectTitle,
+                media.episodeLabel,
+                media.title,
+              ].where((String value) => value.trim().isNotEmpty).join('|'));
     final String encoded = base64Url.encode(utf8.encode(identity));
     return 'playback_progress.$encoded';
   }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
 
+import '../config/app_release.dart';
 import '../core/service_locator.dart';
 import '../providers/settings_provider.dart';
 import '../services/app_update_service.dart';
@@ -85,7 +86,11 @@ class _AboutPageState extends State<AboutPage> {
                   ),
                   _InfoRow(
                     label: '版本号',
-                    value: packageInfo?.version ?? '读取中...',
+                    value: packageInfo == null
+                        ? '读取中...'
+                        : packageInfo.buildNumber.isEmpty
+                        ? packageInfo.version
+                        : '${packageInfo.version}+${packageInfo.buildNumber}',
                   ),
                   _InfoRow(
                     label: '包名',
@@ -150,6 +155,41 @@ class _AboutPageState extends State<AboutPage> {
                     style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                   ),
                   SizedBox(height: 12),
+                  _LogEntry(
+                    version: AppRelease.version,
+                    items: AppRelease.notes,
+                  ),
+                  SizedBox(height: 14),
+                  _LogEntry(
+                    version: '2.4.7',
+                    items: <String>[
+                      '支持固定 RSS / Atom 订阅、关键词搜索和连接测试。',
+                      '订阅更新按在看番剧匹配资源，支持筛选规则与手动确认集数。',
+                      '保留下载与忽略状态，私人地址安全存储且不经过公共代理。',
+                      '首页、追番库及设置提供统一入口，适配窄屏与深色模式。',
+                    ],
+                  ),
+                  SizedBox(height: 14),
+                  _LogEntry(
+                    version: '2.4.6',
+                    items: <String>[
+                      '播放画面单击显示或隐藏控制栏，双击切换播放状态。',
+                      '全屏及小窗进度条支持拖动预览，松手后跳转。',
+                      '弹幕按播放时间恢复位置，支持暂停、缓冲和倍速同步。',
+                      '首页统一提供“发现动漫”，播放与导航支持可选触觉反馈。',
+                    ],
+                  ),
+                  SizedBox(height: 14),
+                  _LogEntry(
+                    version: '2.4.5',
+                    items: <String>[
+                      '支持 3 个并行下载任务，播放任务优先调度。',
+                      '保留有效传输连接，Tracker 补充发现覆盖全部地址。',
+                      'Android 后台下载使用共享引擎，系统重建服务时恢复已保存任务。',
+                      '下载中心提供连接状态、后台运行设置和服务超时后的进度保存。',
+                    ],
+                  ),
+                  SizedBox(height: 14),
                   _LogEntry(
                     version: '2.4.4',
                     items: <String>[

@@ -10,6 +10,8 @@ import 'package:html/parser.dart' as parser;
 import '../api/dio_client.dart';
 import '../models/online_episode_source.dart';
 import '../utils/task_title_parser.dart';
+import 'bilibili_video_service.dart';
+import '../repositories/bilibili_episode_mapping_repository.dart';
 
 class OnlineEpisodeSourceService {
   OnlineEpisodeSourceService({Dio? dio}) : _dio = dio ?? DioClient().dio {
@@ -202,6 +204,7 @@ class OnlineEpisodeSourceService {
         );
         adapters = _DirectSiteAdapter.allKnownDefaults;
       }
+      adapters = <_OnlineSourceAdapter>[_BilibiliUgcAdapter(), ...adapters];
       if (cancelled || controller.isClosed) {
         return;
       }
@@ -318,10 +321,12 @@ class OnlineEpisodeSourceService {
     Map<String, OnlineEpisodeSourceResult> target,
     OnlineEpisodeSourceResult result,
   ) {
-    if (result.mediaUrl.trim().isEmpty) {
+    if (result.mediaUrl.trim().isEmpty && result.bilibiliBvid == null) {
       return false;
     }
-    final String key = _normalizeResultKey(result.mediaUrl);
+    final String key = _normalizeResultKey(
+      result.bilibiliBvid != null ? result.pageUrl : result.mediaUrl,
+    );
     final OnlineEpisodeSourceResult? existing = target[key];
     if (existing != null) {
       if (existing.verified && !result.verified) {
@@ -351,6 +356,61 @@ class OnlineEpisodeSourceService {
         return a.title.length.compareTo(b.title.length);
       });
     return results.take(maxResults).toList();
+  }
+}
+
+class _BilibiliUgcAdapter extends _OnlineSourceAdapter {
+  @override
+  String get name => 'B站视频';
+  @override
+  Duration get mediaReachTimeout => const Duration(seconds: 8);
+  @override
+  Future<List<OnlineEpisodeSourceResult>> search(
+    Dio dio,
+    OnlineEpisodeQuery query,
+    List<String> subjectNames,
+  ) async {
+    final String keyword = subjectNames.isEmpty
+        ? query.subjectTitle
+        : subjectNames.first;
+    final Map<String, OnlineEpisodeSourceResult> candidates =
+        <String, OnlineEpisodeSourceResult>{};
+    try {
+      final saved = await BilibiliEpisodeMappingRepository.instance.find(query);
+      if (saved != null) {
+        candidates[saved.bvid] = OnlineEpisodeSourceResult(
+          title: '${query.subjectTitle} ${query.episodeLabel}',
+          pageUrl: 'https://www.bilibili.com/video/${saved.bvid}',
+          mediaUrl: '',
+          sourceName: name,
+          snippet: '上次确认的 B站关联，选择分 P 后播放',
+          score: 100,
+          bilibiliBvid: saved.bvid,
+        );
+      }
+    } catch (_) {
+      // A local cache failure must not prevent a fresh search.
+    }
+    try {
+      final page = await BilibiliVideoService(dio: dio).searchVideos(keyword);
+      for (final hit in page.videos.take(5)) {
+        candidates.putIfAbsent(
+          hit.bvid,
+          () => OnlineEpisodeSourceResult(
+            title: hit.title,
+            pageUrl: hit.pageUrl,
+            mediaUrl: '',
+            sourceName: name,
+            snippet: '${hit.author} · B站候选，选择分 P 后播放',
+            score: hit.score,
+            bilibiliBvid: hit.bvid,
+          ),
+        );
+      }
+    } catch (_) {
+      if (candidates.isEmpty) rethrow;
+    }
+    return candidates.values.toList();
   }
 }
 

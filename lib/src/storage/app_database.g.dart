@@ -2432,6 +2432,328 @@ class PlaybackProgressRecordsCompanion
   }
 }
 
+class $BilibiliEpisodeMappingsTable extends BilibiliEpisodeMappings
+    with TableInfo<$BilibiliEpisodeMappingsTable, BilibiliEpisodeMapping> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $BilibiliEpisodeMappingsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _mappingKeyMeta = const VerificationMeta(
+    'mappingKey',
+  );
+  @override
+  late final GeneratedColumn<String> mappingKey = GeneratedColumn<String>(
+    'mapping_key',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _bvidMeta = const VerificationMeta('bvid');
+  @override
+  late final GeneratedColumn<String> bvid = GeneratedColumn<String>(
+    'bvid',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _cidMeta = const VerificationMeta('cid');
+  @override
+  late final GeneratedColumn<int> cid = GeneratedColumn<int>(
+    'cid',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _updatedAtMsMeta = const VerificationMeta(
+    'updatedAtMs',
+  );
+  @override
+  late final GeneratedColumn<int> updatedAtMs = GeneratedColumn<int>(
+    'updated_at_ms',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [mappingKey, bvid, cid, updatedAtMs];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'bilibili_episode_mappings';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<BilibiliEpisodeMapping> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('mapping_key')) {
+      context.handle(
+        _mappingKeyMeta,
+        mappingKey.isAcceptableOrUnknown(data['mapping_key']!, _mappingKeyMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_mappingKeyMeta);
+    }
+    if (data.containsKey('bvid')) {
+      context.handle(
+        _bvidMeta,
+        bvid.isAcceptableOrUnknown(data['bvid']!, _bvidMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_bvidMeta);
+    }
+    if (data.containsKey('cid')) {
+      context.handle(
+        _cidMeta,
+        cid.isAcceptableOrUnknown(data['cid']!, _cidMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_cidMeta);
+    }
+    if (data.containsKey('updated_at_ms')) {
+      context.handle(
+        _updatedAtMsMeta,
+        updatedAtMs.isAcceptableOrUnknown(
+          data['updated_at_ms']!,
+          _updatedAtMsMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_updatedAtMsMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {mappingKey};
+  @override
+  BilibiliEpisodeMapping map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return BilibiliEpisodeMapping(
+      mappingKey: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}mapping_key'],
+      )!,
+      bvid: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}bvid'],
+      )!,
+      cid: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}cid'],
+      )!,
+      updatedAtMs: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}updated_at_ms'],
+      )!,
+    );
+  }
+
+  @override
+  $BilibiliEpisodeMappingsTable createAlias(String alias) {
+    return $BilibiliEpisodeMappingsTable(attachedDatabase, alias);
+  }
+}
+
+class BilibiliEpisodeMapping extends DataClass
+    implements Insertable<BilibiliEpisodeMapping> {
+  final String mappingKey;
+  final String bvid;
+  final int cid;
+  final int updatedAtMs;
+  const BilibiliEpisodeMapping({
+    required this.mappingKey,
+    required this.bvid,
+    required this.cid,
+    required this.updatedAtMs,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['mapping_key'] = Variable<String>(mappingKey);
+    map['bvid'] = Variable<String>(bvid);
+    map['cid'] = Variable<int>(cid);
+    map['updated_at_ms'] = Variable<int>(updatedAtMs);
+    return map;
+  }
+
+  BilibiliEpisodeMappingsCompanion toCompanion(bool nullToAbsent) {
+    return BilibiliEpisodeMappingsCompanion(
+      mappingKey: Value(mappingKey),
+      bvid: Value(bvid),
+      cid: Value(cid),
+      updatedAtMs: Value(updatedAtMs),
+    );
+  }
+
+  factory BilibiliEpisodeMapping.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return BilibiliEpisodeMapping(
+      mappingKey: serializer.fromJson<String>(json['mappingKey']),
+      bvid: serializer.fromJson<String>(json['bvid']),
+      cid: serializer.fromJson<int>(json['cid']),
+      updatedAtMs: serializer.fromJson<int>(json['updatedAtMs']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'mappingKey': serializer.toJson<String>(mappingKey),
+      'bvid': serializer.toJson<String>(bvid),
+      'cid': serializer.toJson<int>(cid),
+      'updatedAtMs': serializer.toJson<int>(updatedAtMs),
+    };
+  }
+
+  BilibiliEpisodeMapping copyWith({
+    String? mappingKey,
+    String? bvid,
+    int? cid,
+    int? updatedAtMs,
+  }) => BilibiliEpisodeMapping(
+    mappingKey: mappingKey ?? this.mappingKey,
+    bvid: bvid ?? this.bvid,
+    cid: cid ?? this.cid,
+    updatedAtMs: updatedAtMs ?? this.updatedAtMs,
+  );
+  BilibiliEpisodeMapping copyWithCompanion(
+    BilibiliEpisodeMappingsCompanion data,
+  ) {
+    return BilibiliEpisodeMapping(
+      mappingKey: data.mappingKey.present
+          ? data.mappingKey.value
+          : this.mappingKey,
+      bvid: data.bvid.present ? data.bvid.value : this.bvid,
+      cid: data.cid.present ? data.cid.value : this.cid,
+      updatedAtMs: data.updatedAtMs.present
+          ? data.updatedAtMs.value
+          : this.updatedAtMs,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('BilibiliEpisodeMapping(')
+          ..write('mappingKey: $mappingKey, ')
+          ..write('bvid: $bvid, ')
+          ..write('cid: $cid, ')
+          ..write('updatedAtMs: $updatedAtMs')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(mappingKey, bvid, cid, updatedAtMs);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is BilibiliEpisodeMapping &&
+          other.mappingKey == this.mappingKey &&
+          other.bvid == this.bvid &&
+          other.cid == this.cid &&
+          other.updatedAtMs == this.updatedAtMs);
+}
+
+class BilibiliEpisodeMappingsCompanion
+    extends UpdateCompanion<BilibiliEpisodeMapping> {
+  final Value<String> mappingKey;
+  final Value<String> bvid;
+  final Value<int> cid;
+  final Value<int> updatedAtMs;
+  final Value<int> rowid;
+  const BilibiliEpisodeMappingsCompanion({
+    this.mappingKey = const Value.absent(),
+    this.bvid = const Value.absent(),
+    this.cid = const Value.absent(),
+    this.updatedAtMs = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  BilibiliEpisodeMappingsCompanion.insert({
+    required String mappingKey,
+    required String bvid,
+    required int cid,
+    required int updatedAtMs,
+    this.rowid = const Value.absent(),
+  }) : mappingKey = Value(mappingKey),
+       bvid = Value(bvid),
+       cid = Value(cid),
+       updatedAtMs = Value(updatedAtMs);
+  static Insertable<BilibiliEpisodeMapping> custom({
+    Expression<String>? mappingKey,
+    Expression<String>? bvid,
+    Expression<int>? cid,
+    Expression<int>? updatedAtMs,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (mappingKey != null) 'mapping_key': mappingKey,
+      if (bvid != null) 'bvid': bvid,
+      if (cid != null) 'cid': cid,
+      if (updatedAtMs != null) 'updated_at_ms': updatedAtMs,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  BilibiliEpisodeMappingsCompanion copyWith({
+    Value<String>? mappingKey,
+    Value<String>? bvid,
+    Value<int>? cid,
+    Value<int>? updatedAtMs,
+    Value<int>? rowid,
+  }) {
+    return BilibiliEpisodeMappingsCompanion(
+      mappingKey: mappingKey ?? this.mappingKey,
+      bvid: bvid ?? this.bvid,
+      cid: cid ?? this.cid,
+      updatedAtMs: updatedAtMs ?? this.updatedAtMs,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (mappingKey.present) {
+      map['mapping_key'] = Variable<String>(mappingKey.value);
+    }
+    if (bvid.present) {
+      map['bvid'] = Variable<String>(bvid.value);
+    }
+    if (cid.present) {
+      map['cid'] = Variable<int>(cid.value);
+    }
+    if (updatedAtMs.present) {
+      map['updated_at_ms'] = Variable<int>(updatedAtMs.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('BilibiliEpisodeMappingsCompanion(')
+          ..write('mappingKey: $mappingKey, ')
+          ..write('bvid: $bvid, ')
+          ..write('cid: $cid, ')
+          ..write('updatedAtMs: $updatedAtMs, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -2441,6 +2763,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
       $DownloadTaskRecordsTable(this);
   late final $PlaybackProgressRecordsTable playbackProgressRecords =
       $PlaybackProgressRecordsTable(this);
+  late final $BilibiliEpisodeMappingsTable bilibiliEpisodeMappings =
+      $BilibiliEpisodeMappingsTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -2450,6 +2774,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     animeEpisodes,
     downloadTaskRecords,
     playbackProgressRecords,
+    bilibiliEpisodeMappings,
   ];
 }
 
@@ -3700,6 +4025,210 @@ typedef $$PlaybackProgressRecordsTableProcessedTableManager =
       PlaybackProgressRecord,
       PrefetchHooks Function()
     >;
+typedef $$BilibiliEpisodeMappingsTableCreateCompanionBuilder =
+    BilibiliEpisodeMappingsCompanion Function({
+      required String mappingKey,
+      required String bvid,
+      required int cid,
+      required int updatedAtMs,
+      Value<int> rowid,
+    });
+typedef $$BilibiliEpisodeMappingsTableUpdateCompanionBuilder =
+    BilibiliEpisodeMappingsCompanion Function({
+      Value<String> mappingKey,
+      Value<String> bvid,
+      Value<int> cid,
+      Value<int> updatedAtMs,
+      Value<int> rowid,
+    });
+
+class $$BilibiliEpisodeMappingsTableFilterComposer
+    extends Composer<_$AppDatabase, $BilibiliEpisodeMappingsTable> {
+  $$BilibiliEpisodeMappingsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get mappingKey => $composableBuilder(
+    column: $table.mappingKey,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get bvid => $composableBuilder(
+    column: $table.bvid,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get cid => $composableBuilder(
+    column: $table.cid,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get updatedAtMs => $composableBuilder(
+    column: $table.updatedAtMs,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$BilibiliEpisodeMappingsTableOrderingComposer
+    extends Composer<_$AppDatabase, $BilibiliEpisodeMappingsTable> {
+  $$BilibiliEpisodeMappingsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get mappingKey => $composableBuilder(
+    column: $table.mappingKey,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get bvid => $composableBuilder(
+    column: $table.bvid,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get cid => $composableBuilder(
+    column: $table.cid,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get updatedAtMs => $composableBuilder(
+    column: $table.updatedAtMs,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$BilibiliEpisodeMappingsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $BilibiliEpisodeMappingsTable> {
+  $$BilibiliEpisodeMappingsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get mappingKey => $composableBuilder(
+    column: $table.mappingKey,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get bvid =>
+      $composableBuilder(column: $table.bvid, builder: (column) => column);
+
+  GeneratedColumn<int> get cid =>
+      $composableBuilder(column: $table.cid, builder: (column) => column);
+
+  GeneratedColumn<int> get updatedAtMs => $composableBuilder(
+    column: $table.updatedAtMs,
+    builder: (column) => column,
+  );
+}
+
+class $$BilibiliEpisodeMappingsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $BilibiliEpisodeMappingsTable,
+          BilibiliEpisodeMapping,
+          $$BilibiliEpisodeMappingsTableFilterComposer,
+          $$BilibiliEpisodeMappingsTableOrderingComposer,
+          $$BilibiliEpisodeMappingsTableAnnotationComposer,
+          $$BilibiliEpisodeMappingsTableCreateCompanionBuilder,
+          $$BilibiliEpisodeMappingsTableUpdateCompanionBuilder,
+          (
+            BilibiliEpisodeMapping,
+            BaseReferences<
+              _$AppDatabase,
+              $BilibiliEpisodeMappingsTable,
+              BilibiliEpisodeMapping
+            >,
+          ),
+          BilibiliEpisodeMapping,
+          PrefetchHooks Function()
+        > {
+  $$BilibiliEpisodeMappingsTableTableManager(
+    _$AppDatabase db,
+    $BilibiliEpisodeMappingsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$BilibiliEpisodeMappingsTableFilterComposer(
+                $db: db,
+                $table: table,
+              ),
+          createOrderingComposer: () =>
+              $$BilibiliEpisodeMappingsTableOrderingComposer(
+                $db: db,
+                $table: table,
+              ),
+          createComputedFieldComposer: () =>
+              $$BilibiliEpisodeMappingsTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<String> mappingKey = const Value.absent(),
+                Value<String> bvid = const Value.absent(),
+                Value<int> cid = const Value.absent(),
+                Value<int> updatedAtMs = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => BilibiliEpisodeMappingsCompanion(
+                mappingKey: mappingKey,
+                bvid: bvid,
+                cid: cid,
+                updatedAtMs: updatedAtMs,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String mappingKey,
+                required String bvid,
+                required int cid,
+                required int updatedAtMs,
+                Value<int> rowid = const Value.absent(),
+              }) => BilibiliEpisodeMappingsCompanion.insert(
+                mappingKey: mappingKey,
+                bvid: bvid,
+                cid: cid,
+                updatedAtMs: updatedAtMs,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$BilibiliEpisodeMappingsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $BilibiliEpisodeMappingsTable,
+      BilibiliEpisodeMapping,
+      $$BilibiliEpisodeMappingsTableFilterComposer,
+      $$BilibiliEpisodeMappingsTableOrderingComposer,
+      $$BilibiliEpisodeMappingsTableAnnotationComposer,
+      $$BilibiliEpisodeMappingsTableCreateCompanionBuilder,
+      $$BilibiliEpisodeMappingsTableUpdateCompanionBuilder,
+      (
+        BilibiliEpisodeMapping,
+        BaseReferences<
+          _$AppDatabase,
+          $BilibiliEpisodeMappingsTable,
+          BilibiliEpisodeMapping
+        >,
+      ),
+      BilibiliEpisodeMapping,
+      PrefetchHooks Function()
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -3714,5 +4243,10 @@ class $AppDatabaseManager {
       $$PlaybackProgressRecordsTableTableManager(
         _db,
         _db.playbackProgressRecords,
+      );
+  $$BilibiliEpisodeMappingsTableTableManager get bilibiliEpisodeMappings =>
+      $$BilibiliEpisodeMappingsTableTableManager(
+        _db,
+        _db.bilibiliEpisodeMappings,
       );
 }

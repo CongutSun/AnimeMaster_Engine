@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 
 import '../api/magnet_api.dart';
 import '../providers/settings_provider.dart';
+import '../services/rss_feed_service.dart';
 import '../utils/magnet_action_helper.dart';
 import '../utils/task_title_parser.dart';
 import 'download_center_page.dart';
@@ -16,6 +17,8 @@ class MagnetConfigPage extends StatefulWidget {
   final int bangumiSubjectId;
   final int initialEpisodeNumber;
   final String initialEpisodeTitle;
+  final bool embedded;
+  final RssFeedService? feedService;
 
   const MagnetConfigPage({
     super.key,
@@ -24,6 +27,8 @@ class MagnetConfigPage extends StatefulWidget {
     this.bangumiSubjectId = 0,
     this.initialEpisodeNumber = 0,
     this.initialEpisodeTitle = '',
+    this.embedded = false,
+    this.feedService,
   });
 
   @override
@@ -36,6 +41,7 @@ class _MagnetConfigPageState extends State<MagnetConfigPage> {
   final TextEditingController qualityController = TextEditingController();
   final TextEditingController excludeController = TextEditingController();
   final TextEditingController episodeController = TextEditingController();
+  final ScrollController _resultsScroll = ScrollController();
 
   List<Map<String, String>> selectedSources = <Map<String, String>>[];
   List<Map<String, String>> searchResults = <Map<String, String>>[];
@@ -66,6 +72,7 @@ class _MagnetConfigPageState extends State<MagnetConfigPage> {
     qualityController.dispose();
     excludeController.dispose();
     episodeController.dispose();
+    _resultsScroll.dispose();
     super.dispose();
   }
 
@@ -126,6 +133,7 @@ class _MagnetConfigPageState extends State<MagnetConfigPage> {
       quality: qualityController.text.trim(),
       exclude: excludeController.text.trim(),
       targetEpisodeNumber: targetEpisodeNumber,
+      feedService: widget.feedService,
       onResults: (items) {
         if (mounted && generation == _searchGeneration) {
           setState(() => searchResults = items);
@@ -258,6 +266,321 @@ class _MagnetConfigPageState extends State<MagnetConfigPage> {
         );
       });
 
+    final Widget body = ListView(
+      key: const ValueKey<String>('website-resource-results'),
+      controller: _resultsScroll,
+      padding: const EdgeInsets.all(16),
+      children: <Widget>[
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                const Text(
+                  '搜索条件',
+                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: <Widget>[
+                    Expanded(
+                      child: TextField(
+                        controller: keywordController,
+                        textInputAction: TextInputAction.search,
+                        onSubmitted: (_) => _startSearch(),
+                        decoration: const InputDecoration(
+                          labelText: '番剧名称',
+                          hintText: '输入番剧名称，也可以选择别名',
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    OutlinedButton.icon(
+                      onPressed: _showAliasesDialog,
+                      icon: const Icon(Icons.list_alt),
+                      label: const Text('别名'),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: episodeController,
+                  keyboardType: TextInputType.number,
+                  inputFormatters: <TextInputFormatter>[
+                    FilteringTextInputFormatter.digitsOnly,
+                  ],
+                  decoration: InputDecoration(
+                    labelText: '指定集数（可选）',
+                    hintText: '例如：12',
+                    helperText: widget.initialEpisodeTitle.trim().isEmpty
+                        ? '填写后只显示该单集，不需要手动拼 EP12'
+                        : '当前：${widget.initialEpisodeTitle.trim()}',
+                    suffixIcon: episodeController.text.isEmpty
+                        ? null
+                        : IconButton(
+                            tooltip: '搜索全部资源',
+                            onPressed: () {
+                              setState(episodeController.clear);
+                            },
+                            icon: const Icon(Icons.close_rounded),
+                          ),
+                  ),
+                  onChanged: (_) => setState(() {}),
+                  onSubmitted: (_) => unawaited(_startSearch()),
+                ),
+                const SizedBox(height: 12),
+                ExpansionTile(
+                  tilePadding: EdgeInsets.zero,
+                  title: const Text('筛选与来源'),
+                  subtitle: Text('已选择 ${selectedSources.length} 个来源'),
+                  children: [
+                    TextField(
+                      controller: includeController,
+                      decoration: const InputDecoration(
+                        labelText: '必须包含',
+                        hintText: '例如：简中、WebRip、合集',
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: <Widget>[
+                        Expanded(
+                          child: TextField(
+                            controller: qualityController,
+                            decoration: const InputDecoration(
+                              labelText: '画质过滤',
+                              hintText: '例如：1080',
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: TextField(
+                            controller: excludeController,
+                            decoration: const InputDecoration(
+                              labelText: '排除词',
+                              hintText: '例如：繁体',
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    const Text(
+                      '搜索来源',
+                      style: TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: allSources.map((Map<String, String> source) {
+                        final bool isSelected = selectedSources.any(
+                          (Map<String, String> item) =>
+                              item['name'] == source['name'],
+                        );
+                        return FilterChip(
+                          label: Text(source['name'] ?? '未知源'),
+                          selected: isSelected,
+                          onSelected: isSearching
+                              ? null
+                              : (bool selected) {
+                                  setState(() {
+                                    if (selected) {
+                                      selectedSources.add(source);
+                                    } else {
+                                      selectedSources.removeWhere(
+                                        (Map<String, String> item) =>
+                                            item['name'] == source['name'],
+                                      );
+                                    }
+                                  });
+                                },
+                        );
+                      }).toList(),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: isSearching || _processing ? null : _startSearch,
+                    icon: isSearching
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.travel_explore),
+                    label: Text(isSearching ? '正在搜索...' : '搜索资源'),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  '支持下载后观看或边下边播。资源链接可用性以实际解析结果为准。',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    height: 1.4,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        if (hasSearched) ...<Widget>[
+          const SizedBox(height: 12),
+          Text(
+            isSearching
+                ? '已完成 $_completedSources 个来源 · ${searchResults.length} 条结果'
+                : searchedEpisodeNumber == null
+                ? '搜索结果：${searchResults.length} 条'
+                : '第 $searchedEpisodeNumber 集：${searchResults.length} 条',
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 8),
+          if (_failedSources.isNotEmpty)
+            Text(
+              '以下来源暂不可用：${_failedSources.join('、')}。可重新搜索。',
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
+            ),
+          Row(
+            children: [
+              const Text('排序：'),
+              DropdownButton<String>(
+                value: _sortOrder,
+                items: ['推荐', '最新', '来源']
+                    .map(
+                      (value) =>
+                          DropdownMenuItem(value: value, child: Text(value)),
+                    )
+                    .toList(),
+                onChanged: (value) => setState(() => _sortOrder = value!),
+              ),
+              if (isSearching)
+                TextButton(
+                  onPressed: () => setState(() {
+                    ++_searchGeneration;
+                    isSearching = false;
+                  }),
+                  child: const Text('停止等待'),
+                ),
+            ],
+          ),
+          if (!isSearching && searchResults.isEmpty)
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Text(
+                  _failedSources.length == selectedSources.length
+                      ? '搜索来源暂不可用，请稍后重试。'
+                      : '没有找到符合条件的资源。试试别名或减少筛选条件。',
+                  style: const TextStyle(color: Colors.grey),
+                ),
+              ),
+            ),
+          ...sortedResults.map((Map<String, String> result) {
+            final String title = TaskTitleParser.stripSourcePrefix(
+              result['title'] ?? '未知资源',
+            );
+            final String parsedEpisodeLabel =
+                TaskTitleParser.extractEpisodeLabel(title);
+            final String episodeLabel = parsedEpisodeLabel.isNotEmpty
+                ? parsedEpisodeLabel
+                : searchedEpisodeNumber == null
+                ? ''
+                : TaskTitleParser.buildEpisodeDisplayLabel(
+                    episodeNumber: searchedEpisodeNumber!,
+                    episodeTitle: widget.initialEpisodeTitle,
+                  );
+            final String targetDownloadUrl = _preferredDownloadUrl(result);
+            final bool hasTorrent =
+                result['torrent']?.trim().isNotEmpty == true;
+
+            return Card(
+              margin: const EdgeInsets.only(bottom: 10),
+              child: Padding(
+                padding: const EdgeInsets.all(14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        height: 1.4,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: <Widget>[
+                        _MetaChip(label: result['source'] ?? '未知源'),
+                        if (result['date']?.isNotEmpty == true)
+                          _MetaChip(label: result['date']!),
+                        _MetaChip(label: hasTorrent ? '种子链接 · 未验证' : '磁力链接'),
+                        if (episodeLabel.isNotEmpty)
+                          _MetaChip(label: episodeLabel),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    if (_resourceErrors[targetDownloadUrl] != null)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: Text(
+                          '${_resourceErrors[targetDownloadUrl]}\n可再次点击下载重试，或复制链接到其他下载器。',
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.error,
+                          ),
+                        ),
+                      ),
+                    Wrap(
+                      alignment: WrapAlignment.end,
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: <Widget>[
+                        OutlinedButton.icon(
+                          onPressed: () => _copyResource(result),
+                          icon: const Icon(Icons.copy, size: 16),
+                          label: const Text('复制'),
+                        ),
+                        OutlinedButton.icon(
+                          onPressed: targetDownloadUrl.isEmpty || _processing
+                              ? null
+                              : () => _processResource(
+                                  result,
+                                  episodeLabel,
+                                  true,
+                                ),
+                          icon: const Icon(Icons.play_circle_fill_rounded),
+                          label: const Text('播放'),
+                        ),
+                        FilledButton.icon(
+                          onPressed: targetDownloadUrl.isEmpty || _processing
+                              ? null
+                              : () => _processResource(
+                                  result,
+                                  episodeLabel,
+                                  false,
+                                ),
+                          icon: const Icon(Icons.download_rounded, size: 18),
+                          label: const Text('下载'),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }),
+        ],
+      ],
+    );
+    if (widget.embedded) return body;
     return Scaffold(
       appBar: AppBar(
         title: const Text('番剧资源搜索'),
@@ -276,320 +599,7 @@ class _MagnetConfigPageState extends State<MagnetConfigPage> {
           ),
         ],
       ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: <Widget>[
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  const Text(
-                    '搜索条件',
-                    style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: <Widget>[
-                      Expanded(
-                        child: TextField(
-                          controller: keywordController,
-                          textInputAction: TextInputAction.search,
-                          onSubmitted: (_) => _startSearch(),
-                          decoration: const InputDecoration(
-                            labelText: '番剧名称',
-                            hintText: '输入番剧名称，也可以选择别名',
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      OutlinedButton.icon(
-                        onPressed: _showAliasesDialog,
-                        icon: const Icon(Icons.list_alt),
-                        label: const Text('别名'),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: episodeController,
-                    keyboardType: TextInputType.number,
-                    inputFormatters: <TextInputFormatter>[
-                      FilteringTextInputFormatter.digitsOnly,
-                    ],
-                    decoration: InputDecoration(
-                      labelText: '指定集数（可选）',
-                      hintText: '例如：12',
-                      helperText: widget.initialEpisodeTitle.trim().isEmpty
-                          ? '填写后只显示该单集，不需要手动拼 EP12'
-                          : '当前：${widget.initialEpisodeTitle.trim()}',
-                      suffixIcon: episodeController.text.isEmpty
-                          ? null
-                          : IconButton(
-                              tooltip: '搜索全部资源',
-                              onPressed: () {
-                                setState(episodeController.clear);
-                              },
-                              icon: const Icon(Icons.close_rounded),
-                            ),
-                    ),
-                    onChanged: (_) => setState(() {}),
-                    onSubmitted: (_) => unawaited(_startSearch()),
-                  ),
-                  const SizedBox(height: 12),
-                  ExpansionTile(
-                    tilePadding: EdgeInsets.zero,
-                    title: const Text('筛选与来源'),
-                    subtitle: Text('已选择 ${selectedSources.length} 个来源'),
-                    children: [
-                      TextField(
-                        controller: includeController,
-                        decoration: const InputDecoration(
-                          labelText: '必须包含',
-                          hintText: '例如：简中、WebRip、合集',
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      Row(
-                        children: <Widget>[
-                          Expanded(
-                            child: TextField(
-                              controller: qualityController,
-                              decoration: const InputDecoration(
-                                labelText: '画质过滤',
-                                hintText: '例如：1080',
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: TextField(
-                              controller: excludeController,
-                              decoration: const InputDecoration(
-                                labelText: '排除词',
-                                hintText: '例如：繁体',
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-                      const Text(
-                        '搜索来源',
-                        style: TextStyle(fontWeight: FontWeight.w700),
-                      ),
-                      const SizedBox(height: 8),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: allSources.map((Map<String, String> source) {
-                          final bool isSelected = selectedSources.any(
-                            (Map<String, String> item) =>
-                                item['name'] == source['name'],
-                          );
-                          return FilterChip(
-                            label: Text(source['name'] ?? '未知源'),
-                            selected: isSelected,
-                            onSelected: isSearching
-                                ? null
-                                : (bool selected) {
-                                    setState(() {
-                                      if (selected) {
-                                        selectedSources.add(source);
-                                      } else {
-                                        selectedSources.removeWhere(
-                                          (Map<String, String> item) =>
-                                              item['name'] == source['name'],
-                                        );
-                                      }
-                                    });
-                                  },
-                          );
-                        }).toList(),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  SizedBox(
-                    width: double.infinity,
-                    child: FilledButton.icon(
-                      onPressed: isSearching || _processing
-                          ? null
-                          : _startSearch,
-                      icon: isSearching
-                          ? const SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(Icons.travel_explore),
-                      label: Text(isSearching ? '正在搜索...' : '搜索资源'),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    '支持下载后观看或边下边播。资源链接可用性以实际解析结果为准。',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.grey.shade700,
-                      height: 1.4,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          if (hasSearched) ...<Widget>[
-            const SizedBox(height: 12),
-            Text(
-              isSearching
-                  ? '已完成 $_completedSources 个来源 · ${searchResults.length} 条结果'
-                  : searchedEpisodeNumber == null
-                  ? '搜索结果：${searchResults.length} 条'
-                  : '第 $searchedEpisodeNumber 集：${searchResults.length} 条',
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
-            ),
-            const SizedBox(height: 8),
-            if (_failedSources.isNotEmpty)
-              Text(
-                '以下来源暂不可用：${_failedSources.join('、')}。可重新搜索。',
-                style: TextStyle(color: Theme.of(context).colorScheme.error),
-              ),
-            Row(
-              children: [
-                const Text('排序：'),
-                DropdownButton<String>(
-                  value: _sortOrder,
-                  items: ['推荐', '最新', '来源']
-                      .map(
-                        (value) =>
-                            DropdownMenuItem(value: value, child: Text(value)),
-                      )
-                      .toList(),
-                  onChanged: (value) => setState(() => _sortOrder = value!),
-                ),
-                if (isSearching)
-                  TextButton(
-                    onPressed: () => setState(() {
-                      ++_searchGeneration;
-                      isSearching = false;
-                    }),
-                    child: const Text('停止等待'),
-                  ),
-              ],
-            ),
-            if (!isSearching && searchResults.isEmpty)
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Text(
-                    _failedSources.length == selectedSources.length
-                        ? '搜索来源暂不可用，请稍后重试。'
-                        : '没有找到符合条件的资源。试试别名或减少筛选条件。',
-                    style: const TextStyle(color: Colors.grey),
-                  ),
-                ),
-              ),
-            ...sortedResults.map((Map<String, String> result) {
-              final String title = TaskTitleParser.stripSourcePrefix(
-                result['title'] ?? '未知资源',
-              );
-              final String parsedEpisodeLabel =
-                  TaskTitleParser.extractEpisodeLabel(title);
-              final String episodeLabel = parsedEpisodeLabel.isNotEmpty
-                  ? parsedEpisodeLabel
-                  : searchedEpisodeNumber == null
-                  ? ''
-                  : TaskTitleParser.buildEpisodeDisplayLabel(
-                      episodeNumber: searchedEpisodeNumber!,
-                      episodeTitle: widget.initialEpisodeTitle,
-                    );
-              final String targetDownloadUrl = _preferredDownloadUrl(result);
-              final bool hasTorrent =
-                  result['torrent']?.trim().isNotEmpty == true;
-
-              return Card(
-                margin: const EdgeInsets.only(bottom: 10),
-                child: Padding(
-                  padding: const EdgeInsets.all(14),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: <Widget>[
-                      Text(
-                        title,
-                        style: const TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w700,
-                          height: 1.4,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: <Widget>[
-                          _MetaChip(label: result['source'] ?? '未知源'),
-                          if (result['date']?.isNotEmpty == true)
-                            _MetaChip(label: result['date']!),
-                          _MetaChip(label: hasTorrent ? '种子链接 · 未验证' : '磁力链接'),
-                          if (episodeLabel.isNotEmpty)
-                            _MetaChip(label: episodeLabel),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      if (_resourceErrors[targetDownloadUrl] != null)
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 12),
-                          child: Text(
-                            '${_resourceErrors[targetDownloadUrl]}\n可再次点击下载重试，或复制链接到其他下载器。',
-                            style: TextStyle(
-                              color: Theme.of(context).colorScheme.error,
-                            ),
-                          ),
-                        ),
-                      Wrap(
-                        alignment: WrapAlignment.end,
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: <Widget>[
-                          OutlinedButton.icon(
-                            onPressed: () => _copyResource(result),
-                            icon: const Icon(Icons.copy, size: 16),
-                            label: const Text('复制'),
-                          ),
-                          OutlinedButton.icon(
-                            onPressed: targetDownloadUrl.isEmpty || _processing
-                                ? null
-                                : () => _processResource(
-                                    result,
-                                    episodeLabel,
-                                    true,
-                                  ),
-                            icon: const Icon(Icons.play_circle_fill_rounded),
-                            label: const Text('播放'),
-                          ),
-                          FilledButton.icon(
-                            onPressed: targetDownloadUrl.isEmpty || _processing
-                                ? null
-                                : () => _processResource(
-                                    result,
-                                    episodeLabel,
-                                    false,
-                                  ),
-                            icon: const Icon(Icons.download_rounded, size: 18),
-                            label: const Text('下载'),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            }),
-          ],
-        ],
-      ),
+      body: body,
     );
   }
 }

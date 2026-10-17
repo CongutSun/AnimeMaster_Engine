@@ -15,7 +15,7 @@ const PENDING_TTL_SECONDS = 600;
 const SESSION_EXCHANGE_TTL_SECONDS = 600;
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 60;
 const BANGUMI_API_USER_AGENT =
-  'CongutSun/AnimeMaster_Engine/2.4.7 (Cloudflare Workers; https://auth.congutsun.com)';
+  'CongutSun/AnimeMaster_Engine/2.4.8 (Cloudflare Workers; https://auth.congutsun.com)';
 const RESOURCE_PROXY_USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 const RESOURCE_PROXY_ALLOWED_HOSTS = new Set([
@@ -49,39 +49,41 @@ const BANGUMI_PROXY_REQUEST_HEADERS = [
   'accept-language',
 ];
 const APP_UPDATE_MANIFEST = {
-  "version": "2.4.7",
-  "build": 2052,
-  "apkUrl": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.7/app-release.apk",
+  "version": "2.4.8",
+  "build": 4053,
+  "apkUrl": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.8/app-release.apk",
   "notes": [
-    "支持固定 RSS / Atom 订阅、关键词搜索和连接测试。",
-    "订阅更新按在看番剧匹配资源，支持筛选规则与手动确认集数。",
-    "保留下载与忽略状态，私人地址安全存储且不经过公共代理。",
-    "首页、追番库及设置提供统一入口，适配窄屏与深色模式。"
+    "新增 B站视频搜索、BV 号与链接播放、扫码登录和账号可用画质选择。",
+    "番剧详情页统一“搜索资源”入口，支持 B站视频与网站资源切换及别名搜索。",
+    "返回搜索列表保留关键词、分页结果和浏览位置，切换资源标签保留结果与筛选条件。",
+    "支持选择分 P、剧集匹配建议与本机关联，播放进度按视频和分 P 分别保存。",
+    "修复部分 Android 设备播放 B站视频时绿屏、画面更新缓慢的问题，完善音视频同步加载。",
+    "切换画质保留播放位置与暂停状态，登录过期和播放失败提供明确提示及重试入口。"
   ],
-  "publishedAt": "2026-09-17T06:28:43Z",
+  "publishedAt": "2026-10-17T09:59:43+08:00",
   "forceUpdate": false,
   "apkUrls": {
-    "android-arm64": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.7/app-arm64-v8a-release.apk",
-    "android-arm": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.7/app-armeabi-v7a-release.apk",
-    "android-x64": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.7/app-x86_64-release.apk",
-    "universal": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.7/app-release.apk"
+    "android-arm64": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.8/app-arm64-v8a-release.apk",
+    "android-arm": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.8/app-armeabi-v7a-release.apk",
+    "android-x64": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.8/app-x86_64-release.apk",
+    "universal": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.8/app-release.apk"
   },
   "sha256": {
-    "android-arm64": "09e6b7c12a28e646cb21b5db66a33544f6cae63540925620a9032422a2b4e81e",
-    "android-arm": "77a6284d18a645001a67812f43948bba4898bc98d7863bfe01ac6a612869597d",
-    "android-x64": "8062ecfd094b4f55885f20c981e76c061020315141d0f63a51e8d1d155209cca",
-    "universal": "30471ae36354659264ff73506288483c476262c3dcf3cf66c5eff6ae9be87d67"
+    "android-arm64": "aad28f212652706544287c30ca4f1924dd3d5b9ef104026b0d1b5be900a89cbd",
+    "android-arm": "bc35741c712f6994c5514d96c5ff84f72af78981bdcca27f85ae1351dd4218a0",
+    "android-x64": "902905aae9917e08911c7a1dc3ce3bfc9438325c08fd85356667922092518f97",
+    "universal": "3dade0efd720514b781801cf63168fd7ad45480e2977460297b49b06eab05705"
   }
 };
 const APK_DOWNLOAD_URLS = {
   'android-arm64':
-    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.7/app-arm64-v8a-release.apk',
+    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.8/app-arm64-v8a-release.apk',
   'android-arm':
-    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.7/app-armeabi-v7a-release.apk',
+    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.8/app-armeabi-v7a-release.apk',
   'android-x64':
-    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.7/app-x86_64-release.apk',
+    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.8/app-x86_64-release.apk',
   universal:
-    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.7/app-release.apk',
+    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.8/app-release.apk',
 };
 
 function applyCors(headers, request, methods = 'GET,POST,OPTIONS') {

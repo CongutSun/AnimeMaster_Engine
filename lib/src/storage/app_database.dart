@@ -70,21 +70,40 @@ class PlaybackProgressRecords extends Table {
   Set<Column<Object>> get primaryKey => <Column<Object>>{mediaKey};
 }
 
+class BilibiliEpisodeMappings extends Table {
+  TextColumn get mappingKey => text()();
+  TextColumn get bvid => text()();
+  IntColumn get cid => integer()();
+  IntColumn get updatedAtMs => integer()();
+  @override
+  Set<Column<Object>> get primaryKey => <Column<Object>>{mappingKey};
+}
+
 @DriftDatabase(
   tables: <Type>[
     AnimeSubjects,
     AnimeEpisodes,
     DownloadTaskRecords,
     PlaybackProgressRecords,
+    BilibiliEpisodeMappings,
   ],
 )
 class AppDatabase extends _$AppDatabase {
   AppDatabase._() : super(_openConnection());
+  AppDatabase.forTesting(super.executor);
 
   static final AppDatabase instance = AppDatabase._();
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
+
+  @override
+  MigrationStrategy get migration => MigrationStrategy(
+    onCreate: (Migrator migrator) => migrator.createAll(),
+    onUpgrade: (Migrator migrator, int from, int to) async {
+      if (from < 2) await migrator.createTable(bilibiliEpisodeMappings);
+    },
+  );
 }
 
 LazyDatabase _openConnection() {

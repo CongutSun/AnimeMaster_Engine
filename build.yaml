@@ -1,0 +1,11 @@
+targets:
+  $default:
+    sources:
+      - lib/**
+      - test/**
+      - pubspec.yaml
+      - $package$
+    builders:
+      drift_dev:
+        generate_for:
+          - lib/src/storage/app_database.dart

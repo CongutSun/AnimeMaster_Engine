@@ -37,7 +37,7 @@ class PlaybackProgressRepository {
               subjectTitle: Value(media.subjectTitle),
               episodeLabel: Value(media.episodeLabel),
               localFilePath: Value(media.localFilePath),
-              url: Value(media.url),
+              url: Value(media.bilibili?.pageUrl ?? media.url),
               positionMs: Value(position.inMilliseconds),
               durationMs: Value(duration.inMilliseconds),
               updatedAtMs: Value(updatedAtMs),

@@ -14,6 +14,7 @@ import '../widgets/section_header.dart';
 import '../widgets/skeleton.dart';
 import '../widgets/top_tool_bar.dart';
 import 'dandanplay_discovery_page.dart';
+import 'bilibili_video_page.dart';
 import '../services/rss_inbox_store.dart';
 import '../widgets/rss_inbox_entry_point.dart';
 
@@ -251,6 +252,21 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
             child: Column(
               children: <Widget>[
                 const TopToolBar(),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton.icon(
+                      onPressed: () => Navigator.of(context).push<void>(
+                        MaterialPageRoute<void>(
+                          builder: (_) => const BilibiliVideoPage(),
+                        ),
+                      ),
+                      icon: const Icon(Icons.ondemand_video_rounded),
+                      label: const Text('B站视频'),
+                    ),
+                  ),
+                ),
                 Expanded(
                   child: AnimatedBuilder(
                     animation: _viewModel,

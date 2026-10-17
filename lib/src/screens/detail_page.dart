@@ -8,7 +8,8 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../providers/settings_provider.dart';
 import '../api/bangumi_api.dart';
 import '../utils/app_strings.dart';
-import 'magnet_config_page.dart';
+import 'resource_search_page.dart';
+import '../models/online_episode_source.dart';
 import 'category_result_page.dart';
 import 'episode_watch_page.dart';
 import 'role_subjects_page.dart';
@@ -1035,16 +1036,16 @@ class _DetailPageState extends State<DetailPage>
                           onPressed: () => Navigator.push(
                             context,
                             MaterialPageRoute(
-                              builder: (_) => MagnetConfigPage(
+                              builder: (_) => ResourceSearchPage(
                                 animeName: displayName,
                                 aliases: _extractAliases(cnName, originalName),
                                 bangumiSubjectId: widget.animeId,
                               ),
                             ),
                           ),
-                          icon: const Icon(Icons.download_rounded),
+                          icon: const Icon(Icons.travel_explore),
                           label: const Text(
-                            '搜索下载资源',
+                            '搜索资源',
                             style: TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.bold,
@@ -1303,13 +1304,13 @@ class _DetailPageState extends State<DetailPage>
                     mainAxisSize: MainAxisSize.min,
                     children: <Widget>[
                       IconButton(
-                        tooltip: '搜索并下载第 $epNum 集',
+                        tooltip: '搜索第 $epNum 集的资源',
                         visualDensity: VisualDensity.compact,
                         onPressed: epNum > 0
                             ? () =>
                                   unawaited(_openEpisodeResourceSearch(episode))
                             : null,
-                        icon: const Icon(Icons.download_rounded, size: 20),
+                        icon: const Icon(Icons.travel_explore, size: 20),
                       ),
                       const Icon(Icons.chevron_right_rounded, size: 20),
                     ],
@@ -1467,7 +1468,7 @@ class _DetailPageState extends State<DetailPage>
                                     ),
                                   ),
                                   IconButton(
-                                    tooltip: '搜索并下载第 $epNum 集',
+                                    tooltip: '搜索第 $epNum 集的资源',
                                     visualDensity: VisualDensity.compact,
                                     constraints: const BoxConstraints(
                                       minWidth: 28,
@@ -1480,7 +1481,7 @@ class _DetailPageState extends State<DetailPage>
                                           )
                                         : null,
                                     icon: const Icon(
-                                      Icons.download_rounded,
+                                      Icons.travel_explore,
                                       size: 17,
                                     ),
                                   ),
@@ -1524,12 +1525,18 @@ class _DetailPageState extends State<DetailPage>
     await Navigator.push(
       context,
       MaterialPageRoute<void>(
-        builder: (BuildContext context) => MagnetConfigPage(
+        builder: (BuildContext context) => ResourceSearchPage(
           animeName: cnName.isEmpty ? originalName : cnName,
           aliases: _extractAliases(cnName, originalName),
           bangumiSubjectId: widget.animeId,
-          initialEpisodeNumber: _episodeNumber(episode),
-          initialEpisodeTitle: _episodeTitle(episode),
+          episodeQuery: OnlineEpisodeQuery(
+            bangumiSubjectId: widget.animeId,
+            bangumiEpisodeId: episodeId(episode),
+            subjectTitle: cnName.isEmpty ? originalName : cnName,
+            aliases: _extractAliases(cnName, originalName),
+            episodeNumber: _episodeNumber(episode),
+            episodeTitle: episodePlainTitle(episode),
+          ),
         ),
       ),
     );

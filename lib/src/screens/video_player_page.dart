@@ -18,9 +18,11 @@ import '../models/dandanplay_models.dart';
 import '../models/download_task_info.dart';
 import '../models/online_episode_source.dart';
 import '../models/playable_media.dart';
+import '../models/bilibili_video.dart';
 import '../providers/settings_provider.dart';
 import '../services/animeko_danmaku_service.dart';
 import '../services/dandanplay_service.dart';
+import '../services/bilibili_video_service.dart';
 import '../widgets/dandanplay_send_sheet.dart';
 import '../widgets/danmaku_overlay.dart';
 import '../services/online_episode_source_service.dart';
@@ -29,8 +31,12 @@ import '../utils/media_duration_probe.dart';
 import '../utils/player_tap_handler.dart';
 import '../utils/haptic_helper.dart';
 import '../utils/playback_progress_store.dart';
+import '../utils/open_playable_media.dart';
+import '../utils/video_playback_configuration.dart';
+import '../widgets/bilibili_part_list.dart';
 import '../utils/torrent_stream_server.dart';
 import '../widgets/playback_action_prompt.dart';
+import 'bilibili_video_page.dart';
 
 enum _GestureAdjustmentKind { brightness, volume }
 
@@ -43,6 +49,7 @@ class VideoPlayerPage extends StatefulWidget {
   final bool preferLandscapeOnOpen;
   final PlaybackProgressSnapshot? initialResumeProgress;
   final VoidCallback? onResumePromptResolved;
+  final BilibiliVideoService? bilibiliService;
 
   const VideoPlayerPage({
     super.key,
@@ -54,6 +61,7 @@ class VideoPlayerPage extends StatefulWidget {
     this.preferLandscapeOnOpen = false,
     this.initialResumeProgress,
     this.onResumePromptResolved,
+    this.bilibiliService,
   });
 
   @override
@@ -149,6 +157,8 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
   IconData _gestureIndicatorIcon = Icons.touch_app_rounded;
   double? _gestureIndicatorProgress;
   int _durationProbeSerial = 0;
+  bool _isBilibiliSwitching = false;
+  String _playbackError = '';
 
   @override
   void initState() {
@@ -167,7 +177,15 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
             bufferSize: 96 * 1024 * 1024,
           ),
         );
-    _controller = widget.externalController ?? VideoController(_player);
+    _controller =
+        widget.externalController ??
+        VideoController(
+          _player,
+          configuration: videoPlaybackConfiguration(
+            widget.media,
+            platform: defaultTargetPlatform,
+          ),
+        );
     _isMagnet = widget.media.url.toLowerCase().startsWith('magnet:');
     final playerState = _player.state;
     _position = _normalizeIncomingPosition(playerState.position);
@@ -278,6 +296,16 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
           return;
         }
         _handlePlaybackCompleted();
+      }),
+    );
+    _subscriptions.add(
+      _player.stream.error.listen((String error) {
+        if (!mounted || _activeMedia?.bilibili == null) return;
+        setState(() {
+          _playbackError = '视频或音轨加载失败，请重新解析后重试。';
+          _isOpeningMedia = false;
+          _showControls = true;
+        });
       }),
     );
 
@@ -415,14 +443,19 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
     }
   }
 
-  Future<void> _openMedia(PlayableMedia media) async {
+  Future<void> _openMedia(
+    PlayableMedia media, {
+    Duration? startPosition,
+    bool play = true,
+  }) async {
     final int probeSerial = ++_durationProbeSerial;
     if (mounted) {
       setState(() {
         _isOpeningMedia = true;
+        _playbackError = '';
         _position = Duration.zero;
         _duration = Duration.zero;
-        _durationFallback = Duration.zero;
+        _durationFallback = media.bilibili?.part.duration ?? Duration.zero;
         _dragPosition = null;
         _lastManualSeekAt = null;
         _restoreProtectedPosition = null;
@@ -438,18 +471,46 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
     _activeMedia = media;
     _syncPictureInPicturePlaybackState();
     widget.onMediaChanged?.call(media);
-    await _player.open(Media(media.url, httpHeaders: media.headers));
+    try {
+      await openPlayableMedia(
+        _player,
+        media,
+        startPosition: startPosition,
+        play: play,
+      );
+    } catch (_) {
+      if (mounted && probeSerial == _durationProbeSerial) {
+        setState(() {
+          _isOpeningMedia = false;
+          _playbackError = '视频或音轨加载失败，请重试。';
+          _showControls = true;
+        });
+      }
+      return;
+    }
+    if (!mounted || probeSerial != _durationProbeSerial) return;
     unawaited(_probeDurationForMedia(media, serial: probeSerial));
-    final PlaybackProgressSnapshot? resumeProgress =
-        await _loadPlaybackProgressForPrompt(media);
+    final PlaybackProgressSnapshot? resumeProgress = startPosition == null
+        ? await _loadPlaybackProgressForPrompt(media)
+        : null;
+    if (!mounted || probeSerial != _durationProbeSerial) return;
     if (_rate != 1.0) {
       await _player.setRate(_rate);
     }
-    await _prepareDanmakuForMedia(media);
-    if (mounted) {
-      final Duration currentPosition = _normalizeIncomingPosition(
-        _player.state.position,
-      );
+    if (media.bilibili == null) {
+      await _prepareDanmakuForMedia(media);
+    } else {
+      _danmakuSerial++;
+      _cancelDanmakuTicker();
+      _danmakuComments = <DandanplayComment>[];
+      _activeDanmaku = <ActiveDanmakuItem>[];
+      _dandanplayMatch = null;
+      _isDanmakuLoading = false;
+      _danmakuStatusText = '';
+    }
+    if (mounted && probeSerial == _durationProbeSerial) {
+      final Duration currentPosition =
+          startPosition ?? _normalizeIncomingPosition(_player.state.position);
       final Duration currentDuration = _normalizeIncomingDuration(
         _player.state.duration,
       );
@@ -461,6 +522,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
       });
       _syncPictureInPicturePlaybackState();
       _handleResumeProgress(media, resumeProgress);
+      if (startPosition != null) _protectRestoredPosition(startPosition);
     }
   }
 
@@ -468,6 +530,135 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
       _onlineQuery != null ||
       _onlineEpisodes.isNotEmpty ||
       _onlineSources.isNotEmpty;
+
+  BilibiliPlayback? get _bilibiliPlayback =>
+      (_activeMedia ?? widget.media).bilibili;
+
+  Future<void> _switchBilibiliPart(
+    BilibiliPart part, {
+    int? qualityId,
+    bool preservePosition = false,
+  }) async {
+    final BilibiliPlayback? playback = _bilibiliPlayback;
+    if (playback == null || _isBilibiliSwitching || _isOpeningMedia) return;
+    setState(() => _isBilibiliSwitching = true);
+    try {
+      final BilibiliVideoService service =
+          widget.bilibiliService ?? BilibiliVideoService();
+      PlayableMedia media = await service.resolvePart(
+        playback.video,
+        part,
+        preferredQuality: qualityId ?? playback.qualityId,
+      );
+      final PlayableMedia? previous = _activeMedia;
+      if (previous != null &&
+          previous.bangumiEpisodeId > 0 &&
+          part.cid == playback.part.cid) {
+        media = media.withEpisodeContext(
+          subjectTitle: previous.subjectTitle,
+          episodeLabel: previous.episodeLabel,
+          bangumiSubjectId: previous.bangumiSubjectId,
+          bangumiEpisodeId: previous.bangumiEpisodeId,
+        );
+      }
+      if (!mounted) return;
+      final Duration? position = preservePosition ? _effectivePosition : null;
+      final PlaybackProgressSnapshot? pendingResume = preservePosition
+          ? _resumePromptProgress
+          : null;
+      final bool play = !preservePosition || _player.state.playing;
+      await _savePlaybackProgress(force: true);
+      if (!mounted) return;
+      await _openMedia(media, startPosition: position, play: play);
+      if (mounted && pendingResume != null) {
+        setState(() {
+          _resumePromptProgress = pendingResume;
+          _showControls = true;
+        });
+      }
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            error is BilibiliVideoException ? error.message : '切换分 P 失败，请重试。',
+          ),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _isBilibiliSwitching = false);
+    }
+  }
+
+  Future<void> _showBilibiliQualitySheet() async {
+    final BilibiliPlayback? playback = _bilibiliPlayback;
+    if (playback == null || _isBilibiliSwitching || _isOpeningMedia) return;
+    _cancelControlsAutoHide();
+    final int? selected = await _showPlayerPanel<int>(
+      portraitHeightFactor: 0.55,
+      landscapeHeightFactor: 0.76,
+      maxLandscapeWidth: 460,
+      builder: (context) => ListView(
+        children: <Widget>[
+          const Padding(padding: EdgeInsets.all(16), child: Text('选择画质')),
+          for (final quality in playback.qualities)
+            ListTile(
+              title: Text(quality.label),
+              selected: quality.id == playback.qualityId,
+              trailing: quality.id == playback.qualityId
+                  ? const Icon(Icons.check)
+                  : null,
+              onTap: () => Navigator.of(context).pop(quality.id),
+            ),
+          const Padding(
+            padding: EdgeInsets.all(16),
+            child: Text('仅显示当前账号可用的兼容画质；登录后可重新播放以更新选项。'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted) return;
+    if (selected != null && selected != playback.qualityId) {
+      await _switchBilibiliPart(
+        playback.part,
+        qualityId: selected,
+        preservePosition: true,
+      );
+    }
+    _scheduleControlsAutoHide();
+  }
+
+  Future<void> _showBilibiliPartSheet() async {
+    final BilibiliPlayback? playback = _bilibiliPlayback;
+    if (playback == null || _isBilibiliSwitching || _isOpeningMedia) return;
+    _cancelControlsAutoHide();
+    final BilibiliPart? selected = await _showPlayerPanel<BilibiliPart>(
+      portraitHeightFactor: 0.78,
+      landscapeHeightFactor: 0.76,
+      maxLandscapeWidth: 460,
+      builder: (BuildContext context) => Column(
+        children: <Widget>[
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Text('选择分 P', style: Theme.of(context).textTheme.titleLarge),
+          ),
+          Expanded(
+            child: BilibiliPartList(
+              video: playback.video,
+              selectedCid: playback.part.cid,
+              onSelected: (BilibiliPart part) =>
+                  Navigator.of(context).pop(part),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (!mounted) return;
+    if (selected != null && selected.cid != playback.part.cid) {
+      await _switchBilibiliPart(selected);
+    }
+    _scheduleControlsAutoHide();
+  }
 
   void _initializeOnlinePlaybackContext(PlayableMedia media) {
     _onlineQuery = media.onlineQuery;
@@ -528,11 +719,14 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
             setState(() {
               _setOnlineSources(results, notifyState: false);
             });
-            if (autoPlayFirst && !hasOpenedFirstSource && results.isNotEmpty) {
+            final playable = results
+                .where((source) => source.canAutoPlay)
+                .toList();
+            if (autoPlayFirst && !hasOpenedFirstSource && playable.isNotEmpty) {
               hasOpenedFirstSource = true;
               unawaited(
                 _openOnlineSourceInPlayer(
-                  _selectBestOnlineSource(results),
+                  _selectBestOnlineSource(playable),
                   query,
                   preserveProgress: false,
                 ),
@@ -564,12 +758,15 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
             setState(() {
               _setOnlineSourceSearching(false);
             });
-            if (autoPlayFirst &&
-                !hasOpenedFirstSource &&
-                _onlineSources.isEmpty) {
+            if (autoPlayFirst && !hasOpenedFirstSource) {
+              setState(() => _showControls = true);
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('未找到该集可直接播放的在线源。'),
+                SnackBar(
+                  content: Text(
+                    _onlineSources.any((source) => source.bilibiliBvid != null)
+                        ? '找到 B站候选，请从片源中选择并确认分 P。'
+                        : '未找到该集可直接播放的在线源。',
+                  ),
                   backgroundColor: Colors.redAccent,
                 ),
               );
@@ -620,6 +817,21 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
     OnlineEpisodeQuery query, {
     bool preserveProgress = true,
   }) async {
+    if (source.bilibiliBvid != null) {
+      final bool wasPlaying = _player.state.playing;
+      await _player.pause();
+      if (!mounted) return;
+      await Navigator.of(context).push<void>(
+        MaterialPageRoute<void>(
+          builder: (_) => BilibiliVideoPage(
+            initialBvid: source.bilibiliBvid,
+            episodeQuery: query,
+          ),
+        ),
+      );
+      if (mounted && wasPlaying) await _player.play();
+      return;
+    }
     if (source.mediaUrl.trim().isEmpty) {
       return;
     }
@@ -780,6 +992,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
     }
     _completedMediaKey = key;
     unawaited(_savePlaybackProgress(position: _displayDuration, force: true));
+    if (media.bilibili != null) return;
     final SettingsProvider settings = context.read<SettingsProvider>();
     if (!settings.autoPlayNextEpisode) {
       return;
@@ -974,7 +1187,11 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
     bool force = false,
   }) async {
     final PlayableMedia? media = _activeMedia;
-    if (media == null || _isOpeningMedia || _deferRestoredPositionDisplay) {
+    if (media == null ||
+        _isOpeningMedia ||
+        _deferRestoredPositionDisplay ||
+        _resumePromptProgress != null ||
+        _playbackError.isNotEmpty) {
       return;
     }
 
@@ -2576,6 +2793,44 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
             Positioned.fill(
               child: IgnorePointer(child: _buildGestureIndicator()),
             ),
+          if (showPlayer && _playbackError.isNotEmpty)
+            Center(
+              child: Card(
+                color: const Color(0xEE202020),
+                child: Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: <Widget>[
+                      Text(
+                        _playbackError,
+                        style: const TextStyle(color: Colors.white),
+                      ),
+                      const SizedBox(height: 12),
+                      FilledButton.icon(
+                        onPressed: _isBilibiliSwitching || _isOpeningMedia
+                            ? null
+                            : () {
+                                final BilibiliPlayback? playback =
+                                    _bilibiliPlayback;
+                                if (playback != null) {
+                                  unawaited(_switchBilibiliPart(playback.part));
+                                } else {
+                                  unawaited(
+                                    _openMedia(_activeMedia ?? widget.media),
+                                  );
+                                }
+                              },
+                        icon: const Icon(Icons.refresh),
+                        label: Text(_isBilibiliSwitching ? '正在解析…' : '重新播放'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          if (showPlayer && _isOpeningMedia && _playbackError.isEmpty)
+            const Center(child: CircularProgressIndicator(color: Colors.white)),
         ],
       ),
     );
@@ -2674,7 +2929,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
                           ),
                         ),
                       ),
-                      if (_isBuffering)
+                      if (_isBuffering || _isBilibiliSwitching)
                         const Padding(
                           padding: EdgeInsets.only(right: 8),
                           child: SizedBox(
@@ -2688,10 +2943,14 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
                         ),
                       _buildTopAction(
                         icon: Icons.playlist_play_rounded,
-                        tooltip: _hasOnlineContext ? '选集' : '缓存列表',
-                        onPressed: _hasOnlineContext
-                            ? _showOnlineEpisodeSheet
-                            : _showCacheSelectionSheet,
+                        tooltip: _bilibiliPlayback != null
+                            ? '选择分 P'
+                            : (_hasOnlineContext ? '选集' : '缓存列表'),
+                        onPressed: _bilibiliPlayback != null
+                            ? _showBilibiliPartSheet
+                            : (_hasOnlineContext
+                                  ? _showOnlineEpisodeSheet
+                                  : _showCacheSelectionSheet),
                       ),
                       _buildTopAction(
                         icon: Icons.picture_in_picture_alt_rounded,
@@ -2823,14 +3082,18 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
                           ),
                           _buildBottomAction(
                             icon: Icons.hd_rounded,
-                            label: _hasOnlineContext
-                                ? (_isOnlineSourceSearching
-                                      ? '线路搜索'
-                                      : '线路 (${_onlineSources.length})')
-                                : '片源',
-                            onPressed: _hasOnlineContext
-                                ? _showOnlineSourceSheet
-                                : _showCacheSelectionSheet,
+                            label:
+                                _bilibiliPlayback?.qualityLabel ??
+                                (_hasOnlineContext
+                                    ? (_isOnlineSourceSearching
+                                          ? '线路搜索'
+                                          : '线路 (${_onlineSources.length})')
+                                    : '片源'),
+                            onPressed: _bilibiliPlayback != null
+                                ? _showBilibiliQualitySheet
+                                : (_hasOnlineContext
+                                      ? _showOnlineSourceSheet
+                                      : _showCacheSelectionSheet),
                           ),
                         ],
                       ),
@@ -3323,6 +3586,7 @@ class _OnlineSourceSelectionSheet extends StatelessWidget {
                                   final OnlineEpisodeSourceResult source =
                                       group.value[sourceIndex];
                                   final bool selected =
+                                      source.mediaUrl.isNotEmpty &&
                                       source.mediaUrl == activeMediaUrl;
                                   return ChoiceChip(
                                     selected: selected,

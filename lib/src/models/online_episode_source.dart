@@ -38,6 +38,7 @@ class OnlineEpisodeSourceResult {
   final Map<String, String> headers;
   final int score;
   final bool verified;
+  final String? bilibiliBvid;
 
   const OnlineEpisodeSourceResult({
     required this.title,
@@ -48,8 +49,15 @@ class OnlineEpisodeSourceResult {
     this.headers = const <String, String>{},
     required this.score,
     this.verified = false,
+    this.bilibiliBvid,
   });
 
-  String get host =>
-      Uri.tryParse(mediaUrl)?.host ?? Uri.tryParse(pageUrl)?.host ?? '';
+  String get host {
+    final String? mediaHost = Uri.tryParse(mediaUrl)?.host;
+    return mediaHost != null && mediaHost.isNotEmpty
+        ? mediaHost
+        : Uri.tryParse(pageUrl)?.host ?? '';
+  }
+
+  bool get canAutoPlay => bilibiliBvid == null && mediaUrl.trim().isNotEmpty;
 }

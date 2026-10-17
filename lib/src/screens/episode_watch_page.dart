@@ -24,8 +24,9 @@ import '../utils/format_helpers.dart';
 import '../utils/task_title_parser.dart';
 import '../widgets/playback_action_prompt.dart';
 import '../widgets/playback_seek_slider.dart';
-import 'magnet_config_page.dart';
+import 'resource_search_page.dart';
 import 'video_player_page.dart';
+import 'bilibili_video_page.dart';
 
 class EpisodeWatchPage extends StatefulWidget {
   final int animeId;
@@ -369,9 +370,12 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
               _onlineSourcesNotifier.value = results;
               _onlineSourceSearchingNotifier.value = true;
             });
-            if (autoPlayFirst && !opened && results.isNotEmpty) {
+            final playable = results
+                .where((source) => source.canAutoPlay)
+                .toList();
+            if (autoPlayFirst && !opened && playable.isNotEmpty) {
               opened = true;
-              unawaited(_playOnlineSource(_selectBestOnlineSource(results)));
+              unawaited(_playOnlineSource(_selectBestOnlineSource(playable)));
             }
           },
           onDone: () {
@@ -383,7 +387,10 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
               _onlineSourceSearchingNotifier.value = false;
               if (_activeMedia == null) {
                 _isPreparingMedia = false;
-                _statusText = '未找到可播放的视频源';
+                _statusText =
+                    _onlineSources.any((source) => source.bilibiliBvid != null)
+                    ? '找到 B站候选，请选择并确认分 P。'
+                    : '未找到可播放的视频源';
               }
             });
           },
@@ -435,6 +442,21 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
 
   Future<void> _playOnlineSource(OnlineEpisodeSourceResult source) async {
     final OnlineEpisodeQuery? query = _activeQuery;
+    if (query != null && source.bilibiliBvid != null) {
+      final bool wasPlaying = _player.state.playing;
+      await _player.pause();
+      if (!mounted) return;
+      await Navigator.of(context).push<void>(
+        MaterialPageRoute<void>(
+          builder: (_) => BilibiliVideoPage(
+            initialBvid: source.bilibiliBvid,
+            episodeQuery: query,
+          ),
+        ),
+      );
+      if (mounted && wasPlaying) await _player.play();
+      return;
+    }
     if (query == null || source.mediaUrl.trim().isEmpty) {
       return;
     }
@@ -465,6 +487,8 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
     return PlayableMedia(
       title: media.title,
       url: media.url,
+      audioUrl: media.audioUrl,
+      bilibili: media.bilibili,
       headers: media.headers,
       isLocal: media.isLocal,
       localFilePath: media.localFilePath,
@@ -1099,19 +1123,25 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
   }
 
   Future<void> _openCurrentEpisodeResourceSearch() async {
-    final int number = _episodeNumber(_episode);
-    await Navigator.push(
-      context,
-      MaterialPageRoute<void>(
-        builder: (BuildContext context) => MagnetConfigPage(
-          animeName: _subjectDisplayName(),
-          aliases: _activeQuery?.aliases ?? const <String>[],
-          bangumiSubjectId: widget.animeId,
-          initialEpisodeNumber: number,
-          initialEpisodeTitle: _episodeTitle(_episode),
+    final bool wasPlaying = _player.state.playing;
+    await _player.pause();
+    if (!mounted) return;
+    final OnlineEpisodeQuery query = _buildOnlineEpisodeQuery(_episode);
+    try {
+      await Navigator.push(
+        context,
+        MaterialPageRoute<void>(
+          builder: (BuildContext context) => ResourceSearchPage(
+            animeName: query.subjectTitle,
+            aliases: query.aliases,
+            bangumiSubjectId: widget.animeId,
+            episodeQuery: query,
+          ),
         ),
-      ),
-    );
+      );
+    } finally {
+      if (mounted && wasPlaying) await _player.play();
+    }
   }
 
   void _toggleInlineControls() {
@@ -1562,10 +1592,10 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
                           ),
                         ),
                         IconButton(
-                          tooltip: '搜索并下载本集资源',
+                          tooltip: '搜索本集资源',
                           onPressed: () =>
                               unawaited(_openCurrentEpisodeResourceSearch()),
-                          icon: const Icon(Icons.download_rounded),
+                          icon: const Icon(Icons.travel_explore),
                         ),
                         IconButton(
                           tooltip: '把进度更新到本集',
@@ -2153,7 +2183,9 @@ class _OnlineSourceGroupCard extends StatelessWidget {
               runSpacing: 8,
               children: List<Widget>.generate(sources.length, (int index) {
                 final OnlineEpisodeSourceResult source = sources[index];
-                final bool selected = source.mediaUrl == activeMediaUrl;
+                final bool selected =
+                    source.mediaUrl.isNotEmpty &&
+                    source.mediaUrl == activeMediaUrl;
                 return ChoiceChip(
                   selected: selected,
                   avatar: Icon(

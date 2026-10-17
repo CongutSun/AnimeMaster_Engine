@@ -5,6 +5,8 @@ import 'dart:io';
 import 'package:ffi/ffi.dart';
 import 'package:flutter/foundation.dart';
 
+import '../config/app_release.dart';
+
 typedef _InitializeEngineCoreC = Bool Function();
 typedef _InitializeEngineCoreDart = bool Function();
 typedef _GetEngineVersionC = Pointer<Utf8> Function();
@@ -21,7 +23,8 @@ class EngineBridge {
   DynamicLibrary? _dylib;
   bool _didAttemptLoad = false;
   bool _isCoreReady = false;
-  String _engineVersion = 'AnimeMaster Engine v2.4.1 (Dart fallback)';
+  String _engineVersion =
+      'AnimeMaster Engine v${AppRelease.version} (Dart fallback)';
   String? _lastLoadError;
 
   String get engineVersion => _engineVersion;
@@ -57,7 +60,8 @@ class EngineBridge {
     final DynamicLibrary? dylib = _loadLibrary();
     if (dylib == null) {
       _isCoreReady = false;
-      _engineVersion = 'AnimeMaster Engine v2.4.1 (Dart fallback)';
+      _engineVersion =
+          'AnimeMaster Engine v${AppRelease.version} (Dart fallback)';
       return;
     }
 
@@ -76,7 +80,8 @@ class EngineBridge {
       debugPrint('[EngineBridge] $_engineVersion | Core Status: $_isCoreReady');
     } catch (e) {
       _isCoreReady = false;
-      _engineVersion = 'AnimeMaster Engine v2.4.1 (Dart fallback)';
+      _engineVersion =
+          'AnimeMaster Engine v${AppRelease.version} (Dart fallback)';
       debugPrint('[EngineBridge] Wakeup error, fallback to Dart: $e');
     }
   }
