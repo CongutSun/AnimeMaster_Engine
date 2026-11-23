@@ -116,6 +116,24 @@ void main() {
     );
   });
 
+  test('续播按历史 CID 取分 P，原分 P 移除后不会跳到其他分 P', () async {
+    final media = await service.resolveSavedPart(_bvid, 202);
+    expect(media!.bilibili!.part.cid, 202);
+    expect(
+      PlaybackProgressStore.bilibiliPartForKey(
+        PlaybackProgressStore.keyFor(media),
+      ),
+      (bvid: _bvid, cid: 202),
+    );
+    expect(
+      PlaybackProgressStore.bilibiliPartForKey('playback_progress.broken!'),
+      isNull,
+    );
+    requests.clear();
+    expect(await service.resolveSavedPart(_bvid, 303), isNull);
+    expect(requests.map((r) => r.uri.path), ['/x/web-interface/view']);
+  });
+
   test(
     'explicit quality choice uses an available AVC stream and reports actual options',
     () async {

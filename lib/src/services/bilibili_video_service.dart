@@ -201,6 +201,12 @@ class BilibiliVideoService {
     );
   }
 
+  Future<PlayableMedia?> resolveSavedPart(String bvid, int cid) async {
+    final video = await loadVideo(bvid);
+    final part = video.parts.where((part) => part.cid == cid).firstOrNull;
+    return part == null ? null : await resolvePart(video, part);
+  }
+
   Future<PlayableMedia> resolvePart(
     BilibiliVideo video,
     BilibiliPart part, {

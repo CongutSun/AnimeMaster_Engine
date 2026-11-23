@@ -1,3 +1,5 @@
+import 'dart:io';
+
 class DownloadTaskInfo {
   final String hash;
   final String title;
@@ -62,6 +64,14 @@ class DownloadTaskInfo {
   };
 
   String get displayTitle => title.trim().isEmpty ? hash : title.trim();
+
+  Future<bool> hasCompleteFile() async {
+    if (!isCompleted || targetPath.isEmpty) return false;
+    final stat = await FileStat.stat(targetPath);
+    return stat.type == FileSystemEntityType.file &&
+        stat.size > 0 &&
+        (targetSize <= 0 || stat.size == targetSize);
+  }
 
   String get displaySubtitle {
     final List<String> parts = <String>[

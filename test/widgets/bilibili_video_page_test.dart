@@ -133,10 +133,10 @@ void main() {
     );
     await tester.pumpAndSettle();
     final list = find.byKey(const ValueKey<String>('bilibili-search-results'));
-    final scrollable = find.descendant(
-      of: list,
-      matching: find.byType(Scrollable),
-    );
+    final scrollable = find
+        .descendant(of: list, matching: find.byType(Scrollable))
+        .first;
+
     await tester.scrollUntilVisible(
       find.text('加载更多'),
       350,
@@ -151,7 +151,10 @@ void main() {
       scrollable: scrollable,
     );
     await tester.pumpAndSettle();
-    final double offset = tester.widget<ListView>(list).controller!.offset;
+    final double offset = tester
+        .widget<CustomScrollView>(list)
+        .controller!
+        .offset;
     expect(offset, greaterThan(0));
     await tester.tap(find.text('搜索结果 2-8'));
     await tester.pumpAndSettle();
@@ -159,12 +162,8 @@ void main() {
     await tester.tap(find.byType(BackButton));
     await tester.pumpAndSettle();
     expect(
-      tester.widget<ListView>(list).controller!.offset,
+      tester.widget<CustomScrollView>(list).controller!.offset,
       closeTo(offset, 0.1),
-    );
-    expect(
-      tester.widget<TextField>(find.byType(TextField)).controller!.text,
-      '测试番剧',
     );
     expect(service.searches, <(String, int)>[('测试番剧', 1), ('测试番剧', 2)]);
     expect(find.text('搜索结果 2-8').hitTestable(), findsOneWidget);
@@ -175,8 +174,14 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(BilibiliVideoDetailsPage), findsNothing);
     expect(
-      tester.widget<ListView>(list).controller!.offset,
+      tester.widget<CustomScrollView>(list).controller!.offset,
       closeTo(offset, 0.1),
+    );
+    tester.widget<CustomScrollView>(list).controller!.jumpTo(0);
+    await tester.pumpAndSettle();
+    expect(
+      tester.widget<TextField>(find.byType(TextField)).controller!.text,
+      '测试番剧',
     );
     expect(service.searches.length, 2);
     expect(tester.takeException(), isNull);

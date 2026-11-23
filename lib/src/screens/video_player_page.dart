@@ -32,6 +32,7 @@ import '../utils/player_tap_handler.dart';
 import '../utils/haptic_helper.dart';
 import '../utils/playback_progress_store.dart';
 import '../utils/open_playable_media.dart';
+import '../utils/cached_media_playback.dart';
 import '../utils/video_playback_configuration.dart';
 import '../widgets/bilibili_part_list.dart';
 import '../utils/torrent_stream_server.dart';
@@ -48,6 +49,7 @@ class VideoPlayerPage extends StatefulWidget {
   final ValueChanged<PlayableMedia>? onMediaChanged;
   final bool preferLandscapeOnOpen;
   final PlaybackProgressSnapshot? initialResumeProgress;
+  final Duration? initialPosition;
   final VoidCallback? onResumePromptResolved;
   final BilibiliVideoService? bilibiliService;
 
@@ -60,6 +62,7 @@ class VideoPlayerPage extends StatefulWidget {
     this.onMediaChanged,
     this.preferLandscapeOnOpen = false,
     this.initialResumeProgress,
+    this.initialPosition,
     this.onResumePromptResolved,
     this.bilibiliService,
   });
@@ -300,6 +303,14 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
     );
     _subscriptions.add(
       _player.stream.error.listen((String error) {
+        final media = _activeMedia;
+        if (mounted &&
+            media?.isLocal == true &&
+            media?.onlineQuery != null &&
+            CachedMediaPlayback.isFileOpenError(error)) {
+          _searchAfterLocalFailure(media!.onlineQuery!);
+          return;
+        }
         if (!mounted || _activeMedia?.bilibili == null) return;
         setState(() {
           _playbackError = '视频或音轨加载失败，请重新解析后重试。';
@@ -318,7 +329,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
         episodeLabel: widget.media.episodeLabel,
       );
     } else if (_ownsPlayer) {
-      _openMedia(widget.media);
+      _openMedia(widget.media, startPosition: widget.initialPosition);
     } else {
       _activeMedia = widget.media;
       _resumePromptProgress = widget.initialResumeProgress;
@@ -480,6 +491,10 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
       );
     } catch (_) {
       if (mounted && probeSerial == _durationProbeSerial) {
+        if (media.isLocal && media.onlineQuery != null) {
+          _searchAfterLocalFailure(media.onlineQuery!);
+          return;
+        }
         setState(() {
           _isOpeningMedia = false;
           _playbackError = '视频或音轨加载失败，请重试。';
@@ -664,9 +679,16 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
     _onlineQuery = media.onlineQuery;
     _onlineEpisodes = media.onlineEpisodes;
     _setOnlineSources(media.onlineSources, notifyState: false);
-    if (_onlineQuery != null) {
-      _startOnlineSourceSearch(_onlineQuery!, clearExisting: false);
-    }
+  }
+
+  void _searchAfterLocalFailure(OnlineEpisodeQuery query) {
+    ++_durationProbeSerial;
+    setState(() {
+      _activeMedia = null;
+      _isOpeningMedia = false;
+      _showControls = true;
+    });
+    _startOnlineSourceSearch(query, clearExisting: false, autoPlayFirst: true);
   }
 
   void _setOnlineSources(
@@ -844,10 +866,14 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
 
   Future<void> _switchOnlineEpisode(OnlineEpisodeQuery query) async {
     _cancelControlsAutoHide();
+    final serial = ++_durationProbeSerial;
+    await _onlineSourceSubscription?.cancel();
+    if (!mounted || serial != _durationProbeSerial) return;
+    _onlineSourceSubscription = null;
     await _savePlaybackProgress(force: true);
     await _player.pause();
     await _player.stop();
-    if (!mounted) {
+    if (!mounted || serial != _durationProbeSerial) {
       return;
     }
     setState(() {
@@ -858,12 +884,38 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
       _dragPosition = null;
       _isPlaying = false;
       _isBuffering = false;
+      _setOnlineSourceSearching(false);
       _setOnlineSources(
         const <OnlineEpisodeSourceResult>[],
         notifyState: false,
       );
       _showControls = true;
     });
+    final candidates = CachedMediaPlayback.episodeTasks(
+      DownloadManager().allTasks,
+      query,
+    );
+    final cached = await CachedMediaPlayback.preferredTask(
+      candidates.where((t) => t.isCompleted),
+    );
+    if (!mounted || serial != _durationProbeSerial) return;
+    if (cached != null) {
+      await _openMedia(
+        PlayableMedia(
+          title: cached.displayTitle,
+          url: cached.targetPath,
+          isLocal: true,
+          localFilePath: cached.targetPath,
+          subjectTitle: query.subjectTitle,
+          episodeLabel: query.episodeLabel,
+          bangumiSubjectId: query.bangumiSubjectId,
+          bangumiEpisodeId: query.bangumiEpisodeId,
+          onlineQuery: query,
+          onlineEpisodes: _onlineEpisodes,
+        ),
+      );
+      return;
+    }
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text('正在查找 ${query.episodeLabel} 的在线源...'),
@@ -875,6 +927,12 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
 
   Future<void> _showOnlineSourceSheet() async {
     _cancelControlsAutoHide();
+    final query = _onlineQuery;
+    if (query != null &&
+        !_isOnlineSourceSearching &&
+        (_onlineSourceSubscription == null || _onlineSources.isEmpty)) {
+      _startOnlineSourceSearch(query, clearExisting: false);
+    }
     await _showPlayerPanel<void>(
       portraitHeightFactor: 0.74,
       landscapeHeightFactor: 0.72,
@@ -2344,31 +2402,6 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
     );
   }
 
-  PlayableMedia _buildMediaFromTask(DownloadTaskInfo task) {
-    final File localFile = File(task.targetPath);
-    if (task.isCompleted && localFile.existsSync()) {
-      return PlayableMedia(
-        title: task.displayTitle,
-        url: task.targetPath,
-        isLocal: true,
-        localFilePath: task.targetPath,
-        subjectTitle: task.subjectTitle,
-        episodeLabel: task.episodeLabel,
-        bangumiSubjectId: task.bangumiSubjectId,
-        bangumiEpisodeId: task.bangumiEpisodeId,
-      );
-    }
-    return PlayableMedia(
-      title: task.displayTitle,
-      url: task.url,
-      localFilePath: task.targetPath,
-      subjectTitle: task.subjectTitle,
-      episodeLabel: task.episodeLabel,
-      bangumiSubjectId: task.bangumiSubjectId,
-      bangumiEpisodeId: task.bangumiEpisodeId,
-    );
-  }
-
   Future<void> _showCacheSelectionSheet() async {
     final List<DownloadTaskInfo> tasks = DownloadManager().allTasks.reversed
         .toList();
@@ -2402,46 +2435,27 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
   }
 
   Future<void> _replaceWithTask(DownloadTaskInfo task) async {
-    await DownloadManager().prepareForPlayback(task.hash);
-    final File localFile = File(task.targetPath);
-    TorrentStreamServer? streamServer;
-    PlayableMedia media = _buildMediaFromTask(task);
-
-    if (!task.isCompleted && task.targetSize > 0) {
-      DownloadManager().prioritizePlaybackRange(
-        task.hash,
-        task.targetPath,
-        0,
-        512 * 1024,
-      );
-      streamServer = TorrentStreamServer(
-        videoFilePath: task.targetPath,
-        videoSize: task.targetSize,
-        infoHash: task.hash,
-      );
-      final String streamUrl = await streamServer.start();
-      media = PlayableMedia(
-        title: task.displayTitle,
-        url: streamUrl,
-        localFilePath: task.targetPath,
-        subjectTitle: task.subjectTitle,
-        episodeLabel: task.episodeLabel,
-        bangumiSubjectId: task.bangumiSubjectId,
-        bangumiEpisodeId: task.bangumiEpisodeId,
-      );
-    } else if (task.isCompleted && localFile.existsSync()) {
-      media = _buildMediaFromTask(task);
-    }
-
-    if (!mounted) {
-      streamServer?.stop();
+    final CachedPlaybackSession session;
+    try {
+      session = await CachedMediaPlayback.prepare(task);
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('无法播放：$error')));
+      }
       return;
     }
-
+    if (!mounted) {
+      session.streamServer?.stop();
+      return;
+    }
     await Navigator.of(context).pushReplacement<void, void>(
       MaterialPageRoute<void>(
-        builder: (BuildContext context) =>
-            VideoPlayerPage(media: media, streamServer: streamServer),
+        builder: (_) => VideoPlayerPage(
+          media: session.media,
+          streamServer: session.streamServer,
+        ),
       ),
     );
   }
@@ -3087,7 +3101,9 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
                                 (_hasOnlineContext
                                     ? (_isOnlineSourceSearching
                                           ? '线路搜索'
-                                          : '线路 (${_onlineSources.length})')
+                                          : (_onlineSources.isEmpty
+                                                ? '换源'
+                                                : '线路 (${_onlineSources.length})'))
                                     : '片源'),
                             onPressed: _bilibiliPlayback != null
                                 ? _showBilibiliQualitySheet

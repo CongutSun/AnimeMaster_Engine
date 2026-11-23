@@ -20,3 +20,11 @@ class_name = "DandanplayGateway"
 [[migrations]]
 tag = "dandanplay-v1"
 new_sqlite_classes = ["DandanplayGateway"]
+
+[[durable_objects.bindings]]
+name = "BANGUMI_MOBILE_AUTH"
+class_name = "BangumiMobileAuth"
+
+[[migrations]]
+tag = "bangumi-mobile-auth-v1"
+new_sqlite_classes = ["BangumiMobileAuth"]

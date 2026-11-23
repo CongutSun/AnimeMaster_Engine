@@ -71,6 +71,15 @@ class _Stream implements PlayerStream {
 }
 
 void main() {
+  test('点击继续看后，本地视频在开始播放前恢复精确进度', () async {
+    final player = _Player();
+    await openPlayableMedia(
+      player,
+      PlayableMedia(title: '本地缓存', url: '/episode.mp4'),
+      startPosition: const Duration(seconds: 754),
+    );
+    expect(player.calls, ['open:false', 'seek:754', 'play']);
+  });
   test(
     'quality reload restores position after audio readiness and preserves pause',
     () async {

@@ -4,13 +4,37 @@ import '../models/download_task_info.dart';
 import '../storage/app_database.dart';
 
 class DownloadTaskRepository {
-  DownloadTaskRepository._(this._database);
+  DownloadTaskRepository(this._database);
 
-  static final DownloadTaskRepository instance = DownloadTaskRepository._(
+  static final DownloadTaskRepository instance = DownloadTaskRepository(
     AppDatabase.instance,
   );
 
   final AppDatabase _database;
+
+  Stream<bool> watchOfflineEpisode(
+    int subjectId,
+    int episodeId,
+    String previousPath,
+  ) {
+    final query = _database.select(_database.downloadTaskRecords)
+      ..where(
+        (t) =>
+            t.isCompleted.equals(true) &
+            (t.bangumiSubjectId.equals(subjectId) |
+                t.bangumiSubjectId.equals(0)) &
+            (t.bangumiEpisodeId.equals(episodeId) |
+                (t.bangumiEpisodeId.equals(0) &
+                    t.targetPath.equals(previousPath) &
+                    t.targetPath.equals('').not())),
+      );
+    return query.watch().asyncMap((rows) async {
+      for (final row in rows) {
+        if (await _fromRecord(row).hasCompleteFile()) return true;
+      }
+      return false;
+    }).distinct();
+  }
 
   Future<List<DownloadTaskInfo>> loadAll() async {
     final List<DownloadTaskRecord> rows = await _database

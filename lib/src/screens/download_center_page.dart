@@ -6,11 +6,10 @@ import '../api/bangumi_api.dart';
 import '../core/service_locator.dart';
 import '../managers/download_manager.dart';
 import '../models/download_task_info.dart';
-import '../models/playable_media.dart';
+import '../utils/cached_media_playback.dart';
 import '../services/background_download_service.dart';
 import '../utils/magnet_action_helper.dart';
 import '../utils/task_title_parser.dart';
-import '../utils/torrent_stream_server.dart';
 import 'video_player_page.dart';
 
 class DownloadCenterPage extends StatelessWidget {
@@ -29,6 +28,33 @@ class DownloadCenterPage extends StatelessWidget {
           appBar: AppBar(
             title: const Text('下载中心'),
             actions: <Widget>[
+              PopupMenuButton<bool>(
+                tooltip: '做种设置',
+                icon: const Icon(Icons.upload_outlined),
+                onSelected: (enabled) async {
+                  try {
+                    await manager.setSeedingEnabled(enabled);
+                  } catch (_) {
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('做种设置未能应用，请重试。')),
+                      );
+                    }
+                  }
+                },
+                itemBuilder: (_) => [
+                  CheckedPopupMenuItem(
+                    value: true,
+                    checked: manager.seedingEnabled,
+                    child: const Text('空闲时做种'),
+                  ),
+                  CheckedPopupMenuItem(
+                    value: false,
+                    checked: !manager.seedingEnabled,
+                    child: const Text('完成后停止做种'),
+                  ),
+                ],
+              ),
               if (Platform.isAndroid)
                 IconButton(
                   tooltip: '后台下载设置',
@@ -79,8 +105,12 @@ class DownloadCenterPage extends StatelessWidget {
                     );
                     final bool isPaused = manager.isPaused(config.hash);
                     final bool isQueued = manager.isQueued(config.hash);
-                    final bool isCompleted = progress >= 1.0;
+                    final bool isCompleted = config.isCompleted;
                     final bool isSeeding = manager.isSeeding(config.hash);
+                    final bool seedingOff =
+                        isCompleted && !manager.seedingEnabled;
+                    final bool canResume =
+                        isPaused || (!isCompleted && isQueued);
                     final Color statusColor = isSeeding
                         ? colors.tertiary
                         : (isCompleted
@@ -218,6 +248,7 @@ class DownloadCenterPage extends StatelessWidget {
                                   isQueued: isQueued,
                                   isCompleted: isCompleted,
                                   isSeeding: isSeeding,
+                                  seedingOff: seedingOff,
                                   speed: speed,
                                   uploadSpeed: uploadSpeed,
                                 ),
@@ -254,16 +285,19 @@ class DownloadCenterPage extends StatelessWidget {
                                   onPressed: () => _playVideo(context, config),
                                 ),
                                 IconButton(
-                                  tooltip: isPaused || isQueued
+                                  tooltip: seedingOff
+                                      ? '做种已关闭'
+                                      : canResume
                                       ? (isCompleted ? '开始做种' : '继续')
                                       : (isCompleted ? '暂停做种' : '暂停'),
                                   icon: Icon(
-                                    isPaused || isQueued
+                                    canResume || seedingOff
                                         ? Icons.play_arrow_rounded
                                         : Icons.pause_rounded,
                                   ),
-                                  onPressed: () =>
-                                      manager.toggleTask(config.hash),
+                                  onPressed: seedingOff
+                                      ? null
+                                      : () => manager.toggleTask(config.hash),
                                 ),
                                 IconButton(
                                   tooltip: '删除',
@@ -301,12 +335,14 @@ class DownloadCenterPage extends StatelessWidget {
     required bool isQueued,
     required bool isCompleted,
     required bool isSeeding,
+    required bool seedingOff,
     required double speed,
     required double uploadSpeed,
   }) {
     if (isSeeding) {
       return '做种中  ·  上传 ${_formatSpeed(uploadSpeed)}';
     }
+    if (seedingOff) return '已完成  ·  做种已关闭';
     if (isQueued) {
       return isCompleted
           ? '做种排队中'
@@ -522,67 +558,32 @@ class DownloadCenterPage extends StatelessWidget {
   }
 
   Future<void> _playVideo(BuildContext context, DownloadTaskInfo config) async {
-    final DownloadTaskInfo playConfig = await _enrichTaskEpisodeLabel(config);
-    await DownloadManager().prepareForPlayback(playConfig.hash);
-    final File localFile = File(playConfig.targetPath);
-    final bool canUseLocalFile =
-        playConfig.isCompleted && localFile.existsSync();
-    TorrentStreamServer? streamServer;
-    final PlayableMedia media;
-    if (canUseLocalFile) {
-      media = PlayableMedia(
-        title: playConfig.displayTitle,
-        url: playConfig.targetPath,
-        isLocal: true,
-        localFilePath: playConfig.targetPath,
-        subjectTitle: playConfig.subjectTitle,
-        episodeLabel: playConfig.episodeLabel,
-        bangumiSubjectId: playConfig.bangumiSubjectId,
-        bangumiEpisodeId: playConfig.bangumiEpisodeId,
-      );
-    } else if (playConfig.targetSize > 0) {
-      DownloadManager().prioritizePlaybackRange(
-        playConfig.hash,
-        playConfig.targetPath,
-        0,
-        512 * 1024,
-      );
-      streamServer = TorrentStreamServer(
-        videoFilePath: playConfig.targetPath,
-        videoSize: playConfig.targetSize,
-        infoHash: playConfig.hash,
-      );
-      final String streamUrl = await streamServer.start();
-      media = PlayableMedia(
-        title: playConfig.displayTitle,
-        url: streamUrl,
-        localFilePath: playConfig.targetPath,
-        subjectTitle: playConfig.subjectTitle,
-        episodeLabel: playConfig.episodeLabel,
-        bangumiSubjectId: playConfig.bangumiSubjectId,
-        bangumiEpisodeId: playConfig.bangumiEpisodeId,
-      );
-    } else {
-      media = PlayableMedia(
-        title: playConfig.displayTitle,
-        url: playConfig.url,
-        localFilePath: playConfig.targetPath,
-        subjectTitle: playConfig.subjectTitle,
-        episodeLabel: playConfig.episodeLabel,
-        bangumiSubjectId: playConfig.bangumiSubjectId,
-        bangumiEpisodeId: playConfig.bangumiEpisodeId,
-      );
+    final DownloadTaskInfo playConfig = config.bangumiEpisodeId > 0
+        ? config
+        : await _enrichTaskEpisodeLabel(config);
+    final CachedPlaybackSession session;
+    try {
+      session = await CachedMediaPlayback.prepare(playConfig);
+    } catch (error) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('无法播放：$error')));
+      }
+      return;
     }
 
     if (!context.mounted) {
-      streamServer?.stop();
+      session.streamServer?.stop();
       return;
     }
     await Navigator.push<void>(
       context,
       MaterialPageRoute<void>(
-        builder: (BuildContext context) =>
-            VideoPlayerPage(media: media, streamServer: streamServer),
+        builder: (BuildContext context) => VideoPlayerPage(
+          media: session.media,
+          streamServer: session.streamServer,
+        ),
       ),
     );
   }

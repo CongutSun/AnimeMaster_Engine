@@ -1,6 +1,10 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:ui' as ui;
+import 'package:animemaster/src/api/dio_client.dart';
 import 'package:animemaster/src/models/rss_resource.dart';
+import 'package:animemaster/src/screens/collection_page.dart';
+import 'package:dio/dio.dart';
 import 'package:animemaster/src/providers/settings_provider.dart';
 import 'package:animemaster/src/screens/rss_inbox_page.dart';
 import 'package:animemaster/src/services/rss_feed_service.dart';
@@ -27,6 +31,46 @@ class _Feed extends RssFeedService {
         ],
         fetchedAt: DateTime.now(),
       );
+}
+
+class _WatchingPages implements HttpClientAdapter {
+  bool failNextPage = false;
+  final offsets = <int>[];
+
+  @override
+  Future<ResponseBody> fetch(
+    RequestOptions options,
+    Stream<Uint8List>? stream,
+    Future<void>? cancel,
+  ) async {
+    final offset = options.queryParameters['offset'] as int;
+    offsets.add(offset);
+    final failed = offset == 100 && failNextPage;
+    return ResponseBody.fromString(
+      jsonEncode({
+        'offset': offset,
+        'total': 101,
+        'data': [
+          for (int i = offset; i < offset + 100 && i < 101; i++)
+            {
+              'subject': {
+                'id': i + 1,
+                'name': i == 100 ? '测试番剧' : '收藏作品${i + 1}',
+                'eps': 12,
+              },
+              'ep_status': 5,
+            },
+        ],
+      }),
+      failed ? 403 : 200,
+      headers: {
+        Headers.contentTypeHeader: ['application/json'],
+      },
+    );
+  }
+
+  @override
+  void close({bool force = false}) {}
 }
 
 void main() {
@@ -126,6 +170,69 @@ void main() {
             ).writeAsBytes(bytes!.buffer.asUint8List());
             image.dispose();
           });
+        }
+      },
+    );
+  }
+  for (final rss in [true, false]) {
+    testWidgets(
+      rss
+          ? 'RSS matches a watch from page two'
+          : 'collection retains page one and retries page two',
+      (tester) async {
+        final dio = DioClient().dio;
+        final previous = dio.httpClientAdapter;
+        final adapter = _WatchingPages()..failNextPage = !rss;
+        dio.httpClientAdapter = adapter;
+        addTearDown(() => dio.httpClientAdapter = previous);
+        final settings = SettingsProvider();
+        await settings.initialize();
+        await settings.updateAccount('reader', 'test-token');
+        await settings.addRssSource('我的订阅', 'https://feed.example/rss');
+        final store = RssInboxStore(service: _Feed());
+        await tester.pumpWidget(
+          ChangeNotifierProvider<SettingsProvider>.value(
+            value: settings,
+            child: MaterialApp(
+              home: rss ? RssInboxPage(store: store) : const CollectionPage(),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        if (rss) {
+          expect(adapter.offsets, [0, 100]);
+          expect(find.text('测试番剧 · 第 6 集'), findsOneWidget);
+          expect(find.textContaining('发现未看集数'), findsOneWidget);
+        } else {
+          expect(adapter.offsets, [0]);
+          final list = find.byType(ListView);
+          final scroll = tester.state<ScrollableState>(
+            find.descendant(of: list, matching: find.byType(Scrollable)).first,
+          );
+          await tester.scrollUntilVisible(
+            find.text('加载更多'),
+            1200,
+            scrollable: find.byWidget(scroll.widget),
+            maxScrolls: 80,
+          );
+          await tester.tap(find.text('加载更多'));
+          await tester.pumpAndSettle();
+          expect(
+            tester.widget<ListView>(list).childrenDelegate.estimatedChildCount,
+            101,
+          );
+          final retry = find.text('下一页加载失败，点击重试。');
+          expect(retry, findsOneWidget);
+          adapter.failNextPage = false;
+          await tester.tap(retry);
+          await tester.pumpAndSettle();
+          await tester.scrollUntilVisible(
+            find.text('测试番剧'),
+            400,
+            scrollable: find.byWidget(scroll.widget),
+          );
+          expect(find.text('测试番剧'), findsOneWidget);
+          expect(adapter.offsets, [0, 100, 100]);
         }
       },
     );

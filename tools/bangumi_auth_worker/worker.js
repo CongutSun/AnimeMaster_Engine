@@ -8,14 +8,13 @@ import {
 import { handleDandanplay } from './dandanplay.mjs';
 export { DandanplayGateway } from './dandanplay.mjs';
 
-const DEFAULT_CALLBACK_SCHEME = 'animemasteroauth';
+import { refreshToken, fetchProfile, expiresAtFromNow, sessionPayload } from './mobile_auth.mjs';
+export { BangumiMobileAuth } from './mobile_auth.mjs';
 
 class RequestValidationError extends Error {}
-const PENDING_TTL_SECONDS = 600;
-const SESSION_EXCHANGE_TTL_SECONDS = 600;
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 60;
 const BANGUMI_API_USER_AGENT =
-  'CongutSun/AnimeMaster_Engine/2.4.8 (Cloudflare Workers; https://auth.congutsun.com)';
+  'CongutSun/AnimeMaster_Engine/2.4.9 (Cloudflare Workers; https://auth.congutsun.com)';
 const RESOURCE_PROXY_USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 const RESOURCE_PROXY_ALLOWED_HOSTS = new Set([
@@ -49,42 +48,34 @@ const BANGUMI_PROXY_REQUEST_HEADERS = [
   'accept-language',
 ];
 const APP_UPDATE_MANIFEST = {
-  "version": "2.4.8",
-  "build": 4053,
-  "apkUrl": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.8/app-release.apk",
+  "version": "2.4.9",
+  "build": 4054,
+  "apkUrl": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.9/app-release.apk",
   "notes": [
-    "新增 B站视频搜索、BV 号与链接播放、扫码登录和账号可用画质选择。",
-    "番剧详情页统一“搜索资源”入口，支持 B站视频与网站资源切换及别名搜索。",
-    "返回搜索列表保留关键词、分页结果和浏览位置，切换资源标签保留结果与筛选条件。",
-    "支持选择分 P、剧集匹配建议与本机关联，播放进度按视频和分 P 分别保存。",
-    "修复部分 Android 设备播放 B站视频时绿屏、画面更新缓慢的问题，完善音视频同步加载。",
-    "切换画质保留播放位置与暂停状态，登录过期和播放失败提供明确提示及重试入口。"
+    "番剧详情页新增一键续播，显示上次观看的集数、进度和可用缓存；B站视频可回到上次观看的分 P。",
+    "分集页与全屏播放优先使用完整缓存，换源或缓存起播失败时再查找在线片源；分集评论在打开时加载。",
+    "支持跨分页连续选集和播放下一集，合并重复的资源搜索入口；缓存文件缺失或大小异常时给出提示。",
+    "修复 Bangumi 收藏超过 100 条后显示不全、RSS 漏匹配在看作品的问题。",
+    "加固 Bangumi 登录会话的一次性兑换，限制片源探测实际读取的数据量。",
+    "修复小屏大字号下键盘弹起时 B站搜索页溢出的问题。",
+    "下载中心支持选择空闲时做种或完成后停止做种，系统通知区分下载和上传状态。"
   ],
-  "publishedAt": "2026-10-17T09:59:43+08:00",
+  "publishedAt": "2026-11-23T21:40:35+08:00",
   "forceUpdate": false,
   "apkUrls": {
-    "android-arm64": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.8/app-arm64-v8a-release.apk",
-    "android-arm": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.8/app-armeabi-v7a-release.apk",
-    "android-x64": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.8/app-x86_64-release.apk",
-    "universal": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.8/app-release.apk"
+    "android-arm64": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.9/app-arm64-v8a-release.apk",
+    "android-arm": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.9/app-armeabi-v7a-release.apk",
+    "android-x64": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.9/app-x86_64-release.apk",
+    "universal": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.9/app-release.apk"
   },
   "sha256": {
-    "android-arm64": "aad28f212652706544287c30ca4f1924dd3d5b9ef104026b0d1b5be900a89cbd",
-    "android-arm": "bc35741c712f6994c5514d96c5ff84f72af78981bdcca27f85ae1351dd4218a0",
-    "android-x64": "902905aae9917e08911c7a1dc3ce3bfc9438325c08fd85356667922092518f97",
-    "universal": "3dade0efd720514b781801cf63168fd7ad45480e2977460297b49b06eab05705"
+    "android-arm64": "7f2cbf4d36acbb2d75d2295f22a360d7ea1909b5a915b21750283bbc034f6d3b",
+    "android-arm": "514f0ff3c87c82e3c95c05160629f281895accc0cb95ec331a878554321fc3b0",
+    "android-x64": "54e8f7777838ab5a7277ab60ede5e40046b4f97e8748c38c9eb6903a94c87009",
+    "universal": "6773b9000de42426534cf6900a60b780ad04a786e8588d3a3d758bb53250dd53"
   }
 };
-const APK_DOWNLOAD_URLS = {
-  'android-arm64':
-    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.8/app-arm64-v8a-release.apk',
-  'android-arm':
-    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.8/app-armeabi-v7a-release.apk',
-  'android-x64':
-    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.8/app-x86_64-release.apk',
-  universal:
-    'https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.8/app-release.apk',
-};
+const APK_DOWNLOAD_URLS = APP_UPDATE_MANIFEST.apkUrls;
 
 function applyCors(headers, request, methods = 'GET,POST,OPTIONS') {
   const origin = request?.headers?.get('origin') || '';
@@ -111,17 +102,6 @@ function json(body, status = 200, request = null) {
   return new Response(JSON.stringify(body), {
     status,
     headers,
-  });
-}
-
-function redirect(location) {
-  return new Response(null, {
-    status: 302,
-    headers: {
-      location,
-      'cache-control': 'no-store',
-      'referrer-policy': 'no-referrer',
-    },
   });
 }
 
@@ -553,28 +533,6 @@ async function handleBangumiImageProxy(request) {
   return response;
 }
 
-function requireEnv(env, key) {
-  const value = env[key];
-  if (!value || `${value}`.trim().length === 0) {
-    throw new Error(`Missing required env: ${key}`);
-  }
-  return `${value}`.trim();
-}
-
-function randomId(bytes = 16) {
-  const data = new Uint8Array(bytes);
-  crypto.getRandomValues(data);
-  return [...data].map((value) => value.toString(16).padStart(2, '0')).join('');
-}
-
-function sanitizeCallbackScheme(value) {
-  const scheme = (value || DEFAULT_CALLBACK_SCHEME).trim().toLowerCase();
-  if (scheme !== DEFAULT_CALLBACK_SCHEME) {
-    throw new RequestValidationError('Unsupported callback scheme.');
-  }
-  return DEFAULT_CALLBACK_SCHEME;
-}
-
 async function sha256Hex(value) {
   const bytes = new TextEncoder().encode(value);
   const digest = await crypto.subtle.digest('SHA-256', bytes);
@@ -606,186 +564,22 @@ async function enforceRateLimit(request, env, scope, config) {
   return null;
 }
 
-function buildAuthorizeUrl(env, state) {
-  const clientId = requireEnv(env, 'BANGUMI_CLIENT_ID');
-  const callbackUrl = requireEnv(env, 'BANGUMI_CALLBACK_URL');
-  const url = new URL('https://bgm.tv/oauth/authorize');
-  url.searchParams.set('client_id', clientId);
-  url.searchParams.set('response_type', 'code');
-  url.searchParams.set('redirect_uri', callbackUrl);
-  url.searchParams.set('state', state);
-  return url.toString();
-}
-
-async function exchangeCode(env, code) {
-  const response = await fetch('https://bgm.tv/oauth/access_token', {
-    method: 'POST',
-    headers: {
-      accept: 'application/json',
-      'content-type': 'application/x-www-form-urlencoded',
-      'user-agent': BANGUMI_API_USER_AGENT,
-    },
-    body: new URLSearchParams({
-      grant_type: 'authorization_code',
-      client_id: requireEnv(env, 'BANGUMI_CLIENT_ID'),
-      client_secret: requireEnv(env, 'BANGUMI_CLIENT_SECRET'),
-      code,
-      redirect_uri: requireEnv(env, 'BANGUMI_CALLBACK_URL'),
-    }),
-  });
-  if (!response.ok) {
-    throw new Error(`Bangumi token exchange failed: ${response.status}`);
-  }
-  return response.json();
-}
-
-async function refreshToken(env, refreshTokenValue) {
-  const response = await fetch('https://bgm.tv/oauth/access_token', {
-    method: 'POST',
-    headers: {
-      accept: 'application/json',
-      'content-type': 'application/x-www-form-urlencoded',
-      'user-agent': BANGUMI_API_USER_AGENT,
-    },
-    body: new URLSearchParams({
-      grant_type: 'refresh_token',
-      client_id: requireEnv(env, 'BANGUMI_CLIENT_ID'),
-      client_secret: requireEnv(env, 'BANGUMI_CLIENT_SECRET'),
-      refresh_token: refreshTokenValue,
-      redirect_uri: requireEnv(env, 'BANGUMI_CALLBACK_URL'),
-    }),
-  });
-  if (!response.ok) {
-    throw new Error(`Bangumi token refresh failed: ${response.status}`);
-  }
-  return response.json();
-}
-
-async function fetchProfile(accessToken) {
-  const response = await fetch('https://api.bgm.tv/v0/me', {
-    headers: {
-      accept: 'application/json',
-      authorization: `Bearer ${accessToken}`,
-      'user-agent': BANGUMI_API_USER_AGENT,
-    },
-  });
-  if (!response.ok) {
-    throw new Error(`Bangumi profile fetch failed: ${response.status}`);
-  }
-  return response.json();
-}
-
-function expiresAtFromNow(expiresInSeconds) {
-  const seconds = Number(expiresInSeconds || 0);
-  return new Date(Date.now() + Math.max(seconds, 0) * 1000).toISOString();
-}
-
-function sessionPayload(sessionId, session) {
-  return {
-    session_id: sessionId,
-    access_token: session.accessToken,
-    expires_at: session.expiresAt,
-    profile: session.profile,
-  };
-}
-
-async function createDurableSession(env, session) {
-  const durableSessionId = randomId(20);
-  await env.BANGUMI_AUTH_KV.put(
-    `session:${durableSessionId}`,
-    JSON.stringify(session),
-    { expirationTtl: SESSION_TTL_SECONDS },
-  );
-  return durableSessionId;
-}
-
 async function readJson(request) {
-  const text = await request.text();
-  if (!text.trim()) {
-    return {};
-  }
-  return JSON.parse(text);
+  try {
+    const body = await request.json();
+    if (body && typeof body === 'object' && !Array.isArray(body)) return body;
+  } catch {}
+  throw new RequestValidationError('Invalid JSON body.');
 }
 
-async function handleStart(request, env) {
-  const url = new URL(request.url);
-  const callbackScheme = sanitizeCallbackScheme(
-    url.searchParams.get('callback_scheme'),
-  );
-  const requestId = randomId(12);
-  const state = randomId(16);
-  await env.BANGUMI_AUTH_KV.put(
-    `pending:${state}`,
-    JSON.stringify({
-      requestId,
-      callbackScheme,
-      createdAt: new Date().toISOString(),
-    }),
-    { expirationTtl: PENDING_TTL_SECONDS },
-  );
-
-  return json({
-    request_id: requestId,
-    authorization_url: buildAuthorizeUrl(env, state),
-  });
+function mobileAuth(request, env) {
+  const id = env.BANGUMI_MOBILE_AUTH.idFromName('mobile-sessions');
+  return env.BANGUMI_MOBILE_AUTH.get(id).fetch(request);
 }
 
-async function handleCallback(request, env) {
-  const url = new URL(request.url);
-  const code = url.searchParams.get('code') || '';
-  const state = url.searchParams.get('state') || '';
-  if (!code || !state) {
-    return json({ error: 'Missing code or state.' }, 400);
-  }
-
-  const pendingRaw = await env.BANGUMI_AUTH_KV.get(`pending:${state}`);
-  if (!pendingRaw) {
-    return json({ error: 'Invalid or expired state.' }, 400);
-  }
-  const pending = JSON.parse(pendingRaw);
-  await env.BANGUMI_AUTH_KV.delete(`pending:${state}`);
-
-  const token = await exchangeCode(env, code);
-  const profile = await fetchProfile(token.access_token);
-  const exchangeId = randomId(20);
-  const session = {
-    accessToken: token.access_token,
-    refreshToken: token.refresh_token || '',
-    expiresAt: expiresAtFromNow(token.expires_in),
-    profile,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  };
-
-  await env.BANGUMI_AUTH_KV.put(
-    `session_exchange:${exchangeId}`,
-    JSON.stringify(session),
-    { expirationTtl: SESSION_EXCHANGE_TTL_SECONDS },
-  );
-
-  const callbackScheme = sanitizeCallbackScheme(pending.callbackScheme);
-  return redirect(
-    `${callbackScheme}://callback?session_id=${encodeURIComponent(exchangeId)}&request_id=${encodeURIComponent(pending.requestId || '')}`,
-  );
-}
-
-async function handleSession(request, env) {
-  const url = new URL(request.url);
-  const sessionId = url.searchParams.get('session_id') || '';
-  if (!sessionId) {
-    return json({ error: 'Missing session_id.' }, 400);
-  }
-
-  const exchangeKey = `session_exchange:${sessionId}`;
-  const exchangeRaw = await env.BANGUMI_AUTH_KV.get(exchangeKey);
-  if (!exchangeRaw) {
-    return json({ error: 'Session exchange not found.' }, 404);
-  }
-  await env.BANGUMI_AUTH_KV.delete(exchangeKey);
-
-  const session = JSON.parse(exchangeRaw);
-  const durableSessionId = await createDurableSession(env, session);
-  return json(sessionPayload(durableSessionId, session));
+async function usesNewSession(request) {
+  const body = await readJson(request.clone());
+  return typeof body.session_id === 'string' && body.session_id.startsWith('v2.');
 }
 
 async function handleRefresh(request, env) {
@@ -806,7 +600,7 @@ async function handleRefresh(request, env) {
   }
 
   const refreshed = await refreshToken(env, session.refreshToken);
-  const profile = await fetchProfile(refreshed.access_token);
+  const profile = await fetchProfile(env, refreshed.access_token);
   const nextSession = {
     accessToken: refreshed.access_token,
     refreshToken: refreshed.refresh_token || session.refreshToken,
@@ -1064,16 +858,16 @@ export default {
           RATE_LIMITS.authStart,
         );
         if (limited) return limited;
-        return await handleStart(request, env);
+        return await mobileAuth(request, env);
       }
       if (
         request.method === 'GET' &&
         url.pathname === '/auth/bangumi/callback'
       ) {
-        return await handleCallback(request, env);
+        return await mobileAuth(request, env);
       }
       if (
-        request.method === 'GET' &&
+        request.method === 'POST' &&
         url.pathname === '/auth/bangumi/mobile/session'
       ) {
         const limited = await enforceRateLimit(
@@ -1083,18 +877,20 @@ export default {
           RATE_LIMITS.authSession,
         );
         if (limited) return limited;
-        return await handleSession(request, env);
+        return await mobileAuth(request, env);
       }
       if (
         request.method === 'POST' &&
         url.pathname === '/auth/bangumi/mobile/refresh'
       ) {
+        if (await usesNewSession(request)) return await mobileAuth(request, env);
         return await handleRefresh(request, env);
       }
       if (
         request.method === 'POST' &&
         url.pathname === '/auth/bangumi/mobile/logout'
       ) {
+        if (await usesNewSession(request)) return await mobileAuth(request, env);
         return await handleLogout(request, env);
       }
       return json({ error: 'Not found.' }, 404);

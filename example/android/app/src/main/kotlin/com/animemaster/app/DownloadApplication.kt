@@ -24,7 +24,11 @@ class DownloadApplication : Application() {
                 try {
                     when (call.method) {
                         "start" -> {
-                            val intent = Intent(this@DownloadApplication, BackgroundDownloadService::class.java)
+                            val intent = Intent(this@DownloadApplication, BackgroundDownloadService::class.java).apply {
+                                putExtra("seeding", call.argument<Boolean>("seeding") == true)
+                                putExtra("title", requireNotNull(call.argument<String>("title")))
+                                putExtra("text", requireNotNull(call.argument<String>("text")))
+                            }
                             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                                 startForegroundService(intent)
                             } else {

@@ -13,15 +13,17 @@ import '../models/online_episode_source.dart';
 import '../models/playable_media.dart';
 import '../providers/settings_provider.dart';
 import '../services/online_episode_source_service.dart';
+import '../services/bilibili_video_service.dart';
+import '../storage/app_database.dart';
 import '../services/picture_in_picture_service.dart';
 import '../utils/cached_media_playback.dart';
 import '../utils/media_duration_probe.dart';
+import '../utils/open_playable_media.dart';
 import '../utils/player_tap_handler.dart';
 import '../utils/haptic_helper.dart';
 import '../utils/playback_progress_store.dart';
 import '../utils/episode_helpers.dart';
 import '../utils/format_helpers.dart';
-import '../utils/task_title_parser.dart';
 import '../widgets/playback_action_prompt.dart';
 import '../widgets/playback_seek_slider.dart';
 import 'resource_search_page.dart';
@@ -34,6 +36,7 @@ class EpisodeWatchPage extends StatefulWidget {
   final Map<String, dynamic>? detailData;
   final List<Map<String, dynamic>> episodes;
   final Map<String, dynamic> initialEpisode;
+  final PlaybackProgressRecord? initialHistory;
   final int currentProgress;
   final Future<void> Function(int episodeNumber)? onSetProgress;
 
@@ -44,6 +47,7 @@ class EpisodeWatchPage extends StatefulWidget {
     required this.detailData,
     required this.episodes,
     required this.initialEpisode,
+    this.initialHistory,
     required this.currentProgress,
     this.onSetProgress,
   });
@@ -58,6 +62,7 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
   late final Player _player;
   late final VideoController _controller;
   late final TabController _tabController;
+  late final ScrollController _episodeStrip;
   final List<StreamSubscription<dynamic>> _playerSubscriptions =
       <StreamSubscription<dynamic>>[];
   final ValueNotifier<List<OnlineEpisodeSourceResult>> _onlineSourcesNotifier =
@@ -99,6 +104,9 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
   double? _inlineGestureProgress;
   String _dataSourceName = '自动选择';
   int _durationProbeSerial = 0;
+  int _selectionSerial = 0;
+  bool _autoPlayOnline = false;
+  Duration? _requestedPosition;
   Duration? _restoreProtectedPosition;
   DateTime? _restoreProtectionUntil;
   DateTime _lastProgressSavedAt = DateTime.fromMillisecondsSinceEpoch(0);
@@ -118,7 +126,16 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
       configuration: const PlayerConfiguration(bufferSize: 96 * 1024 * 1024),
     );
     _controller = VideoController(_player);
-    _tabController = TabController(length: 2, vsync: this);
+    final initialIndex = widget.episodes.indexWhere(
+      (ep) => episodeId(widget.initialEpisode) > 0
+          ? episodeId(ep) == episodeId(widget.initialEpisode)
+          : episodeNumber(ep) == episodeNumber(widget.initialEpisode),
+    );
+    _episodeStrip = ScrollController(
+      initialScrollOffset: initialIndex > 0 ? initialIndex * 126.0 : 0,
+    );
+    _tabController = TabController(length: 2, vsync: this)
+      ..addListener(_loadVisibleComments);
     _playerSubscriptions
       ..add(
         _player.stream.playing.listen((bool value) {
@@ -201,7 +218,18 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
         unawaited(_syncPictureInPictureSetting());
       }
     });
-    unawaited(_selectEpisode(widget.initialEpisode, preferCache: true));
+    _playerSubscriptions.add(
+      _player.stream.error.listen((error) {
+        if (_activeMedia?.isLocal == true &&
+            !_isFullscreenRouteOpen &&
+            CachedMediaPlayback.isFileOpenError(error)) {
+          _cachedPlaybackFailed();
+        }
+      }),
+    );
+    unawaited(
+      _selectEpisode(widget.initialEpisode, history: widget.initialHistory),
+    );
   }
 
   @override
@@ -227,6 +255,7 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
     } catch (_) {}
 
     _progressSaveTimer?.cancel();
+    _episodeStrip.dispose();
     _inlineGestureTimer?.cancel();
     _cancelAutoNextCountdown();
     for (final StreamSubscription<dynamic> subscription
@@ -278,17 +307,27 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
 
   Future<void> _selectEpisode(
     Map<String, dynamic> episode, {
-    required bool preferCache,
+    PlaybackProgressRecord? history,
   }) async {
+    final serial = ++_selectionSerial;
+    ++_durationProbeSerial;
+    _activeQuery = null;
     await _savePlaybackProgress(force: true);
+    if (!mounted || serial != _selectionSerial) return;
     await _onlineSubscription?.cancel();
+    if (!mounted || serial != _selectionSerial) return;
+    _onlineSubscription = null;
     _cachedSession?.streamServer?.stop();
     _cachedSession = null;
     await _player.pause();
     await _player.stop();
+    if (!mounted || serial != _selectionSerial) return;
 
     final OnlineEpisodeQuery query = _buildOnlineEpisodeQuery(episode);
-    _durationProbeSerial += 1;
+    _requestedPosition = history == null
+        ? null
+        : Duration(milliseconds: history.positionMs);
+    _autoPlayOnline = false;
     if (mounted) {
       setState(() {
         _episode = episode;
@@ -297,7 +336,10 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
         _activeTask = null;
         _onlineSources = <OnlineEpisodeSourceResult>[];
         _onlineSourcesNotifier.value = <OnlineEpisodeSourceResult>[];
-        _commentsFuture = _loadEpisodeComments(episode);
+        _commentsFuture = _tabController.index == 1
+            ? _loadEpisodeComments(episode)
+            : null;
+        _isOpeningMedia = false;
         _isPreparingMedia = true;
         _isSearchingOnline = false;
         _onlineSourceSearchingNotifier.value = false;
@@ -320,22 +362,68 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
     }
     _cancelAutoNextCountdown();
 
-    final List<DownloadTaskInfo> cachedTasks = _findCachedEpisodeTasks(episode);
-    _startOnlineSearch(
-      query,
-      autoPlayFirst: !preferCache || cachedTasks.isEmpty,
+    final task = await CachedMediaPlayback.preferredTask(
+      CachedMediaPlayback.episodeTasks(
+        DownloadManager().allTasks,
+        query,
+        previousPath: history?.localFilePath ?? '',
+      ),
     );
-
-    if (preferCache && cachedTasks.isNotEmpty) {
-      await _playCachedTask(cachedTasks.first);
-      return;
+    if (!mounted || serial != _selectionSerial) return;
+    final previousPart = PlaybackProgressStore.bilibiliPartForKey(
+      history?.mediaKey ?? '',
+    );
+    if (task?.isCompleted != true && previousPart != null) {
+      final sourceSerial = _durationProbeSerial;
+      setState(() => _statusText = '正在打开上次观看的 B 站分集...');
+      final service = BilibiliVideoService();
+      PlayableMedia? resolved;
+      try {
+        resolved = await service.resolveSavedPart(
+          previousPart.bvid,
+          previousPart.cid,
+        );
+      } on Exception {
+        // The saved upload can become unavailable between viewing sessions.
+      }
+      if (!mounted ||
+          serial != _selectionSerial ||
+          sourceSerial != _durationProbeSerial) {
+        return;
+      }
+      if (resolved != null && ModalRoute.of(context)?.isCurrent == true) {
+        final media = resolved.withEpisodeContext(
+          subjectTitle: query.subjectTitle,
+          episodeLabel: query.episodeLabel,
+          bangumiSubjectId: query.bangumiSubjectId,
+          bangumiEpisodeId: query.bangumiEpisodeId,
+        );
+        final position = _requestedPosition;
+        await Navigator.of(context).pushReplacement<void, void>(
+          MaterialPageRoute(
+            builder: (_) => VideoPlayerPage(
+              media: media,
+              initialPosition: position,
+              bilibiliService: service,
+            ),
+          ),
+        );
+        return;
+      }
     }
+    if (task != null) {
+      await _playCachedTask(task);
+    } else {
+      setState(() => _statusText = '正在查找在线播放源...');
+      _startOnlineSearch(query, autoPlayFirst: true);
+    }
+  }
 
-    if (mounted) {
-      setState(() {
-        _isPreparingMedia = cachedTasks.isEmpty;
-        _statusText = cachedTasks.isEmpty ? '正在查找在线播放源...' : _statusText;
-      });
+  void _loadVisibleComments() {
+    if (_tabController.index == 1 &&
+        _episode.isNotEmpty &&
+        _commentsFuture == null) {
+      setState(() => _commentsFuture = _loadEpisodeComments(_episode));
     }
   }
 
@@ -354,14 +442,25 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
     OnlineEpisodeQuery query, {
     required bool autoPlayFirst,
   }) {
-    bool opened = false;
+    if (autoPlayFirst) _autoPlayOnline = true;
+    if (_onlineSubscription != null &&
+        (_isSearchingOnline || _onlineSources.isNotEmpty)) {
+      _openFirstOnlineIfRequested();
+      if (autoPlayFirst && !_isSearchingOnline && _autoPlayOnline) {
+        setState(() {
+          _isPreparingMedia = false;
+          _statusText = '请选择在线候选或重新搜索本集资源';
+        });
+      }
+      return;
+    }
     _isSearchingOnline = true;
     _onlineSourceSearchingNotifier.value = true;
     _onlineSubscription = OnlineEpisodeSourceService()
         .searchStream(query)
         .listen(
           (List<OnlineEpisodeSourceResult> results) {
-            if (!mounted) {
+            if (!mounted || !identical(query, _activeQuery)) {
               return;
             }
             setState(() {
@@ -370,16 +469,10 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
               _onlineSourcesNotifier.value = results;
               _onlineSourceSearchingNotifier.value = true;
             });
-            final playable = results
-                .where((source) => source.canAutoPlay)
-                .toList();
-            if (autoPlayFirst && !opened && playable.isNotEmpty) {
-              opened = true;
-              unawaited(_playOnlineSource(_selectBestOnlineSource(playable)));
-            }
+            _openFirstOnlineIfRequested();
           },
           onDone: () {
-            if (!mounted) {
+            if (!mounted || !identical(query, _activeQuery)) {
               return;
             }
             setState(() {
@@ -395,7 +488,7 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
             });
           },
           onError: (Object error) {
-            if (!mounted) {
+            if (!mounted || !identical(query, _activeQuery)) {
               return;
             }
             setState(() {
@@ -410,7 +503,36 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
         );
   }
 
+  void _openFirstOnlineIfRequested() {
+    if (!_autoPlayOnline) return;
+    final playable = _onlineSources
+        .where((source) => source.canAutoPlay)
+        .toList();
+    if (playable.isEmpty) return;
+    _autoPlayOnline = false;
+    unawaited(_playOnlineSource(_selectBestOnlineSource(playable)));
+  }
+
+  void _cachedPlaybackFailed() {
+    final query = _activeQuery;
+    if (!mounted || query == null) return;
+    ++_durationProbeSerial;
+    _cachedSession?.streamServer?.stop();
+    _cachedSession = null;
+    setState(() {
+      _activeTask = null;
+      _activeMedia = null;
+      _isOpeningMedia = false;
+      _isPreparingMedia = true;
+      _statusText = '缓存无法播放，正在查找在线源...';
+    });
+    _startOnlineSearch(query, autoPlayFirst: true);
+  }
+
   Future<void> _playCachedTask(DownloadTaskInfo task) async {
+    final query = _activeQuery;
+    final serial = ++_durationProbeSerial;
+    _autoPlayOnline = false;
     if (mounted) {
       setState(() {
         _isPreparingMedia = true;
@@ -422,6 +544,10 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
       final CachedPlaybackSession session = await CachedMediaPlayback.prepare(
         task,
       );
+      if (!mounted || query != _activeQuery || serial != _durationProbeSerial) {
+        session.streamServer?.stop();
+        return;
+      }
       _cachedSession?.streamServer?.stop();
       _cachedSession = session;
       _activeTask = task;
@@ -429,19 +555,17 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
         _withCurrentEpisodeContext(session.media),
         sourceName: '本地缓存',
       );
-    } catch (error) {
-      if (!mounted) {
-        return;
+    } catch (_) {
+      if (query == _activeQuery &&
+          (serial == _durationProbeSerial || _activeTask == task)) {
+        _cachedPlaybackFailed();
       }
-      setState(() {
-        _isPreparingMedia = false;
-        _statusText = '本地缓存播放失败：$error';
-      });
     }
   }
 
   Future<void> _playOnlineSource(OnlineEpisodeSourceResult source) async {
     final OnlineEpisodeQuery? query = _activeQuery;
+    _autoPlayOnline = false;
     if (query != null && source.bilibiliBvid != null) {
       final bool wasPlaying = _player.state.playing;
       await _player.pause();
@@ -461,6 +585,7 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
       return;
     }
     await _savePlaybackProgress(force: true);
+    if (!mounted || query != _activeQuery) return;
     _cachedSession?.streamServer?.stop();
     _cachedSession = null;
     _activeTask = null;
@@ -540,11 +665,27 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
     }
     _cancelAutoNextCountdown();
     _syncPictureInPicturePlaybackState();
-    await _player.open(Media(media.url, httpHeaders: media.headers));
+    final requested = _requestedPosition;
+    try {
+      await openPlayableMedia(_player, media, startPosition: requested);
+    } catch (_) {
+      if (!mounted || probeSerial != _durationProbeSerial) return;
+      if (_activeTask != null) {
+        _cachedPlaybackFailed();
+      } else {
+        setState(() {
+          _isPreparingMedia = _isOpeningMedia = false;
+          _statusText = '播放失败，请换源重试';
+        });
+      }
+      return;
+    }
+    if (!mounted || probeSerial != _durationProbeSerial) return;
     unawaited(_probeDurationForMedia(media, serial: probeSerial));
-    final PlaybackProgressSnapshot? resumeProgress =
-        await _loadPlaybackProgressForPrompt(media);
-    if (!mounted) {
+    final PlaybackProgressSnapshot? resumeProgress = requested == null
+        ? await _loadPlaybackProgressForPrompt(media)
+        : null;
+    if (!mounted || probeSerial != _durationProbeSerial) {
       return;
     }
     final Duration currentPosition = _player.state.position;
@@ -552,7 +693,7 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
     setState(() {
       _isOpeningMedia = false;
       _activeMedia = media;
-      _position = currentPosition;
+      _position = requested ?? currentPosition;
       if (currentDuration > Duration.zero) {
         _duration = currentDuration;
       }
@@ -561,6 +702,11 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
       _statusText = '';
     });
     _syncPictureInPicturePlaybackState();
+    if (requested != null) {
+      _protectRestoredPosition(requested);
+      unawaited(_confirmRestoredPosition(requested));
+      _requestedPosition = null;
+    }
     _handleResumeProgress(media, resumeProgress);
   }
 
@@ -585,7 +731,10 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
     bool force = false,
   }) async {
     final PlayableMedia? media = _activeMedia;
-    if (media == null || _isOpeningMedia || _deferRestoredPositionDisplay) {
+    if (media == null ||
+        _isFullscreenRouteOpen ||
+        _isOpeningMedia ||
+        _deferRestoredPositionDisplay) {
       return;
     }
     await PlaybackProgressStore.save(
@@ -762,7 +911,7 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
     if (currentEpisodeNumber > 0 && widget.onSetProgress != null) {
       await widget.onSetProgress!(currentEpisodeNumber);
     }
-    await _selectEpisode(episode, preferCache: true);
+    await _selectEpisode(episode);
     _autoNextInFlight = false;
   }
 
@@ -814,8 +963,9 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
   }
 
   Future<void> _confirmRestoredPosition(Duration target) async {
+    final serial = _durationProbeSerial;
     await Future<void>.delayed(const Duration(milliseconds: 700));
-    if (!mounted) {
+    if (!mounted || serial != _durationProbeSerial) {
       return;
     }
     final Duration current = _player.state.position;
@@ -892,20 +1042,39 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
     final OnlineEpisodeQuery? query = media.onlineQuery;
     final Map<String, dynamic>? matchedEpisode = _findEpisodeForQuery(query);
     final String sourceName = _resolveSourceNameForMedia(media);
+    final changedEpisode =
+        matchedEpisode != null && !_isCurrentEpisode(matchedEpisode);
+    if (changedEpisode) {
+      ++_selectionSerial;
+      ++_durationProbeSerial;
+      unawaited(_onlineSubscription?.cancel());
+      _onlineSubscription = null;
+      _autoPlayOnline = false;
+      _isSearchingOnline = false;
+      _onlineSourceSearchingNotifier.value = false;
+    }
+    if (media.url != _activeMedia?.url) {
+      _cachedSession?.streamServer?.stop();
+      _cachedSession = null;
+    }
     setState(() {
       _activeMedia = media;
-      _activeTask = media.isLocal || media.url.startsWith('http://127.0.0.1:')
-          ? _activeTask
-          : null;
+      _activeTask = media.localFilePath.isEmpty
+          ? null
+          : DownloadManager().allTasks
+                .where((task) => task.targetPath == media.localFilePath)
+                .firstOrNull;
       _activeQuery = query ?? _activeQuery;
-      if (media.onlineSources.isNotEmpty) {
+      if (changedEpisode || media.onlineSources.isNotEmpty) {
         _onlineSources = media.onlineSources;
         _onlineSourcesNotifier.value = media.onlineSources;
       }
       _dataSourceName = sourceName;
-      if (matchedEpisode != null && !_isCurrentEpisode(matchedEpisode)) {
+      if (changedEpisode) {
         _episode = matchedEpisode;
-        _commentsFuture = _loadEpisodeComments(matchedEpisode);
+        _commentsFuture = _tabController.index == 1
+            ? _loadEpisodeComments(matchedEpisode)
+            : null;
       }
     });
   }
@@ -962,6 +1131,8 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
   }
 
   Future<void> _showSourceSheet() async {
+    final query = _activeQuery;
+    if (query != null) _startOnlineSearch(query, autoPlayFirst: false);
     final List<DownloadTaskInfo> cachedTasks = _findCachedEpisodeTasks(
       _episode,
     );
@@ -1396,76 +1567,12 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
     );
   }
 
-  List<DownloadTaskInfo> _findCachedEpisodeTasks(Map<String, dynamic> episode) {
-    final int episodeId = _episodeId(episode);
-    final int episodeNumber = _episodeNumber(episode);
-    final List<DownloadTaskInfo> tasks = DownloadManager().allTasks
-        .where(
-          (DownloadTaskInfo task) =>
-              _matchesSubject(task) &&
-              _matchesEpisode(task, episodeId, episodeNumber),
-        )
-        .toList();
-    tasks.sort(
-      (DownloadTaskInfo a, DownloadTaskInfo b) => _cachedTaskScore(
-        b,
-        episodeId,
-      ).compareTo(_cachedTaskScore(a, episodeId)),
-    );
-    return tasks;
-  }
-
-  bool _matchesSubject(DownloadTaskInfo task) {
-    if (task.bangumiSubjectId == widget.animeId) {
-      return true;
-    }
-    final String originalName = widget.detailData?['name']?.toString() ?? '';
-    final String cnName = widget.detailData?['name_cn']?.toString() ?? '';
-    final Set<String> aliases = _extractAliases(cnName, originalName)
-        .map((String value) => value.trim().toLowerCase())
-        .where((String value) => value.isNotEmpty)
-        .toSet();
-    final String taskText =
-        '${task.subjectTitle} ${task.title} ${task.targetPath}'.toLowerCase();
-    return aliases.any(taskText.contains);
-  }
-
-  bool _matchesEpisode(
-    DownloadTaskInfo task,
-    int episodeId,
-    int episodeNumber,
-  ) {
-    if (episodeId > 0 && task.bangumiEpisodeId == episodeId) {
-      return true;
-    }
-    if (task.bangumiEpisodeId > 0 && episodeId > 0) {
-      return false;
-    }
-    if (episodeNumber <= 0) {
-      return false;
-    }
-    final int? taskEpisode = TaskTitleParser.extractEpisodeNumber(
-      '${task.episodeLabel} ${task.title} ${task.targetPath}',
-    );
-    return taskEpisode == episodeNumber;
-  }
-
-  int _cachedTaskScore(DownloadTaskInfo task, int episodeId) {
-    int score = 0;
-    if (episodeId > 0 && task.bangumiEpisodeId == episodeId) {
-      score += 100;
-    }
-    if (task.bangumiSubjectId == widget.animeId) {
-      score += 60;
-    }
-    if (task.isCompleted) {
-      score += 20;
-    }
-    if (task.targetSize > 0) {
-      score += 10;
-    }
-    return score;
-  }
+  List<DownloadTaskInfo> _findCachedEpisodeTasks(
+    Map<String, dynamic> episode,
+  ) => CachedMediaPlayback.episodeTasks(
+    DownloadManager().allTasks,
+    _buildOnlineEpisodeQuery(episode),
+  );
 
   bool _isCurrentEpisode(Map<String, dynamic> episode) {
     final int currentId = _episodeId(_episode);
@@ -1592,12 +1699,6 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
                           ),
                         ),
                         IconButton(
-                          tooltip: '搜索本集资源',
-                          onPressed: () =>
-                              unawaited(_openCurrentEpisodeResourceSearch()),
-                          icon: const Icon(Icons.travel_explore),
-                        ),
-                        IconButton(
                           tooltip: '把进度更新到本集',
                           onPressed:
                               episodeNumber > 0 && widget.onSetProgress != null
@@ -1612,10 +1713,7 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
                     const SizedBox(height: 10),
                     _SourceCard(
                       sourceName: _dataSourceName,
-                      episodeTitle: title,
                       isSearchingOnline: _isSearchingOnline,
-                      onlineCount: _onlineSources.length,
-                      cachedCount: _findCachedEpisodeTasks(_episode).length,
                       onChange: _showSourceSheet,
                     ),
                     const SizedBox(height: 18),
@@ -1639,6 +1737,7 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
                     SizedBox(
                       height: 86,
                       child: ListView.separated(
+                        controller: _episodeStrip,
                         key: const PageStorageKey<String>(
                           'episodes_horizontal',
                         ),
@@ -1653,9 +1752,7 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
                             title: _episodeTitle(episode),
                             episodeNumber: _episodeNumber(episode),
                             selected: _isCurrentEpisode(episode),
-                            onTap: () => unawaited(
-                              _selectEpisode(episode, preferCache: true),
-                            ),
+                            onTap: () => unawaited(_selectEpisode(episode)),
                           );
                         },
                       ),
@@ -1981,18 +2078,12 @@ class _InlinePlayerBar extends StatelessWidget {
 
 class _SourceCard extends StatelessWidget {
   final String sourceName;
-  final String episodeTitle;
   final bool isSearchingOnline;
-  final int onlineCount;
-  final int cachedCount;
   final VoidCallback onChange;
 
   const _SourceCard({
     required this.sourceName,
-    required this.episodeTitle,
     required this.isSearchingOnline,
-    required this.onlineCount,
-    required this.cachedCount,
     required this.onChange,
   });
 
@@ -2008,64 +2099,36 @@ class _SourceCard extends StatelessWidget {
         onTap: onChange,
         child: Padding(
           padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          child: Row(
             children: <Widget>[
-              Row(
-                children: <Widget>[
-                  CircleAvatar(
-                    radius: 16,
-                    backgroundColor: colors.primary.withValues(alpha: 0.12),
-                    child: Icon(
-                      Icons.hub_rounded,
-                      size: 18,
-                      color: colors.primary,
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: <Widget>[
-                        const Text(
-                          '数据源',
-                          style: TextStyle(color: Colors.grey, fontSize: 12),
-                        ),
-                        Text(
-                          sourceName,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  FilledButton.tonalIcon(
-                    onPressed: onChange,
-                    style: FilledButton.styleFrom(
-                      visualDensity: VisualDensity.compact,
-                      padding: const EdgeInsets.symmetric(horizontal: 10),
-                    ),
-                    icon: const Icon(Icons.swap_horiz_rounded, size: 18),
-                    label: const Text('换源'),
-                  ),
-                ],
+              CircleAvatar(
+                radius: 16,
+                backgroundColor: colors.primary.withValues(alpha: 0.12),
+                child: Icon(Icons.hub_rounded, size: 18, color: colors.primary),
               ),
-              const SizedBox(height: 8),
-              Text(
-                episodeTitle,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(color: Colors.grey, fontSize: 12),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(
+                      isSearchingOnline ? '正在查找在线源' : '播放来源',
+                      style: const TextStyle(color: Colors.grey, fontSize: 12),
+                    ),
+                    Text(
+                      sourceName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-              const SizedBox(height: 4),
-              Text(
-                '本地缓存 $cachedCount 个 · 在线源 $onlineCount 个${isSearchingOnline ? ' · 搜索中' : ''}',
-                style: const TextStyle(color: Colors.grey, fontSize: 12),
-              ),
+              const Text('换源'),
+              const Icon(Icons.chevron_right_rounded),
             ],
           ),
         ),

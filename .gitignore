@@ -39,6 +39,7 @@ example/.flutter-plugins-dependencies
 example/android/key.properties
 example/android/keystore/
 release/*.apk
+tools/bangumi_auth_gateway/data/
 
 # C++ / FFI build artifacts
 *.o

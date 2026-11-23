@@ -28,3 +28,11 @@ new_sqlite_classes = ["DandanplayGateway"]
 # wrangler secret put BANGUMI_CALLBACK_URL
 # wrangler secret put DANDANPLAY_APP_ID
 # wrangler secret put DANDANPLAY_APP_SECRET
+
+[[durable_objects.bindings]]
+name = "BANGUMI_MOBILE_AUTH"
+class_name = "BangumiMobileAuth"
+
+[[migrations]]
+tag = "bangumi-mobile-auth-v1"
+new_sqlite_classes = ["BangumiMobileAuth"]

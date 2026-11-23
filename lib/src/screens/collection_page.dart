@@ -22,6 +22,8 @@ class _CollectionPageState extends State<CollectionPage> {
   String _lastLoadedAcc = '';
   int _loadGeneration = 0;
   String? _loadError;
+  int? _nextOffset;
+  bool _loadingMore = false;
   final Set<int> _updatingIds = <int>{};
 
   final Map<int, String> typeMap = {
@@ -56,44 +58,63 @@ class _CollectionPageState extends State<CollectionPage> {
     }
   }
 
-  Future<void> _loadCollection() async {
-    if (!mounted) return;
+  Future<void> _loadCollection({bool more = false}) async {
+    if (!mounted ||
+        (more && (isLoading || _loadingMore || _nextOffset == null))) {
+      return;
+    }
     final generation = ++_loadGeneration;
     final settings = context.read<SettingsProvider>();
     final username = settings.bgmAcc;
+    final offset = more ? _nextOffset! : 0;
     final type = currentType;
     final subjectType = currentSubjectType;
     setState(() {
-      isLoading = true;
+      if (!more) {
+        collectionList = [];
+        _nextOffset = null;
+      }
+      isLoading = !more;
+      _loadingMore = more;
       _loadError = null;
     });
+    bool current() =>
+        mounted && generation == _loadGeneration && settings.bgmAcc == username;
     try {
       await settings.ensureBangumiAccessToken();
-      if (!mounted ||
-          generation != _loadGeneration ||
-          settings.bgmAcc != username) {
-        return;
-      }
-      final rawResults = await BangumiApi.instance.getUserCollectionList(
+      if (!current()) return;
+      final page = await BangumiApi.instance.getUserCollectionPage(
         username,
+        offset: offset,
         type: type,
         subjectType: subjectType,
         token: settings.bgmToken,
       );
-      if (mounted &&
-          generation == _loadGeneration &&
-          settings.bgmAcc == username) {
-        setState(() {
-          collectionList = rawResults.map((e) => Anime.fromJson(e)).toList();
-        });
+      if (!current()) return;
+      final seen = collectionList.map((a) => a.id).toSet();
+      final additions = page.items
+          .map((e) => Anime.fromJson(e))
+          .where((anime) => seen.add(anime.id))
+          .toList();
+      if (page.nextOffset != null && additions.isEmpty) {
+        throw StateError('重复收藏分页');
       }
+      setState(() {
+        collectionList.addAll(additions);
+        _nextOffset = page.nextOffset;
+      });
     } catch (_) {
-      if (mounted && generation == _loadGeneration) {
-        setState(() => _loadError = '收藏加载失败，请检查网络后重试。');
+      if (current()) {
+        setState(
+          () => _loadError = more ? '下一页加载失败，点击重试。' : '收藏加载失败，请检查网络后重试。',
+        );
       }
     } finally {
-      if (mounted && generation == _loadGeneration) {
-        setState(() => isLoading = false);
+      if (current()) {
+        setState(() {
+          isLoading = false;
+          _loadingMore = false;
+        });
       }
     }
   }
@@ -353,7 +374,7 @@ class _CollectionPageState extends State<CollectionPage> {
                         style: TextStyle(color: Colors.grey),
                       ),
                     )
-                  : _loadError != null
+                  : _loadError != null && collectionList.isEmpty
                   ? Center(
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
@@ -375,8 +396,19 @@ class _CollectionPageState extends State<CollectionPage> {
                     )
                   : ListView.builder(
                       padding: const EdgeInsets.all(16.0),
-                      itemCount: collectionList.length,
+                      itemCount:
+                          collectionList.length + (_nextOffset == null ? 0 : 1),
                       itemBuilder: (context, index) {
+                        if (index == collectionList.length) {
+                          return TextButton(
+                            onPressed: _loadingMore
+                                ? null
+                                : () => _loadCollection(more: true),
+                            child: Text(
+                              _loadingMore ? '正在加载…' : _loadError ?? '加载更多',
+                            ),
+                          );
+                        }
                         final anime = collectionList[index];
                         String totalEpStr = anime.eps > 0
                             ? anime.eps.toString()

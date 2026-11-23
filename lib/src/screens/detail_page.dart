@@ -16,6 +16,10 @@ import 'role_subjects_page.dart';
 import '../utils/episode_helpers.dart';
 import '../utils/image_request.dart';
 import '../widgets/selection_dialog.dart';
+import '../widgets/subject_playback_actions.dart';
+import '../repositories/download_task_repository.dart';
+import '../repositories/playback_progress_repository.dart';
+import '../storage/app_database.dart';
 import '../utils/haptic_helper.dart';
 
 Widget _buildSafeImage({
@@ -116,6 +120,9 @@ class _DetailPageState extends State<DetailPage>
   int currentVol = 0;
 
   bool get _hasEpisodeTab => widget.subjectType == 2;
+  late final _playbackHistory = _hasEpisodeTab
+      ? PlaybackProgressRepository.instance.watchLatestEpisode(widget.animeId)
+      : null;
   int get _progressTabIndex => _hasEpisodeTab ? 2 : 1;
   int get _commentsTabIndex => _hasEpisodeTab ? 3 : 2;
 
@@ -1030,10 +1037,17 @@ class _DetailPageState extends State<DetailPage>
                     child: SafeArea(
                       top: false,
                       minimum: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-                      child: SizedBox(
-                        height: 52,
-                        child: FilledButton.icon(
-                          onPressed: () => Navigator.push(
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(minHeight: 52),
+                        child: SubjectPlaybackActions(
+                          history: _playbackHistory,
+                          episodes: _allEpisodes,
+                          watchOffline: (id, path) => DownloadTaskRepository
+                              .instance
+                              .watchOfflineEpisode(widget.animeId, id, path),
+                          onResume: (episode, record) =>
+                              _openEpisodeWatchPage(episode, history: record),
+                          onSearch: () => Navigator.push(
                             context,
                             MaterialPageRoute(
                               builder: (_) => ResourceSearchPage(
@@ -1041,14 +1055,6 @@ class _DetailPageState extends State<DetailPage>
                                 aliases: _extractAliases(cnName, originalName),
                                 bangumiSubjectId: widget.animeId,
                               ),
-                            ),
-                          ),
-                          icon: const Icon(Icons.travel_explore),
-                          label: const Text(
-                            '搜索资源',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
                             ),
                           ),
                         ),
@@ -1500,7 +1506,10 @@ class _DetailPageState extends State<DetailPage>
     ];
   }
 
-  Future<void> _openEpisodeWatchPage(Map<String, dynamic> episode) async {
+  Future<void> _openEpisodeWatchPage(
+    Map<String, dynamic> episode, {
+    PlaybackProgressRecord? history,
+  }) async {
     await Navigator.push(
       context,
       MaterialPageRoute<void>(
@@ -1508,7 +1517,8 @@ class _DetailPageState extends State<DetailPage>
           animeId: widget.animeId,
           initialName: widget.initialName,
           detailData: detailData,
-          episodes: episodesData,
+          episodes: _allEpisodes.isEmpty ? [episode] : _allEpisodes,
+          initialHistory: history,
           initialEpisode: episode,
           currentProgress: currentEp,
           onSetProgress: _setProgressToEpisode,

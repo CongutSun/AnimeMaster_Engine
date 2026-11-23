@@ -347,7 +347,9 @@ class _SettingsPageState extends State<SettingsPage> {
       final BangumiAuthGatewayService gateway = BangumiAuthGatewayService(
         baseUrl: gatewayUrl,
       );
+      final proof = BangumiLoginProof();
       final start = await gateway.startAuthorization(
+        proof: proof,
         callbackScheme: BangumiOAuthService.callbackScheme,
       );
       final String callback = await FlutterWebAuth2.authenticate(
@@ -360,13 +362,15 @@ class _SettingsPageState extends State<SettingsPage> {
       final String callbackRequestId =
           callbackUri.queryParameters['request_id']?.trim() ?? '';
 
-      if (sessionId.isEmpty ||
+      if (callbackUri.scheme != BangumiOAuthService.callbackScheme ||
+          callbackUri.host != 'callback' ||
+          sessionId.isEmpty ||
           callbackRequestId.isEmpty ||
           callbackRequestId != start.requestId) {
         throw Exception('授权回调缺少会话信息。');
       }
 
-      final session = await gateway.fetchSession(sessionId);
+      final session = await gateway.fetchSession(sessionId, proof: proof);
       await provider.bindBangumiGatewaySession(session, gatewayUrl: gatewayUrl);
       _syncControllers(provider);
 

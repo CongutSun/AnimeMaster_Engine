@@ -11,6 +11,7 @@ import '../api/dio_client.dart';
 import '../models/online_episode_source.dart';
 import '../utils/task_title_parser.dart';
 import 'bilibili_video_service.dart';
+import 'media_reachability_probe.dart';
 import '../repositories/bilibili_episode_mapping_repository.dart';
 
 class OnlineEpisodeSourceService {
@@ -454,49 +455,6 @@ abstract class _OnlineSourceAdapter {
       ),
     );
     return response.data ?? '';
-  }
-
-  Future<bool> _isMediaReachable(
-    Dio dio,
-    String url,
-    Map<String, String> headers,
-  ) async {
-    try {
-      final bool isPlaylist = url.toLowerCase().contains('.m3u8');
-      final Duration timeout = mediaReachTimeout;
-      final Response<dynamic> response = await dio.get<dynamic>(
-        url,
-        options: Options(
-          responseType: isPlaylist ? ResponseType.plain : ResponseType.bytes,
-          followRedirects: true,
-          sendTimeout: timeout,
-          receiveTimeout: timeout,
-          headers: <String, String>{
-            ...headers,
-            if (!isPlaylist) 'Range': 'bytes=0-2047',
-            'Accept': isPlaylist
-                ? 'application/vnd.apple.mpegurl,application/x-mpegURL,*/*'
-                : '*/*',
-          },
-          validateStatus: (int? status) =>
-              status != null && status >= 200 && status < 500,
-        ),
-      );
-      final int statusCode = response.statusCode ?? 0;
-      if (statusCode >= 400) {
-        return false;
-      }
-      if (isPlaylist) {
-        final String text = response.data?.toString() ?? '';
-        return text.contains('#EXTM3U') || text.contains('.ts');
-      }
-      final Object? data = response.data;
-      return statusCode == 206 ||
-          statusCode == 200 ||
-          (data is List<int> && data.isNotEmpty);
-    } catch (_) {
-      return false;
-    }
   }
 
   static const String _browserUserAgent =
@@ -1157,7 +1115,12 @@ class _DirectSiteAdapter extends _OnlineSourceAdapter {
     required Map<String, String> headers,
     required int score,
   }) async {
-    final bool reachable = await _isMediaReachable(dio, url, headers);
+    final bool reachable = await probeMediaReachability(
+      dio,
+      url,
+      headers,
+      timeout: mediaReachTimeout,
+    );
     return _ResolvedMedia(
       url: url,
       headers: headers,
@@ -1767,56 +1730,18 @@ class _Anime1MeAdapter extends _OnlineSourceAdapter {
       'Referer': playPageUrl,
       'Origin': _baseUrl,
     };
-    final bool reachable = await _isMediaReachable(dio, mediaUrl, mediaHeaders);
+    final bool reachable = await probeMediaReachability(
+      dio,
+      mediaUrl,
+      mediaHeaders,
+      timeout: mediaReachTimeout,
+    );
     return _ResolvedMedia(
       url: mediaUrl,
       headers: mediaHeaders,
       score: reachable ? 36 : 20,
       verified: reachable,
     );
-  }
-
-  @override
-  Future<bool> _isMediaReachable(
-    Dio dio,
-    String url,
-    Map<String, String> headers,
-  ) async {
-    try {
-      final bool isPlaylist = url.toLowerCase().contains('.m3u8');
-      final Response<dynamic> response = await dio.get<dynamic>(
-        url,
-        options: Options(
-          responseType: isPlaylist ? ResponseType.plain : ResponseType.bytes,
-          followRedirects: true,
-          sendTimeout: const Duration(seconds: 3),
-          receiveTimeout: const Duration(seconds: 3),
-          headers: <String, String>{
-            ...headers,
-            if (!isPlaylist) 'Range': 'bytes=0-2047',
-            'Accept': isPlaylist
-                ? 'application/vnd.apple.mpegurl,application/x-mpegURL,*/*'
-                : '*/*',
-          },
-          validateStatus: (int? status) =>
-              status != null && status >= 200 && status < 500,
-        ),
-      );
-      final int statusCode = response.statusCode ?? 0;
-      if (statusCode >= 400) {
-        return false;
-      }
-      if (isPlaylist) {
-        final String text = response.data?.toString() ?? '';
-        return text.contains('#EXTM3U') || text.contains('.ts');
-      }
-      final Object? data = response.data;
-      return statusCode == 206 ||
-          statusCode == 200 ||
-          (data is List<int> && data.isNotEmpty);
-    } catch (_) {
-      return false;
-    }
   }
 
   String? _extractApiRequest(String html) {

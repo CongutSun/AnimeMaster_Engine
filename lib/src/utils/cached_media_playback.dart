@@ -1,8 +1,8 @@
-import 'dart:io';
-
 import '../managers/download_manager.dart';
 import '../models/download_task_info.dart';
+import '../models/online_episode_source.dart';
 import '../models/playable_media.dart';
+import 'task_title_parser.dart';
 import 'torrent_stream_server.dart';
 
 class CachedPlaybackSession {
@@ -13,12 +13,75 @@ class CachedPlaybackSession {
 }
 
 class CachedMediaPlayback {
+  static final _fileOpenError = RegExp(
+    r'failed to open|cannot open|could not open|unrecognized file format|no video or audio streams',
+    caseSensitive: false,
+  );
+
+  static bool isFileOpenError(String message) =>
+      _fileOpenError.hasMatch(message);
+
+  static List<DownloadTaskInfo> episodeTasks(
+    Iterable<DownloadTaskInfo> tasks,
+    OnlineEpisodeQuery query, {
+    String previousPath = '',
+  }) {
+    final names = {
+      query.subjectTitle,
+      ...query.aliases,
+    }.map((name) => name.trim().toLowerCase()).where((name) => name.isNotEmpty);
+    final matches = tasks.where((task) {
+      if (task.bangumiSubjectId > 0 &&
+          task.bangumiSubjectId != query.bangumiSubjectId) {
+        return false;
+      }
+      if (task.bangumiEpisodeId > 0 && query.bangumiEpisodeId > 0) {
+        return task.bangumiEpisodeId == query.bangumiEpisodeId;
+      }
+      if (previousPath.isNotEmpty && task.targetPath == previousPath) {
+        return true;
+      }
+      if (query.episodeNumber <= 0) return false;
+      if (task.bangumiSubjectId == 0) {
+        final text = '${task.subjectTitle} ${task.title} ${task.targetPath}'
+            .toLowerCase();
+        if (!names.any(text.contains)) return false;
+      }
+      return TaskTitleParser.extractEpisodeNumber(
+            '${task.episodeLabel} ${task.title} ${task.targetPath}',
+          ) ==
+          query.episodeNumber;
+    }).toList();
+    int score(DownloadTaskInfo task) =>
+        (previousPath.isNotEmpty && task.targetPath == previousPath ? 200 : 0) +
+        (query.bangumiEpisodeId > 0 &&
+                task.bangumiEpisodeId == query.bangumiEpisodeId
+            ? 100
+            : 0) +
+        (task.bangumiSubjectId == query.bangumiSubjectId ? 60 : 0) +
+        (task.isCompleted ? 20 : 0) +
+        (task.targetSize > 0 ? 10 : 0);
+    return matches..sort((a, b) => score(b).compareTo(score(a)));
+  }
+
+  static Future<DownloadTaskInfo?> preferredTask(
+    Iterable<DownloadTaskInfo> candidates,
+  ) async {
+    DownloadTaskInfo? partial;
+    for (final task in candidates) {
+      if (await task.hasCompleteFile()) return task;
+      if (!task.isCompleted) partial ??= task;
+    }
+    return partial;
+  }
+
   static Future<CachedPlaybackSession> prepare(DownloadTaskInfo task) async {
     await DownloadManager().prepareForPlayback(task.hash);
 
-    final File localFile = File(task.targetPath);
-    final bool canUseLocalFile = task.isCompleted && localFile.existsSync();
-    if (canUseLocalFile) {
+    if (task.isCompleted) {
+      if (!await task.hasCompleteFile()) {
+        throw StateError('缓存文件已丢失或不完整，请重新下载');
+      }
       return CachedPlaybackSession(
         media: PlayableMedia(
           title: task.displayTitle,

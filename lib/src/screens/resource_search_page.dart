@@ -67,43 +67,64 @@ class _ResourceSearchPageState extends State<ResourceSearchPage>
     final String heading = query == null || query.episodeLabel.isEmpty
         ? widget.animeName
         : '${widget.animeName} · ${query.episodeLabel}';
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('搜索资源'),
-        actions: <Widget>[
-          IconButton(
-            tooltip: '下载中心',
-            icon: const Icon(Icons.download_for_offline_rounded),
-            onPressed: () => Navigator.of(context).push<void>(
-              MaterialPageRoute<void>(
-                builder: (_) => const DownloadCenterPage(),
-              ),
-            ),
-          ),
-        ],
-        bottom: TabBar(
-          controller: _tabs,
-          onTap: _selectTab,
-          tabs: const <Widget>[
-            Tab(text: 'B站视频', icon: Icon(Icons.video_library_outlined)),
-            Tab(text: '网站资源', icon: Icon(Icons.travel_explore)),
-          ],
+    final double keyboard = MediaQuery.viewInsetsOf(context).bottom;
+    final double usableHeight =
+        MediaQuery.sizeOf(context).height -
+        keyboard -
+        MediaQuery.viewPaddingOf(context).top;
+    final bool compact =
+        keyboard > 0 && MediaQuery.sizeOf(context).height - keyboard < 260;
+    final bool needsInputSpace =
+        _index == 0 &&
+        keyboard > 0 &&
+        usableHeight < kToolbarHeight + 2 * kMinInteractiveDimension;
+    final tabs = TabBar(
+      controller: _tabs,
+      onTap: _selectTab,
+      tabs: <Widget>[
+        Tab(
+          text: 'B站视频',
+          icon: compact ? null : const Icon(Icons.video_library_outlined),
         ),
-      ),
+        Tab(
+          text: '网站资源',
+          icon: compact ? null : const Icon(Icons.travel_explore),
+        ),
+      ],
+    );
+    return Scaffold(
+      appBar: needsInputSpace
+          ? null
+          : AppBar(
+              title: compact ? tabs : const Text('搜索资源'),
+              actions: <Widget>[
+                IconButton(
+                  tooltip: '下载中心',
+                  icon: const Icon(Icons.download_for_offline_rounded),
+                  onPressed: () => Navigator.of(context).push<void>(
+                    MaterialPageRoute<void>(
+                      builder: (_) => const DownloadCenterPage(),
+                    ),
+                  ),
+                ),
+              ],
+              bottom: compact ? null : tabs,
+            ),
       body: SafeArea(
-        top: false,
+        top: needsInputSpace,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-              child: Text(
-                heading,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.titleSmall,
+            if (!compact)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                child: Text(
+                  heading,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.titleSmall,
+                ),
               ),
-            ),
             Expanded(
               child: IndexedStack(
                 index: _index,

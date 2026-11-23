@@ -9,7 +9,7 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
-  testWidgets('about shows the build suffix and current release notes', (
+  testWidgets('about shows the public version and current release notes', (
     tester,
   ) async {
     SharedPreferences.setMockInitialValues(<String, Object>{});
@@ -31,9 +31,10 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    expect(find.text(AppRelease.version), findsOneWidget);
     expect(
       find.text('${AppRelease.version}+${AppRelease.build}'),
-      findsOneWidget,
+      findsNothing,
     );
     expect(settings.coreEngineVersion, contains('v${AppRelease.version}'));
     await tester.scrollUntilVisible(find.text('v${AppRelease.version}'), 250);

@@ -204,15 +204,16 @@ class _BilibiliVideoPageState extends State<BilibiliVideoPage> {
 
   Widget _results(bool busy) {
     if (_hits.isEmpty) {
-      return Center(
-        child: _loading
-            ? const CircularProgressIndicator()
-            : const Text('输入视频链接直接播放，或用关键词查找视频。'),
+      return SliverFillRemaining(
+        hasScrollBody: false,
+        child: Center(
+          child: _loading
+              ? const CircularProgressIndicator()
+              : const Text('输入视频链接直接播放，或用关键词查找视频。'),
+        ),
       );
     }
-    return ListView.builder(
-      key: const ValueKey<String>('bilibili-search-results'),
-      controller: _resultsScroll,
+    return SliverList.builder(
       itemCount: _hits.length + 1,
       itemBuilder: (context, index) {
         if (index == _hits.length) {
@@ -257,71 +258,87 @@ class _BilibiliVideoPageState extends State<BilibiliVideoPage> {
           constraints: const BoxConstraints(maxWidth: 800),
           child: Padding(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: <Widget>[
-                if (widget.embedded)
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: BilibiliAccountButton(auth: _auth, enabled: !busy),
-                  ),
-                if (!widget.embedded && widget.episodeQuery != null)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: Text(
-                      '${widget.episodeQuery!.subjectTitle} · ${widget.episodeQuery!.episodeLabel}',
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                Row(
-                  children: <Widget>[
-                    Expanded(
-                      child: TextField(
-                        controller: _input,
-                        enabled: !busy,
-                        autocorrect: false,
-                        textInputAction: TextInputAction.search,
-                        decoration: const InputDecoration(
-                          labelText: '视频链接、BV 号或关键词',
-                          hintText: '输入 BV 号或搜索番剧、视频',
-                          prefixIcon: Icon(Icons.search),
+            child: CustomScrollView(
+              key: const ValueKey<String>('bilibili-search-results'),
+              controller: _resultsScroll,
+              slivers: [
+                SliverToBoxAdapter(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: <Widget>[
+                      if (widget.embedded)
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: BilibiliAccountButton(
+                            auth: _auth,
+                            enabled: !busy,
+                          ),
                         ),
-                        onSubmitted: (_) => _openInput(),
+                      if (!widget.embedded && widget.episodeQuery != null)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: Text(
+                            '${widget.episodeQuery!.subjectTitle} · ${widget.episodeQuery!.episodeLabel}',
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      Row(
+                        children: <Widget>[
+                          Expanded(
+                            child: TextField(
+                              controller: _input,
+                              enabled: !busy,
+                              autocorrect: false,
+                              textInputAction: TextInputAction.search,
+                              decoration: const InputDecoration(
+                                labelText: '视频链接、BV 号或关键词',
+                                hintText: '输入 BV 号或搜索番剧、视频',
+                                prefixIcon: Icon(Icons.search),
+                              ),
+                              onSubmitted: (_) => _openInput(),
+                            ),
+                          ),
+                          if (hasAliases) ...<Widget>[
+                            const SizedBox(width: 8),
+                            OutlinedButton(
+                              onPressed: busy ? null : _chooseAlias,
+                              child: const Text('别名'),
+                            ),
+                          ],
+                        ],
                       ),
-                    ),
-                    if (hasAliases) ...<Widget>[
-                      const SizedBox(width: 8),
-                      OutlinedButton(
-                        onPressed: busy ? null : _chooseAlias,
-                        child: const Text('别名'),
+                      const SizedBox(height: 12),
+                      FilledButton.icon(
+                        onPressed: busy ? null : _openInput,
+                        icon: _loading
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : const Icon(Icons.search),
+                        label: Text(_loading ? '正在搜索…' : '打开或搜索'),
                       ),
+                      const SizedBox(height: 8),
+                      Text(
+                        '画质以账号当前可用的播放选项为准。',
+                        style: TextStyle(color: colors.onSurfaceVariant),
+                      ),
+                      if (_error.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 8),
+                          child: Text(
+                            _error,
+                            style: TextStyle(color: colors.error),
+                          ),
+                        ),
                     ],
-                  ],
-                ),
-                const SizedBox(height: 12),
-                FilledButton.icon(
-                  onPressed: busy ? null : _openInput,
-                  icon: _loading
-                      ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.search),
-                  label: Text(_loading ? '正在搜索…' : '打开或搜索'),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  '画质以账号当前可用的播放选项为准。',
-                  style: TextStyle(color: colors.onSurfaceVariant),
-                ),
-                if (_error.isNotEmpty)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 8),
-                    child: Text(_error, style: TextStyle(color: colors.error)),
                   ),
-                Expanded(child: _results(busy)),
+                ),
+                _results(busy),
               ],
             ),
           ),

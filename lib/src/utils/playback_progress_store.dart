@@ -31,7 +31,7 @@ class PlaybackProgressStore {
     final String key = keyFor(media);
     final PlaybackProgressRecord? record = await _repository.loadByKey(key);
     if (record != null) {
-      return _snapshotFromRecord(record);
+      return snapshotFromRecord(record);
     }
 
     final PlaybackProgressSnapshot? legacySnapshot = await _loadLegacySnapshot(
@@ -49,7 +49,7 @@ class PlaybackProgressStore {
     return legacySnapshot;
   }
 
-  static PlaybackProgressSnapshot? _snapshotFromRecord(
+  static PlaybackProgressSnapshot? snapshotFromRecord(
     PlaybackProgressRecord record,
   ) {
     return _buildSnapshot(
@@ -132,5 +132,24 @@ class PlaybackProgressStore {
               ].where((String value) => value.trim().isNotEmpty).join('|'));
     final String encoded = base64Url.encode(utf8.encode(identity));
     return 'playback_progress.$encoded';
+  }
+
+  static ({String bvid, int cid})? bilibiliPartForKey(String key) {
+    const prefix = 'playback_progress.';
+    if (!key.startsWith(prefix)) return null;
+    try {
+      final identity = utf8.decode(
+        base64Url.decode(key.substring(prefix.length)),
+      );
+      final match = RegExp(
+        r'^bilibili:(BV[0-9A-Za-z]{10}):([1-9][0-9]*)$',
+      ).firstMatch(identity);
+      final cid = int.tryParse(match?.group(2) ?? '');
+      return match == null || cid == null
+          ? null
+          : (bvid: match.group(1)!, cid: cid);
+    } on FormatException {
+      return null;
+    }
   }
 }

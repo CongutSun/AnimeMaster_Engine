@@ -1,27 +1,28 @@
 {
-  "version": "2.4.8",
-  "build": 4053,
-  "apkUrl": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.8/app-release.apk",
+  "version": "2.4.9",
+  "build": 4054,
+  "apkUrl": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.9/app-release.apk",
   "notes": [
-    "新增 B站视频搜索、BV 号与链接播放、扫码登录和账号可用画质选择。",
-    "番剧详情页统一“搜索资源”入口，支持 B站视频与网站资源切换及别名搜索。",
-    "返回搜索列表保留关键词、分页结果和浏览位置，切换资源标签保留结果与筛选条件。",
-    "支持选择分 P、剧集匹配建议与本机关联，播放进度按视频和分 P 分别保存。",
-    "修复部分 Android 设备播放 B站视频时绿屏、画面更新缓慢的问题，完善音视频同步加载。",
-    "切换画质保留播放位置与暂停状态，登录过期和播放失败提供明确提示及重试入口。"
+    "番剧详情页新增一键续播，显示上次观看的集数、进度和可用缓存；B站视频可回到上次观看的分 P。",
+    "分集页与全屏播放优先使用完整缓存，换源或缓存起播失败时再查找在线片源；分集评论在打开时加载。",
+    "支持跨分页连续选集和播放下一集，合并重复的资源搜索入口；缓存文件缺失或大小异常时给出提示。",
+    "修复 Bangumi 收藏超过 100 条后显示不全、RSS 漏匹配在看作品的问题。",
+    "加固 Bangumi 登录会话的一次性兑换，限制片源探测实际读取的数据量。",
+    "修复小屏大字号下键盘弹起时 B站搜索页溢出的问题。",
+    "下载中心支持选择空闲时做种或完成后停止做种，系统通知区分下载和上传状态。"
   ],
-  "publishedAt": "2026-10-17T09:59:43+08:00",
+  "publishedAt": "2026-11-23T21:40:35+08:00",
   "forceUpdate": false,
   "apkUrls": {
-    "android-arm64": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.8/app-arm64-v8a-release.apk",
-    "android-arm": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.8/app-armeabi-v7a-release.apk",
-    "android-x64": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.8/app-x86_64-release.apk",
-    "universal": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.8/app-release.apk"
+    "android-arm64": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.9/app-arm64-v8a-release.apk",
+    "android-arm": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.9/app-armeabi-v7a-release.apk",
+    "android-x64": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.9/app-x86_64-release.apk",
+    "universal": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.4.9/app-release.apk"
   },
   "sha256": {
-    "android-arm64": "aad28f212652706544287c30ca4f1924dd3d5b9ef104026b0d1b5be900a89cbd",
-    "android-arm": "bc35741c712f6994c5514d96c5ff84f72af78981bdcca27f85ae1351dd4218a0",
-    "android-x64": "902905aae9917e08911c7a1dc3ce3bfc9438325c08fd85356667922092518f97",
-    "universal": "3dade0efd720514b781801cf63168fd7ad45480e2977460297b49b06eab05705"
+    "android-arm64": "7f2cbf4d36acbb2d75d2295f22a360d7ea1909b5a915b21750283bbc034f6d3b",
+    "android-arm": "514f0ff3c87c82e3c95c05160629f281895accc0cb95ec331a878554321fc3b0",
+    "android-x64": "54e8f7777838ab5a7277ab60ede5e40046b4f97e8748c38c9eb6903a94c87009",
+    "universal": "6773b9000de42426534cf6900a60b780ad04a786e8588d3a3d758bb53250dd53"
   }
 }

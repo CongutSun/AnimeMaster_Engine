@@ -13,6 +13,7 @@ import 'package:animemaster/src/services/bilibili_auth_service.dart';
 import 'package:animemaster/src/services/bilibili_video_service.dart';
 import 'package:animemaster/src/services/rss_feed_service.dart';
 import 'package:animemaster/src/storage/app_database.dart';
+import 'package:animemaster/src/theme/app_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
@@ -135,6 +136,84 @@ void main() {
   }
 
   for (final dark in <bool>[false, true]) {
+    for (final landscape in [false, true]) {
+      testWidgets('B站搜索在两倍字号和键盘下可提交并打开结果 dark=$dark landscape=$landscape', (
+        tester,
+      ) async {
+        tester.view.devicePixelRatio = 1;
+        tester.view.physicalSize = landscape
+            ? const Size(640, 320)
+            : const Size(320, 640);
+        if (landscape) {
+          const cutout = FakeViewPadding(top: 42, left: 28);
+          tester.view.viewPadding = cutout;
+          tester.view.padding = cutout;
+        }
+        addTearDown(tester.view.reset);
+        final videos = _Videos();
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: dark ? AppTheme.dark() : AppTheme.light(),
+            builder: (context, child) => MediaQuery(
+              data: MediaQuery.of(
+                context,
+              ).copyWith(textScaler: const TextScaler.linear(2)),
+              child: child!,
+            ),
+            home: ResourceSearchPage(
+              animeName: '测试番剧',
+              aliases: const ['Test Anime'],
+              bangumiSubjectId: 42,
+              bilibiliService: videos,
+              bilibiliAuth: _Auth(),
+              bilibiliMappings: _Mappings(),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        final input = _field('视频链接、BV 号或关键词');
+        await tester.ensureVisible(input);
+        await tester.enterText(input, '新的关键词');
+        tester.view.viewInsets = FakeViewPadding(bottom: landscape ? 199 : 280);
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+        if (landscape) {
+          final editable = tester
+              .state<EditableTextState>(find.byType(EditableText))
+              .renderEditable;
+          final caret = editable
+              .getLocalRectForCaret(const TextPosition(offset: 5))
+              .shift(editable.localToGlobal(Offset.zero));
+          final viewport = tester.getRect(find.byType(CustomScrollView));
+          expect(caret.top, greaterThanOrEqualTo(viewport.top));
+          expect(caret.bottom, lessThanOrEqualTo(viewport.bottom));
+          await tester.testTextInput.receiveAction(TextInputAction.search);
+        } else {
+          final submit = find.text('打开或搜索');
+          await tester.ensureVisible(submit);
+          await tester.pumpAndSettle();
+          await tester.tap(submit.hitTestable());
+        }
+        await tester.pumpAndSettle();
+        expect(videos.keywords, ['测试番剧', '新的关键词']);
+        final result = find.text('测试番剧 · 视频 1');
+        final scrollable = find
+            .descendant(
+              of: find.byType(CustomScrollView),
+              matching: find.byType(Scrollable),
+            )
+            .first;
+        await tester.scrollUntilVisible(result, 80, scrollable: scrollable);
+        await tester.pumpAndSettle();
+        expect(result.hitTestable(), findsOneWidget);
+        await tester.tap(result.hitTestable());
+        tester.view.resetViewInsets();
+        await tester.pumpAndSettle();
+        expect(find.byType(BilibiliVideoDetailsPage), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      });
+    }
+
     testWidgets(
       'resource tabs preserve independent results, filters and scroll in ${dark ? 'dark' : 'light'}',
       (tester) async {
@@ -198,7 +277,10 @@ void main() {
         );
         await tester.drag(biliList, const Offset(0, -380));
         await tester.pumpAndSettle();
-        final biliOffset = tester.widget<ListView>(biliList).controller!.offset;
+        final biliOffset = tester
+            .widget<CustomScrollView>(biliList)
+            .controller!
+            .offset;
 
         await tester.tap(find.text('网站资源'));
         await tester.pumpAndSettle();
@@ -239,7 +321,7 @@ void main() {
         await tester.tap(find.text('B站视频'));
         await tester.pumpAndSettle();
         expect(
-          tester.widget<ListView>(biliList).controller!.offset,
+          tester.widget<CustomScrollView>(biliList).controller!.offset,
           closeTo(biliOffset, 0.1),
         );
         expect(videos.keywords.length, 1);

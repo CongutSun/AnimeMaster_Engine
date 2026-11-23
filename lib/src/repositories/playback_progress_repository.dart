@@ -4,12 +4,28 @@ import '../models/playable_media.dart';
 import '../storage/app_database.dart';
 
 class PlaybackProgressRepository {
-  PlaybackProgressRepository._(this._database);
+  PlaybackProgressRepository(this._database);
 
-  static final PlaybackProgressRepository instance =
-      PlaybackProgressRepository._(AppDatabase.instance);
+  static final PlaybackProgressRepository instance = PlaybackProgressRepository(
+    AppDatabase.instance,
+  );
 
   final AppDatabase _database;
+
+  Stream<PlaybackProgressRecord?> watchLatestEpisode(int subjectId) {
+    final query = _database.select(_database.playbackProgressRecords)
+      ..where(
+        (t) =>
+            t.bangumiSubjectId.equals(subjectId) &
+            t.bangumiEpisodeId.isBiggerThanValue(0),
+      )
+      ..orderBy([
+        (t) => OrderingTerm.desc(t.updatedAtMs),
+        (t) => OrderingTerm.desc(t.mediaKey),
+      ])
+      ..limit(1);
+    return query.watchSingleOrNull();
+  }
 
   Future<PlaybackProgressRecord?> loadByKey(String mediaKey) {
     return (_database.select(_database.playbackProgressRecords)..where(

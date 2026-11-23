@@ -30,7 +30,7 @@ void main() {
         calls.add(call.method);
         return null;
       });
-      await BackgroundDownloadService.setActive(false);
+      await BackgroundDownloadService.setActivity(TransferActivity.idle);
       expect(calls, ['stop']);
     },
   );
@@ -45,14 +45,43 @@ void main() {
         if (call.method == 'start') await started.future;
         return null;
       });
-      final Future<void> start = BackgroundDownloadService.setActive(true);
-      final Future<void> duplicate = BackgroundDownloadService.setActive(true);
-      final Future<void> stop = BackgroundDownloadService.setActive(false);
+      final Future<void> start = BackgroundDownloadService.setActivity(
+        TransferActivity.downloading,
+      );
+      final Future<void> duplicate = BackgroundDownloadService.setActivity(
+        TransferActivity.downloading,
+      );
+      final Future<void> stop = BackgroundDownloadService.setActivity(
+        TransferActivity.idle,
+      );
       await Future<void>.delayed(Duration.zero);
       expect(calls, ['start']);
       started.complete();
       await Future.wait([start, duplicate, stop]);
       expect(calls, ['start', 'stop']);
+    },
+  );
+
+  test(
+    'download to sharing updates the same service, duplicate sharing is silent, idle stops it',
+    () async {
+      final calls = <MethodCall>[];
+      messenger.setMockMethodCallHandler(channel, (call) async {
+        calls.add(call);
+        return null;
+      });
+      await Future.wait([
+        BackgroundDownloadService.setActivity(TransferActivity.downloading),
+        BackgroundDownloadService.setActivity(TransferActivity.seeding),
+        BackgroundDownloadService.setActivity(TransferActivity.seeding),
+        BackgroundDownloadService.setActivity(TransferActivity.idle),
+      ]);
+      expect(calls.map((call) => call.method), ['start', 'start', 'stop']);
+      expect(calls.first.arguments, containsPair('seeding', false));
+      expect(calls.first.arguments, containsPair('title', 'AnimeMaster 正在下载'));
+      expect(calls[1].arguments, containsPair('seeding', true));
+      expect(calls[1].arguments, containsPair('title', 'AnimeMaster 正在分享'));
+      expect(calls[1].arguments['text'], contains('上传'));
     },
   );
 
@@ -62,8 +91,8 @@ void main() {
       if (++calls == 1) throw PlatformException(code: 'not_allowed');
       return null;
     });
-    await BackgroundDownloadService.setActive(true);
-    await BackgroundDownloadService.setActive(true);
+    await BackgroundDownloadService.setActivity(TransferActivity.downloading);
+    await BackgroundDownloadService.setActivity(TransferActivity.downloading);
     expect(calls, 2);
   });
 }

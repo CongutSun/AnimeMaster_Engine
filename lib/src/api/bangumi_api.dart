@@ -926,36 +926,75 @@ class BangumiApi {
     return null;
   }
 
+  Future<({List<dynamic> items, int? nextOffset})> getUserCollectionPage(
+    String username, {
+    int offset = 0,
+    int type = 3,
+    int subjectType = 2,
+    String token = '',
+  }) async {
+    if (username.isEmpty) return (items: <dynamic>[], nextOffset: null);
+    const limit = 100;
+    final response = await _dio.get(
+      '${_ApiConfig.apiBase}/v0/users/$username/collections',
+      queryParameters: {
+        'subject_type': subjectType,
+        'type': type,
+        'limit': limit,
+        'offset': offset,
+      },
+      options: Options(
+        headers: {
+          if (token.isNotEmpty) 'Authorization': 'Bearer $token',
+          'Cache-Control': 'no-cache',
+        },
+      ),
+    );
+    final body = response.data;
+    if (response.statusCode != 200 ||
+        body is! Map ||
+        body['data'] is! List ||
+        (body['offset'] != null && body['offset'] != offset)) {
+      throw StateError('无法读取收藏分页，请稍后重试。');
+    }
+    final items = body['data'] as List<dynamic>;
+    final next = offset + items.length;
+    final total = body['total'] as int?;
+    if (items.isEmpty && total != null && offset < total) {
+      throw StateError('收藏分页不完整，请重试。');
+    }
+    final hasMore = total == null ? items.length >= limit : next < total;
+    return (items: items, nextOffset: hasMore ? next : null);
+  }
+
   Future<List<dynamic>> getUserCollectionList(
     String username, {
     int type = 3,
     int subjectType = 2,
     String token = '',
   }) async {
-    if (username.isEmpty) return [];
-    try {
-      final response = await _dio.get(
-        '${_ApiConfig.apiBase}/v0/users/$username/collections',
-        queryParameters: {
-          'subject_type': subjectType,
-          'type': type,
-          'limit': 100,
-        },
-        options: Options(
-          headers: {
-            if (token.isNotEmpty) 'Authorization': 'Bearer $token',
-            'Cache-Control': 'no-cache',
-          },
-        ),
+    final items = <dynamic>[];
+    final seen = <int>{};
+    int? offset = 0;
+    while (offset != null) {
+      final page = await getUserCollectionPage(
+        username,
+        offset: offset,
+        type: type,
+        subjectType: subjectType,
+        token: token,
       );
-      if (response.statusCode == 200 && response.data is Map) {
-        return response.data['data'] is List ? response.data['data'] : [];
+      final before = items.length;
+      for (final item in page.items) {
+        final id = item['subject_id'] ?? item['subject']?['id'];
+        if (id is! int || seen.add(id)) items.add(item);
       }
-    } catch (e) {
-      debugPrint('[BangumiApi.getUserCollectionList] Exception: $e');
-      rethrow;
+      if (page.nextOffset != null && items.length == before) {
+        throw StateError('收藏分页未向前推进，请重试。');
+      }
+      offset = page.nextOffset;
     }
-    throw StateError('无法读取收藏列表，请稍后重试。');
+    return items;
   }
 
   Future<bool> updateCollection(

@@ -22,7 +22,7 @@ class BackgroundDownloadService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        val notification = buildNotification()
+        val notification = buildNotification(intent)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             startForeground(
                 NOTIFICATION_ID,
@@ -32,8 +32,10 @@ class BackgroundDownloadService : Service() {
         } else {
             startForeground(NOTIFICATION_ID, notification)
         }
-        acquireWakeLock()
-        acquireWifiLock()
+        if (intent != null) {
+            acquireWakeLock()
+            acquireWifiLock()
+        }
         // A sticky restart must restore the actual Dart download owner as well.
         (application as DownloadApplication).getOrCreateEngine()
         return START_STICKY
@@ -94,7 +96,7 @@ class BackgroundDownloadService : Service() {
         manager.createNotificationChannel(channel)
     }
 
-    private fun buildNotification(): Notification {
+    private fun buildNotification(intent: Intent?): Notification {
         val builder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             Notification.Builder(this, CHANNEL_ID)
         } else {
@@ -103,9 +105,11 @@ class BackgroundDownloadService : Service() {
         }
 
         return builder
-            .setSmallIcon(android.R.drawable.stat_sys_download)
-            .setContentTitle("AnimeMaster 正在下载")
-            .setContentText("下载和做种任务会在后台继续运行")
+            .setSmallIcon(if (intent?.getBooleanExtra("seeding", false) == true)
+                android.R.drawable.stat_sys_upload else android.R.drawable.stat_sys_download)
+            .setContentTitle(intent?.getStringExtra("title") ?: "AnimeMaster 正在恢复任务")
+            .setContentText(intent?.getStringExtra("text") ?: "正在检查待继续的传输任务。")
+            .setOnlyAlertOnce(true)
             .setContentIntent(PendingIntent.getActivity(
                 this, 0, Intent(this, MainActivity::class.java),
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
