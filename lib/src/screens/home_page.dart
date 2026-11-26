@@ -14,7 +14,8 @@ import '../widgets/section_header.dart';
 import '../widgets/skeleton.dart';
 import '../widgets/top_tool_bar.dart';
 import 'dandanplay_discovery_page.dart';
-import 'bilibili_video_page.dart';
+import 'collection_page.dart';
+import 'download_center_page.dart';
 import '../services/rss_inbox_store.dart';
 import '../widgets/rss_inbox_entry_point.dart';
 
@@ -27,6 +28,8 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   late final HomeViewModel _viewModel;
+  int _tab = 0;
+  final _visited = <int>{0};
 
   @override
   void initState() {
@@ -189,7 +192,14 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                 Card(
                   child: ListTile(
                     leading: const Icon(Icons.trending_up_rounded),
-                    title: const Text('发现动漫'),
+                    title: const Text(
+                      '发现动漫',
+                      style: TextStyle(
+                        fontFamily: 'DiscoveryTitle',
+                        package: 'animemaster',
+                        fontSize: 24,
+                      ),
+                    ),
                     subtitle: const Text('年度高分 · 近期热播 · 当季新番'),
                     trailing: const Icon(Icons.chevron_right),
                     onTap: () => Navigator.push(
@@ -203,6 +213,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                     ),
                   ),
                 ),
+                const SizedBox(height: 12),
                 const RssInboxEntryPoint(),
                 const SizedBox(height: 40),
               ],
@@ -219,65 +230,79 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     final String bgPath = settings.customBgPath;
     final bool hasBg =
         !kIsWeb && bgPath.isNotEmpty && File(bgPath).existsSync();
-    final bool isDark = Theme.of(context).brightness == Brightness.dark;
     final ColorScheme colors = Theme.of(context).colorScheme;
 
     return Scaffold(
       resizeToAvoidBottomInset: false,
-      body: Stack(
-        fit: StackFit.expand,
-        children: <Widget>[
-          if (hasBg)
-            Positioned.fill(
-              child: Image.file(
-                File(bgPath),
-                fit: BoxFit.cover,
-                alignment: Alignment.bottomCenter,
-              ),
-            ),
-          if (hasBg)
-            Positioned.fill(
-              child: ClipRect(
-                child: BackdropFilter(
-                  filter: ImageFilter.blur(sigmaX: 6, sigmaY: 6),
-                  child: ColoredBox(
-                    color: isDark
-                        ? Colors.black.withValues(alpha: 0.46)
-                        : colors.surface.withValues(alpha: 0.24),
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: _tab,
+        onDestinationSelected: (i) => setState(() {
+          _tab = i;
+          _visited.add(i);
+        }),
+        destinations: const [
+          NavigationDestination(
+            icon: Icon(Icons.calendar_month_outlined),
+            label: '首页',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.video_library_outlined),
+            label: '收藏',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.download_outlined),
+            label: '下载',
+          ),
+        ],
+      ),
+      body: IndexedStack(
+        index: _tab,
+        children: [
+          Stack(
+            fit: StackFit.expand,
+            children: <Widget>[
+              if (hasBg)
+                Positioned.fill(
+                  child: Image.file(
+                    File(bgPath),
+                    fit: BoxFit.cover,
+                    alignment: Alignment.bottomCenter,
                   ),
                 ),
-              ),
-            ),
-          SafeArea(
-            child: Column(
-              children: <Widget>[
-                const TopToolBar(),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: Align(
-                    alignment: Alignment.centerRight,
-                    child: TextButton.icon(
-                      onPressed: () => Navigator.of(context).push<void>(
-                        MaterialPageRoute<void>(
-                          builder: (_) => const BilibiliVideoPage(),
-                        ),
+              if (hasBg)
+                Positioned.fill(
+                  child: ClipRect(
+                    child: BackdropFilter(
+                      filter: ImageFilter.blur(sigmaX: 6, sigmaY: 6),
+                      child: ColoredBox(
+                        color: colors.surface.withValues(alpha: 0.86),
                       ),
-                      icon: const Icon(Icons.ondemand_video_rounded),
-                      label: const Text('B站视频'),
                     ),
                   ),
                 ),
-                Expanded(
-                  child: AnimatedBuilder(
-                    animation: _viewModel,
-                    builder: (BuildContext context, Widget? child) {
-                      return _buildContent(_viewModel.state);
-                    },
-                  ),
+              SafeArea(
+                child: Column(
+                  children: <Widget>[
+                    const TopToolBar(),
+                    Expanded(
+                      child: AnimatedBuilder(
+                        animation: _viewModel,
+                        builder: (BuildContext context, Widget? child) {
+                          return _buildContent(_viewModel.state);
+                        },
+                      ),
+                    ),
+                  ],
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
+          _visited.contains(1)
+              ? const CollectionPage()
+              : const SizedBox.shrink(),
+          _visited.contains(2)
+              ? const DownloadCenterPage()
+              : const SizedBox.shrink(),
         ],
       ),
     );

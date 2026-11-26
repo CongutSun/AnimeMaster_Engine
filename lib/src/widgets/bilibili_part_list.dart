@@ -8,6 +8,7 @@ class BilibiliPartList extends StatelessWidget {
   final int? openingCid;
   final int? recommendedCid;
   final ValueChanged<BilibiliPart> onSelected;
+  final Widget Function(BilibiliPart)? cacheButton;
 
   const BilibiliPartList({
     super.key,
@@ -16,6 +17,7 @@ class BilibiliPartList extends StatelessWidget {
     this.selectedCid,
     this.openingCid,
     this.recommendedCid,
+    this.cacheButton,
   });
 
   @override
@@ -35,13 +37,22 @@ class BilibiliPartList extends StatelessWidget {
           selected: selected,
           leading: Icon(selected ? Icons.play_circle_fill : Icons.play_circle),
           title: Text(part.label),
-          subtitle: Text(duration),
+          subtitle: Text(
+            part.cid == recommendedCid && cacheButton != null
+                ? '$duration · 建议'
+                : duration,
+            style: const TextStyle(
+              fontFeatures: [FontFeature.tabularFigures()],
+            ),
+          ),
           trailing: openingCid == part.cid
               ? const SizedBox(
                   width: 20,
                   height: 20,
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
+              : cacheButton != null
+              ? cacheButton!(part)
               : part.cid == recommendedCid
               ? const Text('建议')
               : const Icon(Icons.chevron_right),

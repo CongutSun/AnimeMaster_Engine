@@ -3,14 +3,18 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
 
+import 'package:dio/dio.dart' show CancelToken;
 import 'package:dtorrent_parser/dtorrent_parser.dart';
 import 'package:dtorrent_task/dtorrent_task.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/download_task_info.dart';
+import '../models/bilibili_video.dart';
 import '../repositories/download_task_repository.dart';
 import '../services/background_download_service.dart';
+import '../services/bilibili_offline_downloader.dart';
+import '../services/bilibili_video_service.dart';
 import '../utils/app_storage_paths.dart';
 import '../utils/tracker_pool.dart';
 import '../utils/transfer_policy.dart';
@@ -28,6 +32,14 @@ List<DownloadTaskInfo> _decodeLegacyDownloadTasks(String tasksJson) {
             DownloadTaskInfo.fromJson(Map<String, dynamic>.from(item)),
       )
       .toList(growable: false);
+}
+
+class _BilibiliJob {
+  bool ready = false;
+  final cancel = CancelToken();
+  final done = Completer<void>();
+  String stage = '正在读取视频';
+  double progress = 0;
 }
 
 class DownloadManager extends ChangeNotifier {
@@ -78,10 +90,19 @@ class DownloadManager extends ChangeNotifier {
   Timer? _speedTimer;
   Timer? _maintenanceTimer;
   final DownloadTaskRepository _taskRepository;
+  final BilibiliOfflineDownloader _bilibili;
+  final _biliJobs = <String, _BilibiliJob>{};
+  final _biliErrors = <String, String>{};
+  String? _runningBili;
+  final _deletingBili = <String>{};
   final TorrentTask Function(Torrent, String, bool) _createTask;
 
   @visibleForTesting
-  DownloadManager.withDependencies(this._taskRepository, this._createTask) {
+  DownloadManager.withDependencies(
+    this._taskRepository,
+    this._createTask, {
+    BilibiliOfflineDownloader? bilibili,
+  }) : _bilibili = bilibili ?? BilibiliOfflineDownloader() {
     BackgroundDownloadService.initialize(pauseAll);
   }
 
@@ -112,6 +133,134 @@ class DownloadManager extends ChangeNotifier {
   List<DownloadTaskInfo> get allTasks => _taskConfigs.values.toList();
   bool hasTask(String hash) => _activeTasks.containsKey(hash);
 
+  DownloadTaskInfo? taskFor(String hash) => _taskConfigs[hash];
+
+  Future<void> cacheBilibiliPart(
+    BilibiliVideo video,
+    BilibiliPart part, {
+    String subjectTitle = '',
+    String episodeLabel = '',
+    int bangumiSubjectId = 0,
+    int bangumiEpisodeId = 0,
+  }) async {
+    if (!video.allowsDownload || !video.parts.contains(part)) {
+      throw const BilibiliVideoException('这个分 P 未开放离线缓存。');
+    }
+    final key = 'bili_${video.bvid}_${part.cid}';
+    final dir = await _bilibili.directoryFor(key);
+    if (_deletingBili.contains(key) || _biliJobs.containsKey(key)) return;
+    final existing = _taskConfigs[key];
+    if (existing != null &&
+        existing.isCompleted &&
+        await existing.hasCompleteFile()) {
+      return;
+    }
+    final task = DownloadTaskInfo(
+      hash: key,
+      title: '${video.title} · ${part.label}',
+      url: 'https://www.bilibili.com/video/${video.bvid}?p=${part.page}',
+      savePath: dir.path,
+      targetPath: '${dir.path}/video.mp4',
+      subjectTitle: subjectTitle,
+      episodeLabel: episodeLabel,
+      bangumiSubjectId: bangumiSubjectId,
+      bangumiEpisodeId: bangumiEpisodeId,
+      isPaused: true,
+    );
+    await _queueBilibili(task);
+  }
+
+  Future<void> _queueBilibili(DownloadTaskInfo task) async {
+    final key = task.hash;
+    if (_biliJobs.containsKey(key) || _deletingBili.contains(key)) return;
+    final job = _BilibiliJob();
+    _biliJobs[key] = job;
+    try {
+      await _taskRepository.upsert(task);
+      _taskConfigs[key] = task;
+      _biliErrors.remove(key);
+      if (job.cancel.isCancelled) {
+        _biliJobs.remove(key);
+        job.done.complete();
+        notifyListeners();
+        return;
+      }
+      job.ready = true;
+    } catch (_) {
+      _biliJobs.remove(key);
+      job.done.complete();
+      rethrow;
+    }
+    notifyListeners();
+    _startNextBilibili();
+  }
+
+  void _startNextBilibili() {
+    if (_runningBili != null) return;
+    final next = _biliJobs.entries.where((e) => e.value.ready).firstOrNull;
+    if (next == null) return;
+    _runningBili = next.key;
+    unawaited(_runBilibili(_taskConfigs[next.key]!, next.value));
+  }
+
+  Future<void> _runBilibili(DownloadTaskInfo task, _BilibiliJob job) async {
+    final key = task.hash;
+    try {
+      await _syncBackgroundService();
+      if (job.cancel.isCancelled) return;
+      notifyListeners();
+      final complete = await _bilibili.download(task, job.cancel, (
+        track,
+        fraction,
+      ) {
+        job.stage = '缓存$track';
+        job.progress = fraction;
+        notifyListeners();
+      });
+      if (!job.cancel.isCancelled) {
+        await _taskRepository.upsert(complete);
+        _taskConfigs[key] = complete;
+      }
+    } catch (error) {
+      if (!job.cancel.isCancelled) {
+        _biliErrors[key] = error is BilibiliVideoException
+            ? error.message
+            : error is FileSystemException
+            ? '无法保存缓存，请检查剩余空间。'
+            : '缓存失败，请检查网络后重试。';
+      }
+    } finally {
+      _biliJobs.remove(key);
+      _runningBili = null;
+      _startNextBilibili();
+      final background = _syncBackgroundService();
+      notifyListeners();
+      await background;
+      job.done.complete();
+    }
+  }
+
+  Future<void> _stopBilibili(String key) async {
+    final job = _biliJobs[key];
+    if (job == null) return;
+    job.cancel.cancel();
+    if (_runningBili != key && job.ready) {
+      _biliJobs.remove(key);
+      job.done.complete();
+      notifyListeners();
+    }
+    await job.done.future;
+  }
+
+  String bilibiliStatus(DownloadTaskInfo task) {
+    if (task.isCompleted) return '已缓存 · 可离线观看';
+    final job = _biliJobs[task.hash];
+    if (job == null) return _biliErrors[task.hash] ?? '已暂停 · 可重新缓存';
+    if (_runningBili != task.hash) return '等待缓存';
+    if (job.stage == '正在读取视频') return job.stage;
+    return '${job.stage} · ${(job.progress * 100).round()}%';
+  }
+
   Future<void> initPersistedTasks() => _initialization ??= _restoreTasks();
 
   Future<void> _restoreTasks() async {
@@ -127,6 +276,14 @@ class DownloadManager extends ChangeNotifier {
     }
 
     for (DownloadTaskInfo info in persistedTasks) {
+      if (info.isBilibili) {
+        if (info.isCompleted && !await info.hasCompleteFile()) {
+          info = info.copyWith(isCompleted: false, isPaused: true);
+          await _taskRepository.upsert(info);
+        }
+        _taskConfigs[info.hash] = info;
+        continue;
+      }
       final File torrentFile = File('${info.savePath}/meta.torrent');
       if (!await torrentFile.exists()) {
         await _taskRepository.deleteByHash(info.hash);
@@ -733,7 +890,9 @@ class DownloadManager extends ChangeNotifier {
     final List<String> downloadCandidates = _taskConfigs.entries
         .where(
           (MapEntry<String, DownloadTaskInfo> entry) =>
-              !entry.value.isCompleted && _pausedStates[entry.key] != true,
+              !entry.value.isBilibili &&
+              !entry.value.isCompleted &&
+              _pausedStates[entry.key] != true,
         )
         .map((MapEntry<String, DownloadTaskInfo> entry) => entry.key)
         .toList();
@@ -745,7 +904,9 @@ class DownloadManager extends ChangeNotifier {
     final List<String> seedCandidates = _taskConfigs.entries
         .where(
           (MapEntry<String, DownloadTaskInfo> entry) =>
-              entry.value.isCompleted && _pausedStates[entry.key] != true,
+              !entry.value.isBilibili &&
+              entry.value.isCompleted &&
+              _pausedStates[entry.key] != true,
         )
         .map((MapEntry<String, DownloadTaskInfo> entry) => entry.key)
         .toList();
@@ -1014,7 +1175,7 @@ class DownloadManager extends ChangeNotifier {
     if (_taskConfigs[hash]?.isCompleted == true) {
       return 1.0;
     }
-    return _activeTasks[hash]?.progress ?? 0.0;
+    return _biliJobs[hash]?.progress ?? _activeTasks[hash]?.progress ?? 0.0;
   }
 
   int getConnectedPeers(String hash) =>
@@ -1022,7 +1183,9 @@ class DownloadManager extends ChangeNotifier {
 
   double getSpeed(String hash) => _currentSpeeds[hash] ?? 0.0;
   double getUploadSpeed(String hash) => _currentUploadSpeeds[hash] ?? 0.0;
-  bool isPaused(String hash) => _pausedStates[hash] ?? false;
+  bool isPaused(String hash) => _taskConfigs[hash]?.isBilibili == true
+      ? _taskConfigs[hash]!.isCompleted == false && !_biliJobs.containsKey(hash)
+      : _pausedStates[hash] ?? false;
   bool isQueued(String hash) => _queuedStates[hash] ?? false;
 
   TransferActivity _activityOf(String hash) {
@@ -1041,6 +1204,15 @@ class DownloadManager extends ChangeNotifier {
   Future<void> toggleTask(String hash) async {
     final TorrentTask? task = _activeTasks[hash];
     final DownloadTaskInfo? config = _taskConfigs[hash];
+    if (config != null && config.isBilibili) {
+      if (config.isCompleted) return;
+      if (_biliJobs.containsKey(hash)) {
+        await _stopBilibili(hash);
+      } else {
+        await _queueBilibili(config);
+      }
+      return;
+    }
     if (task == null ||
         config == null ||
         (config.isCompleted && !_seedingEnabled)) {
@@ -1065,6 +1237,23 @@ class DownloadManager extends ChangeNotifier {
     final TorrentTask? task = _activeTasks[hash];
     final DownloadTaskInfo? config = _taskConfigs[hash];
 
+    if (config != null && config.isBilibili) {
+      if (!_deletingBili.add(hash)) return false;
+      try {
+        await _stopBilibili(hash);
+        final dir = await _bilibili.directoryFor(hash);
+        await dir.delete(recursive: true);
+        await _taskRepository.deleteByHash(hash);
+        _taskConfigs.remove(hash);
+        _biliErrors.remove(hash);
+        notifyListeners();
+        return true;
+      } catch (_) {
+        return false;
+      } finally {
+        _deletingBili.remove(hash);
+      }
+    }
     if (task == null || config == null) {
       return false;
     }
@@ -1125,16 +1314,20 @@ class DownloadManager extends ChangeNotifier {
 
   Future<void> _syncBackgroundService() {
     final activities = _activeTasks.keys.map(_activityOf);
-    final activity = activities.contains(TransferActivity.downloading)
+    final torrentActive = activities.any((a) => a != TransferActivity.idle);
+    final activity =
+        _runningBili != null ||
+            activities.contains(TransferActivity.downloading)
         ? TransferActivity.downloading
         : activities.contains(TransferActivity.seeding)
         ? TransferActivity.seeding
         : TransferActivity.idle;
-    _syncTimers(activity != TransferActivity.idle);
+    _syncTimers(torrentActive);
     return BackgroundDownloadService.setActivity(activity);
   }
 
   Future<void> pauseAll() async {
+    await Future.wait(_biliJobs.keys.toList().map(_stopBilibili));
     for (final String hash in _activeTasks.keys) {
       _pausedStates[hash] = true;
       _taskConfigs[hash]?.isPaused = true;

@@ -70,7 +70,7 @@ class CachedMediaPlayback {
     DownloadTaskInfo? partial;
     for (final task in candidates) {
       if (await task.hasCompleteFile()) return task;
-      if (!task.isCompleted) partial ??= task;
+      if (!task.isCompleted && !task.isBilibili) partial ??= task;
     }
     return partial;
   }
@@ -86,6 +86,8 @@ class CachedMediaPlayback {
         media: PlayableMedia(
           title: task.displayTitle,
           url: task.targetPath,
+          audioUrl: task.localAudioUrl,
+          bilibiliCacheIdentity: task.bilibiliIdentity,
           isLocal: true,
           localFilePath: task.targetPath,
           subjectTitle: task.subjectTitle,
@@ -96,6 +98,7 @@ class CachedMediaPlayback {
       );
     }
 
+    if (task.isBilibili) throw StateError('请先完成这个分 P 的离线缓存');
     if (task.targetSize > 0) {
       DownloadManager().prioritizePlaybackRange(
         task.hash,

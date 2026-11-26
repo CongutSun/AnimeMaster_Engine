@@ -1,6 +1,6 @@
 name: animemaster
 description: "AnimeMaster's Flutter application engine for anime discovery, tracking, downloading, and playback."
-version: 2.4.9
+version: 2.5.1
 homepage: https://github.com/CongutSun/AnimeMaster_Engine
 
 environment:
@@ -69,7 +69,12 @@ dev_dependencies:
   build_runner: ^2.15.0
 
 flutter:
+  fonts:
+    - family: DiscoveryTitle
+      fonts:
+        - asset: assets/fonts/DiscoveryTitle.ttf
   assets:
+    - assets/fonts/OFL-QingKe.txt
     - assets/online_sources.json
   plugin:
     platforms:

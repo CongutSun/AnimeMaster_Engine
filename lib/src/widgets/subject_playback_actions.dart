@@ -73,27 +73,35 @@ class _SubjectPlaybackActionsState extends State<SubjectPlaybackActions> {
             };
         final number = episodeNumber(episode);
         final label = number > 0 ? '继续看第 $number 集' : '继续观看';
-        return Row(
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Expanded(
-              child: StreamBuilder<bool>(
-                key: ValueKey(cacheKey),
-                stream: _offline,
-                builder: (context, cached) => FilledButton.icon(
-                  onPressed: () => widget.onResume(episode, record),
-                  icon: const Icon(Icons.play_arrow_rounded),
-                  label: Text(
-                    '$label · ${formatDuration(progress.position)}'
-                    '${cached.data == true ? ' · 已缓存' : ''}',
-                  ),
-                ),
+            StreamBuilder<bool>(
+              key: ValueKey(cacheKey),
+              stream: _offline,
+              builder: (context, cached) => Text(
+                '上次看到 ${formatDuration(progress.position)}${cached.data == true ? ' · 已缓存' : ''}',
+                style: Theme.of(context).textTheme.bodyMedium,
               ),
             ),
-            const SizedBox(width: 8),
-            IconButton(
-              tooltip: '搜索资源',
-              onPressed: widget.onSearch,
-              icon: const Icon(Icons.travel_explore),
+            const SizedBox(height: 4),
+            Row(
+              children: [
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: () => widget.onResume(episode, record),
+                    icon: const Icon(Icons.play_arrow_rounded),
+                    label: Text(label),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                IconButton(
+                  tooltip: '搜索资源',
+                  onPressed: widget.onSearch,
+                  icon: const Icon(Icons.travel_explore),
+                ),
+              ],
             ),
           ],
         );

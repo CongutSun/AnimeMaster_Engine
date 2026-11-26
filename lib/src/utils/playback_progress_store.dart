@@ -121,6 +121,7 @@ class PlaybackProgressStore {
   static String keyFor(PlayableMedia media) {
     final String identity =
         media.bilibili?.identity ??
+        media.bilibiliCacheIdentity ??
         (media.bangumiEpisodeId > 0
             ? 'bgm_ep:${media.bangumiEpisodeId}'
             : <String>[

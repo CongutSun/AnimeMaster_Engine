@@ -20,23 +20,22 @@ class AnimeGrid extends StatelessWidget {
     return LayoutBuilder(
       builder: (BuildContext context, BoxConstraints constraints) {
         final double width = constraints.maxWidth;
-        final int crossAxisCount = width >= 1180
-            ? 8
-            : width >= 980
-            ? 7
-            : width >= 760
-            ? 5
-            : width >= 480
-            ? 4
-            : 3;
-
+        final scale = MediaQuery.textScalerOf(context);
+        final minWidth = 108 * (scale.scale(16) / 16).clamp(1.0, 2.0);
+        final crossAxisCount = ((width + 12) / (minWidth + 12)).floor().clamp(
+          1,
+          8,
+        );
+        final tileWidth = (width - (crossAxisCount - 1) * 12) / crossAxisCount;
+        final textHeight =
+            scale.scale(16) * 1.35 * 2 + scale.scale(14) * 1.45 + 20;
         return GridView.builder(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
           gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: crossAxisCount,
-            childAspectRatio: 0.55,
-            crossAxisSpacing: 14,
+            mainAxisExtent: tileWidth * 1.5 + textHeight,
+            crossAxisSpacing: 12,
             mainAxisSpacing: 20,
           ),
           itemCount: animeList.length,

@@ -20,6 +20,7 @@ class _Service extends BilibiliVideoService {
   final List<(String, int)> searches = <(String, int)>[];
   Completer<void>? videoGate;
   bool failVideo = false;
+  bool allowsDownload = false;
 
   @override
   Future<BilibiliSearchPage> searchVideos(
@@ -51,6 +52,7 @@ class _Service extends BilibiliVideoService {
     return BilibiliVideo(
       bvid: bvid,
       title: '测试视频',
+      allowsDownload: allowsDownload,
       parts: const <BilibiliPart>[
         BilibiliPart(
           cid: 101,
@@ -102,6 +104,7 @@ void main() {
     expect(find.text('P1 · 开场'), findsOneWidget);
     expect(find.text('P2 · 正片'), findsOneWidget);
     expect(find.text('10:00'), findsOneWidget);
+    expect(find.byTooltip('缓存 P2 · 正片'), findsNothing);
     await tester.tap(find.text('P2 · 正片'));
     await tester.pumpAndSettle();
     expect(service.requestedCid, 202);
@@ -121,7 +124,7 @@ void main() {
   testWidgets('toolbar and system back preserve query, pagination and scroll', (
     tester,
   ) async {
-    final service = _Service();
+    final service = _Service()..allowsDownload = true;
     await tester.pumpWidget(
       MaterialApp(
         home: BilibiliVideoPage(
@@ -159,6 +162,7 @@ void main() {
     await tester.tap(find.text('搜索结果 2-8'));
     await tester.pumpAndSettle();
     expect(find.byType(BilibiliVideoDetailsPage), findsOneWidget);
+    expect(find.byTooltip('缓存 P2 · 正片'), findsOneWidget);
     await tester.tap(find.byType(BackButton));
     await tester.pumpAndSettle();
     expect(

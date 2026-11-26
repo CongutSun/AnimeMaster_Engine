@@ -614,6 +614,7 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
       url: media.url,
       audioUrl: media.audioUrl,
       bilibili: media.bilibili,
+      bilibiliCacheIdentity: media.bilibiliCacheIdentity,
       headers: media.headers,
       isLocal: media.isLocal,
       localFilePath: media.localFilePath,
@@ -1619,6 +1620,15 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
     final int episodeNumber = _episodeNumber(_episode);
     final String title = _episodeTitle(_episode);
     final String description = _episodeDescription(_episode);
+    final offlineIds = DownloadManager().allTasks
+        .where(
+          (task) =>
+              task.isCompleted &&
+              task.bangumiSubjectId == widget.animeId &&
+              task.bangumiEpisodeId > 0,
+        )
+        .map((task) => task.bangumiEpisodeId)
+        .toSet();
 
     return Scaffold(
       appBar: AppBar(
@@ -1726,16 +1736,26 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
                             fontWeight: FontWeight.w800,
                           ),
                         ),
-                        const Spacer(),
-                        Text(
-                          '看到 ${widget.currentProgress} · 共 ${widget.episodes.length} 话',
-                          style: const TextStyle(color: Colors.grey),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            '看到 ${widget.currentProgress} · 共 ${widget.episodes.length} 话',
+                            textAlign: TextAlign.end,
+                            style: TextStyle(
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.onSurfaceVariant,
+                            ),
+                          ),
                         ),
                       ],
                     ),
                     const SizedBox(height: 10),
                     SizedBox(
-                      height: 86,
+                      height:
+                          36 +
+                          MediaQuery.textScalerOf(context).scale(19) * 1.5 +
+                          MediaQuery.textScalerOf(context).scale(14) * 3.1,
                       child: ListView.separated(
                         controller: _episodeStrip,
                         key: const PageStorageKey<String>(
@@ -1752,6 +1772,7 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
                             title: _episodeTitle(episode),
                             episodeNumber: _episodeNumber(episode),
                             selected: _isCurrentEpisode(episode),
+                            offline: offlineIds.contains(_episodeId(episode)),
                             onTap: () => unawaited(_selectEpisode(episode)),
                           );
                         },
@@ -2171,7 +2192,8 @@ class _CachedSourceTile extends StatelessWidget {
           overflow: TextOverflow.ellipsis,
         ),
         trailing: selected ? const Icon(Icons.check_rounded) : null,
-        onTap: onTap,
+        enabled: !task.isBilibili || task.isCompleted,
+        onTap: task.isBilibili && !task.isCompleted ? null : onTap,
       ),
     );
   }
@@ -2366,53 +2388,68 @@ class _EpisodeStripCard extends StatelessWidget {
   final String title;
   final int episodeNumber;
   final bool selected;
+  final bool offline;
   final VoidCallback onTap;
 
   const _EpisodeStripCard({
     required this.title,
     required this.episodeNumber,
     required this.selected,
+    required this.offline,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
     final ColorScheme colors = Theme.of(context).colorScheme;
-    return SizedBox(
-      width: 116,
-      child: Material(
-        color: selected
-            ? colors.primaryContainer
-            : colors.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(14),
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                Row(
-                  children: <Widget>[
-                    if (selected)
-                      Icon(Icons.bar_chart_rounded, color: colors.primary),
-                    if (selected) const SizedBox(width: 6),
-                    Text(
-                      episodeNumber > 0
-                          ? episodeNumber.toString().padLeft(2, '0')
-                          : '?',
-                      style: TextStyle(
-                        color: selected ? colors.primary : colors.onSurface,
-                        fontSize: 19,
-                        fontWeight: FontWeight.w800,
+    return Semantics(
+      selected: selected,
+      button: true,
+      label: '第 $episodeNumber 集，$title${offline ? "，已缓存" : ""}',
+      excludeSemantics: true,
+      onTap: onTap,
+      child: SizedBox(
+        width:
+            116 *
+            (MediaQuery.textScalerOf(context).scale(16) / 16).clamp(1.0, 2.0),
+        child: Material(
+          color: selected
+              ? colors.primaryContainer
+              : colors.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(14),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: onTap,
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Row(
+                    children: <Widget>[
+                      if (selected)
+                        Icon(Icons.bar_chart_rounded, color: colors.primary),
+                      if (selected) const SizedBox(width: 6),
+                      if (offline)
+                        const Icon(Icons.offline_pin_rounded, size: 18),
+                      Flexible(
+                        child: Text(
+                          episodeNumber > 0
+                              ? episodeNumber.toString().padLeft(2, '0')
+                              : '?',
+                          style: TextStyle(
+                            color: selected ? colors.primary : colors.onSurface,
+                            fontSize: 19,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
                       ),
-                    ),
-                  ],
-                ),
-                const Spacer(),
-                Text(title, maxLines: 2, overflow: TextOverflow.ellipsis),
-              ],
+                    ],
+                  ),
+                  const Spacer(),
+                  Text(title, maxLines: 2, overflow: TextOverflow.ellipsis),
+                ],
+              ),
             ),
           ),
         ),

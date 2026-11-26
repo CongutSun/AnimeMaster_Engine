@@ -1,75 +1,176 @@
 import 'package:flutter/material.dart';
 
+class ThemeTones {
+  const ThemeTones(
+    this.background,
+    this.surface,
+    this.text,
+    this.muted,
+    this.primary,
+    this.onPrimary,
+  );
+  final int background, surface, text, muted, primary, onPrimary;
+}
+
+enum AppPalette {
+  ink(
+    '经典墨蓝',
+    ThemeTones(
+      0xfff8f7f4,
+      0xffffffff,
+      0xff242628,
+      0xff58616a,
+      0xff3459a6,
+      0xffffffff,
+    ),
+    ThemeTones(
+      0xff15191f,
+      0xff1e242c,
+      0xffeef1f5,
+      0xffacb6c3,
+      0xffa7c3ff,
+      0xff14274c,
+    ),
+  ),
+  sea(
+    '海盐青',
+    ThemeTones(
+      0xfff0f6f5,
+      0xfffbfefd,
+      0xff1f3336,
+      0xff4c6466,
+      0xff1d696b,
+      0xffffffff,
+    ),
+    ThemeTones(
+      0xff142529,
+      0xff1c3035,
+      0xffe4f1f0,
+      0xffa6bdbd,
+      0xff83cec8,
+      0xff103335,
+    ),
+  ),
+  amber(
+    '琥珀纸',
+    ThemeTones(
+      0xfff8f1df,
+      0xfffffaed,
+      0xff382f23,
+      0xff695d4a,
+      0xff875017,
+      0xffffffff,
+    ),
+    ThemeTones(
+      0xff231e18,
+      0xff302820,
+      0xfff2e8d5,
+      0xffc2b29b,
+      0xffe9b676,
+      0xff3c290e,
+    ),
+  ),
+  plum(
+    '雾莓紫',
+    ThemeTones(
+      0xfff7f2fa,
+      0xfffefaff,
+      0xff342b3c,
+      0xff66596f,
+      0xff744780,
+      0xffffffff,
+    ),
+    ThemeTones(
+      0xff221e29,
+      0xff302936,
+      0xfff2e8f6,
+      0xffc6b5ce,
+      0xffdab2e4,
+      0xff3e2545,
+    ),
+  );
+
+  const AppPalette(this.label, this.day, this.night);
+  final String label;
+  final ThemeTones day, night;
+  static AppPalette parse(String? value) =>
+      values.where((p) => p.name == value).firstOrNull ?? ink;
+}
+
 class AppTheme {
-  static const Color _iosBlue = Color(0xFF007AFF);
-  static const Color _iosBlueDark = Color(0xFF0A84FF);
-  static const Color _lightBackground = Color(0xFFF5F5F7);
-  static const Color _lightSurface = Color(0xFFFFFFFF);
-  static const Color _darkBackground = Color(0xFF000000);
-  static const Color _darkSurface = Color(0xFF1C1C1E);
-  static const Color _darkSurfaceElevated = Color(0xFF2C2C2E);
+  static ThemeData light({
+    AppPalette palette = AppPalette.ink,
+    bool serif = true,
+  }) => _build(Brightness.light, palette.day, serif);
+  static ThemeData dark({
+    AppPalette palette = AppPalette.ink,
+    bool serif = true,
+  }) => _build(Brightness.dark, palette.night, serif);
+  static Color success(BuildContext context) =>
+      Theme.of(context).brightness == Brightness.dark
+      ? const Color(0xff8ed0a8)
+      : const Color(0xff266747);
 
-  static ThemeData light() {
-    return _build(
-      brightness: Brightness.light,
-      primary: _iosBlue,
-      background: _lightBackground,
-      surface: _lightSurface,
-      elevatedSurface: _lightSurface,
-      outline: const Color(0xFFD8D8DE),
-    );
-  }
-
-  static ThemeData dark() {
-    return _build(
-      brightness: Brightness.dark,
-      primary: _iosBlueDark,
-      background: _darkBackground,
-      surface: _darkSurface,
-      elevatedSurface: _darkSurfaceElevated,
-      outline: const Color(0xFF3A3A3C),
-    );
-  }
-
-  static ThemeData _build({
-    required Brightness brightness,
-    required Color primary,
-    required Color background,
-    required Color surface,
-    required Color elevatedSurface,
-    required Color outline,
-  }) {
-    final bool isDark = brightness == Brightness.dark;
-    final ColorScheme scheme =
+  static ThemeData _build(Brightness brightness, ThemeTones tones, bool serif) {
+    final isDark = brightness == Brightness.dark;
+    final primary = Color(tones.primary),
+        background = Color(tones.background),
+        surface = Color(tones.surface);
+    final elevatedSurface = Color.lerp(
+      surface,
+      primary,
+      isDark ? 0.08 : 0.035,
+    )!;
+    final outline = Color.lerp(surface, Color(tones.muted), .42)!;
+    final scheme =
         ColorScheme.fromSeed(
           seedColor: primary,
           brightness: brightness,
         ).copyWith(
           primary: primary,
+          onPrimary: Color(tones.onPrimary),
           secondary: primary,
           surface: surface,
+          onSurface: Color(tones.text),
+          onSurfaceVariant: Color(tones.muted),
           surfaceContainerHighest: elevatedSurface,
           outline: outline,
-          outlineVariant: outline.withValues(alpha: isDark ? 0.55 : 0.68),
+          outlineVariant: Color.lerp(surface, outline, .58),
+          error: Color(isDark ? 0xffffaab3 : 0xffaa373f),
         );
-
-    final TextTheme textTheme =
-        Typography.material2021(
-          platform: TargetPlatform.iOS,
+    final base =
+        ThemeData(
+          brightness: brightness,
+          useMaterial3: true,
           colorScheme: scheme,
-        ).black.apply(
+        ).textTheme.apply(
           bodyColor: scheme.onSurface,
           displayColor: scheme.onSurface,
-          fontFamilyFallback: const <String>[
-            'SF Pro Display',
-            'PingFang SC',
-            'MiSans',
-            'Microsoft YaHei',
-            'Segoe UI',
-            'Roboto',
-            'sans-serif',
-          ],
         );
+    final textTheme = base.copyWith(
+      headlineLarge: base.headlineLarge?.copyWith(
+        fontFamily: serif ? 'serif' : null,
+        fontFamilyFallback: serif
+            ? const [
+                'Source Han Serif SC',
+                'Noto Serif CJK SC',
+                'Noto Serif SC',
+                'Songti SC',
+                'SimSun',
+                'serif',
+              ]
+            : null,
+        fontSize: 28,
+        height: 1.3,
+        fontWeight: FontWeight.w600,
+      ),
+      bodyLarge: base.bodyLarge?.copyWith(fontSize: 16, height: 1.5),
+      bodyMedium: base.bodyMedium?.copyWith(fontSize: 14, height: 1.45),
+      titleMedium: base.titleMedium?.copyWith(
+        fontSize: 18,
+        fontWeight: FontWeight.w600,
+      ),
+    );
 
     return ThemeData(
       useMaterial3: true,
@@ -97,8 +198,8 @@ class AppTheme {
         backgroundColor: background,
         foregroundColor: scheme.onSurface,
         titleTextStyle: textTheme.titleLarge?.copyWith(
-          fontSize: 18,
-          fontWeight: FontWeight.w700,
+          fontSize: 24,
+          fontWeight: FontWeight.w600,
           color: scheme.onSurface,
         ),
         iconTheme: IconThemeData(color: scheme.onSurface),
@@ -109,7 +210,7 @@ class AppTheme {
         color: surface,
         surfaceTintColor: Colors.transparent,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(12),
           side: BorderSide(color: scheme.outlineVariant),
         ),
       ),
@@ -135,7 +236,7 @@ class AppTheme {
       ),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
-          minimumSize: const Size(44, 44),
+          minimumSize: const Size(48, 48),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(14),
           ),
@@ -147,7 +248,7 @@ class AppTheme {
           elevation: 0,
           backgroundColor: scheme.primary,
           foregroundColor: scheme.onPrimary,
-          minimumSize: const Size(44, 44),
+          minimumSize: const Size(48, 48),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(14),
           ),
@@ -156,7 +257,7 @@ class AppTheme {
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
-          minimumSize: const Size(44, 44),
+          minimumSize: const Size(48, 48),
           side: BorderSide(color: scheme.outlineVariant),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(14),
@@ -240,7 +341,7 @@ class AppTheme {
         ),
       ),
       listTileTheme: ListTileThemeData(
-        iconColor: scheme.primary,
+        iconColor: scheme.onSurfaceVariant,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       ),
       snackBarTheme: SnackBarThemeData(

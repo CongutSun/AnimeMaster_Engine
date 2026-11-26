@@ -322,6 +322,7 @@ class AppUpdateService {
       await showDialog<void>(
         context: context,
         builder: (BuildContext dialogContext) => AlertDialog(
+          scrollable: true,
           title: const Text(AppStrings.updateDialogAppTitle),
           content: Text(result.message),
           actions: <Widget>[
@@ -338,7 +339,7 @@ class AppUpdateService {
     final AppUpdateInfo latest = result.latest!;
     await showDialog<void>(
       context: context,
-      builder: (BuildContext dialogContext) => AlertDialog(
+      builder: (BuildContext dialogContext) => _ReleaseDialog(
         title: const Text(AppStrings.updateDialogTitle),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -410,6 +411,7 @@ class AppUpdateService {
         context: context,
         barrierDismissible: false,
         builder: (BuildContext context) => const AlertDialog(
+          scrollable: true,
           content: Row(
             children: <Widget>[
               CircularProgressIndicator(),
@@ -476,5 +478,68 @@ class AppUpdateService {
               0,
         )
         .toList();
+  }
+}
+
+class _ReleaseDialog extends StatelessWidget {
+  const _ReleaseDialog({
+    required this.title,
+    required this.content,
+    required this.actions,
+  });
+  final Widget title;
+  final Widget content;
+  final List<Widget> actions;
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final body = Padding(
+      padding: const EdgeInsets.fromLTRB(24, 24, 24, 12),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          DefaultTextStyle(style: theme.textTheme.headlineSmall!, child: title),
+          const SizedBox(height: 16),
+          content,
+        ],
+      ),
+    );
+    final buttons = Padding(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+      child: OverflowBar(
+        alignment: MainAxisAlignment.end,
+        spacing: 8,
+        overflowSpacing: 4,
+        children: actions,
+      ),
+    );
+    return Dialog(
+      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 520),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            if (constraints.maxHeight <
+                MediaQuery.textScalerOf(context).scale(16) * 10 + 100) {
+              return SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [body, buttons],
+                ),
+              );
+            }
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Flexible(child: SingleChildScrollView(child: body)),
+                buttons,
+              ],
+            );
+          },
+        ),
+      ),
+    );
   }
 }

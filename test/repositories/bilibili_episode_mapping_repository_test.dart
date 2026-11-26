@@ -17,6 +17,9 @@ class _VersionOneDatabase extends AppDatabase {
       await m.createTable(animeSubjects);
       await m.createTable(animeEpisodes);
       await m.createTable(downloadTaskRecords);
+      await customStatement(
+        'ALTER TABLE download_task_records DROP COLUMN audio_size',
+      );
       await m.createTable(playbackProgressRecords);
     },
   );

@@ -848,141 +848,120 @@ class _DetailPageState extends State<DetailPage>
                             16,
                             20,
                           ),
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              ClipRRect(
-                                borderRadius: BorderRadius.circular(12),
-                                child: _buildSafeImage(
-                                  imageUrl: imageUrl,
-                                  width: 105,
-                                  height: 150,
-                                ),
+                          child: _SubjectHeader(
+                            poster: ClipRRect(
+                              borderRadius: BorderRadius.circular(12),
+                              child: _buildSafeImage(
+                                imageUrl: imageUrl,
+                                width: 105,
+                                height: 150,
                               ),
-                              const SizedBox(width: 16),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
+                            ),
+                            metadata: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  displayName,
+                                  style: theme.textTheme.headlineLarge,
+                                ),
+                                if (originalName.isNotEmpty &&
+                                    originalName != displayName)
+                                  Text(
+                                    originalName,
+                                    style: theme.textTheme.bodyMedium?.copyWith(
+                                      color: theme.colorScheme.onSurfaceVariant,
+                                    ),
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                const SizedBox(height: 8),
+                                Row(
                                   children: [
+                                    const Icon(
+                                      Icons.star_rounded,
+                                      color: Colors.orange,
+                                      size: 18,
+                                    ),
+                                    const SizedBox(width: 4),
                                     Text(
-                                      displayName,
+                                      '${detailData?['rating']?['score'] ?? '暂无评分'}',
                                       style: const TextStyle(
-                                        fontSize: 18,
+                                        fontSize: 15,
                                         fontWeight: FontWeight.bold,
-                                        height: 1.2,
+                                        color: highlightOrange,
                                       ),
                                     ),
-                                    if (originalName.isNotEmpty &&
-                                        originalName != displayName)
-                                      Text(
-                                        originalName,
-                                        style: const TextStyle(
-                                          fontSize: 12,
-                                          color: Colors.grey,
-                                        ),
-                                        maxLines: 2,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    const SizedBox(height: 8),
-                                    Row(
-                                      children: [
-                                        const Icon(
-                                          Icons.star_rounded,
-                                          color: Colors.orange,
-                                          size: 18,
-                                        ),
-                                        const SizedBox(width: 4),
-                                        Text(
-                                          '${detailData?['rating']?['score'] ?? '暂无评分'}',
-                                          style: const TextStyle(
-                                            fontSize: 15,
-                                            fontWeight: FontWeight.bold,
-                                            color: highlightOrange,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    Text(
-                                      '首播: ${_formatAirDate()}\n状态: ${_broadcastStatusText()}',
-                                      style: const TextStyle(
-                                        fontSize: 11,
-                                        color: Colors.grey,
-                                        height: 1.5,
-                                      ),
-                                    ),
-                                    if (detailData?['tags'] is List)
-                                      Padding(
-                                        padding: const EdgeInsets.only(
-                                          top: 8.0,
-                                        ),
-                                        child: Wrap(
-                                          spacing: 6,
-                                          runSpacing: 6,
-                                          children: (detailData!['tags'] as List)
-                                              .take(5)
-                                              .map((tag) {
-                                                String tagName = tag is Map
-                                                    ? tag['name']?.toString() ??
-                                                          ''
-                                                    : tag.toString();
-                                                return InkWell(
-                                                  onTap: () {
-                                                    Navigator.push(
-                                                      context,
-                                                      MaterialPageRoute(
-                                                        builder: (context) =>
-                                                            CategoryResultPage(
-                                                              title:
-                                                                  '标签: $tagName',
-                                                              searchMode: 'tag',
-                                                              query: tagName,
-                                                              searchType: widget
-                                                                  .subjectType,
-                                                            ),
-                                                      ),
-                                                    );
-                                                  },
-                                                  borderRadius:
-                                                      BorderRadius.circular(4),
-                                                  child: Container(
-                                                    padding:
-                                                        const EdgeInsets.symmetric(
-                                                          horizontal: 6,
-                                                          vertical: 2,
-                                                        ),
-                                                    decoration: BoxDecoration(
-                                                      color: highlightBlue
-                                                          .withValues(
-                                                            alpha: 0.15,
-                                                          ),
-                                                      borderRadius:
-                                                          BorderRadius.circular(
-                                                            4,
-                                                          ),
-                                                      border: Border.all(
-                                                        color: highlightBlue
-                                                            .withValues(
-                                                              alpha: 0.3,
-                                                            ),
-                                                      ),
-                                                    ),
-                                                    child: Text(
-                                                      tagName,
-                                                      style: TextStyle(
-                                                        fontSize: 10,
-                                                        color: highlightBlue,
-                                                      ),
-                                                    ),
-                                                  ),
-                                                );
-                                              })
-                                              .toList(),
-                                        ),
-                                      ),
                                   ],
                                 ),
-                              ),
-                            ],
+                                Text(
+                                  '首播: ${_formatAirDate()}\n状态: ${_broadcastStatusText()}',
+                                  style: const TextStyle(
+                                    fontSize: 11,
+                                    color: Colors.grey,
+                                    height: 1.5,
+                                  ),
+                                ),
+                                if (detailData?['tags'] is List)
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 8.0),
+                                    child: Wrap(
+                                      spacing: 6,
+                                      runSpacing: 6,
+                                      children: (detailData!['tags'] as List)
+                                          .take(5)
+                                          .map((tag) {
+                                            String tagName = tag is Map
+                                                ? tag['name']?.toString() ?? ''
+                                                : tag.toString();
+                                            return InkWell(
+                                              onTap: () {
+                                                Navigator.push(
+                                                  context,
+                                                  MaterialPageRoute(
+                                                    builder: (context) =>
+                                                        CategoryResultPage(
+                                                          title: '标签: $tagName',
+                                                          searchMode: 'tag',
+                                                          query: tagName,
+                                                          searchType: widget
+                                                              .subjectType,
+                                                        ),
+                                                  ),
+                                                );
+                                              },
+                                              borderRadius:
+                                                  BorderRadius.circular(4),
+                                              child: Container(
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                      horizontal: 6,
+                                                      vertical: 2,
+                                                    ),
+                                                decoration: BoxDecoration(
+                                                  color: highlightBlue
+                                                      .withValues(alpha: 0.15),
+                                                  borderRadius:
+                                                      BorderRadius.circular(4),
+                                                  border: Border.all(
+                                                    color: highlightBlue
+                                                        .withValues(alpha: 0.3),
+                                                  ),
+                                                ),
+                                                child: Text(
+                                                  tagName,
+                                                  style: TextStyle(
+                                                    fontSize: 10,
+                                                    color: highlightBlue,
+                                                  ),
+                                                ),
+                                              ),
+                                            );
+                                          })
+                                          .toList(),
+                                    ),
+                                  ),
+                              ],
+                            ),
                           ),
                         ),
                       ],
@@ -1122,7 +1101,7 @@ class _DetailPageState extends State<DetailPage>
                   setState(() => isSummaryExpanded = !isSummaryExpanded),
               child: Text(
                 detailData?['summary']?.toString() ?? '暂无简介',
-                style: const TextStyle(fontSize: 13, height: 1.6),
+                style: const TextStyle(fontSize: 16, height: 1.55),
                 maxLines: isSummaryExpanded ? null : 4,
                 overflow: isSummaryExpanded
                     ? TextOverflow.visible
@@ -1829,4 +1808,30 @@ class _SliverAppBarDelegate extends SliverPersistentHeaderDelegate {
   bool shouldRebuild(covariant _SliverAppBarDelegate oldDelegate) {
     return oldDelegate.tabBar != tabBar || oldDelegate.topInset != topInset;
   }
+}
+
+class _SubjectHeader extends StatelessWidget {
+  const _SubjectHeader({required this.poster, required this.metadata});
+  final Widget poster;
+  final Widget metadata;
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) {
+      if (constraints.maxWidth < 330 ||
+          MediaQuery.textScalerOf(context).scale(16) > 23) {
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [poster, const SizedBox(height: 12), metadata],
+        );
+      }
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          poster,
+          const SizedBox(width: 16),
+          Expanded(child: metadata),
+        ],
+      );
+    },
+  );
 }

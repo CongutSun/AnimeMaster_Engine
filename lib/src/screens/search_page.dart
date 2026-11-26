@@ -41,6 +41,31 @@ class _SearchPageState extends State<SearchPage> {
     super.dispose();
   }
 
+  TextSpan _highlightTitle(String title) {
+    final query = widget.keyword.trim();
+    if (query.isEmpty) return TextSpan(text: title);
+    final spans = <TextSpan>[];
+    var start = 0;
+    for (final match in RegExp(
+      RegExp.escape(query),
+      caseSensitive: false,
+    ).allMatches(title)) {
+      spans.add(TextSpan(text: title.substring(start, match.start)));
+      spans.add(
+        TextSpan(
+          text: match.group(0),
+          style: TextStyle(
+            color: Theme.of(context).colorScheme.primary,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      );
+      start = match.end;
+    }
+    spans.add(TextSpan(text: title.substring(start)));
+    return TextSpan(children: spans);
+  }
+
   void _switchSubjectType(int type) {
     if (type == _viewModel.state.currentSubjectType) {
       return;
@@ -217,17 +242,19 @@ class _SearchPageState extends State<SearchPage> {
                             color: Colors.grey,
                           ),
                         ),
-                  title: Text(
-                    anime.displayName,
-                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  title: Text.rich(
+                    _highlightTitle(anime.displayName),
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                   ),
-                  subtitle: Text(
-                    anime.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
+                  subtitle:
+                      anime.displayName == anime.name || anime.name.isEmpty
+                      ? null
+                      : Text(
+                          anime.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                   trailing: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: <Widget>[

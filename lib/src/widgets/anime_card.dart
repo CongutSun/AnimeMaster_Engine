@@ -9,7 +9,13 @@ class AnimeCard extends StatelessWidget {
   final Anime anime;
   final bool isTop;
 
-  const AnimeCard({super.key, required this.anime, this.isTop = false});
+  final VoidCallback? onTap;
+  const AnimeCard({
+    super.key,
+    required this.anime,
+    this.isTop = false,
+    this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -30,80 +36,61 @@ class AnimeCard extends StatelessWidget {
         color: Colors.transparent,
         child: InkWell(
           borderRadius: BorderRadius.circular(16),
-          onTap: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) =>
-                    DetailPage(animeId: anime.id, initialName: displayName),
-              ),
-            );
-          },
+          onTap:
+              onTap ??
+              () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) =>
+                        DetailPage(animeId: anime.id, initialName: displayName),
+                  ),
+                );
+              },
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
-              Expanded(
-                child: Container(
-                  width: double.infinity,
-                  decoration: BoxDecoration(
-                    borderRadius:
-                        (theme.cardTheme.shape as RoundedRectangleBorder?)
-                            ?.borderRadius ??
-                        BorderRadius.circular(14),
-                    border: Border.all(
-                      color: colors.outlineVariant,
-                      width: 0.5,
+              AspectRatio(
+                aspectRatio: 2 / 3,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: CachedNetworkImage(
+                    imageUrl: normalizeImageUrl(anime.imageUrl),
+                    fit: BoxFit.cover,
+                    fadeInDuration: const Duration(milliseconds: 260),
+                    httpHeaders: buildImageHeaders(anime.imageUrl),
+                    cacheManager: AppImageCacheManager.instance,
+                    placeholder: (context, url) => Container(
+                      color: placeholderColor,
+                      child: Center(
+                        child: Icon(
+                          Icons.image_outlined,
+                          color: colors.onSurfaceVariant,
+                          size: 24,
+                        ),
+                      ),
                     ),
-                    boxShadow: <BoxShadow>[
-                      BoxShadow(
-                        color: colors.shadow.withValues(
-                          alpha: isDarkMode ? 0.5 : 0.18,
-                        ),
-                        blurRadius: 18,
-                        offset: const Offset(0, 10),
-                      ),
-                    ],
-                  ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(14),
-                    child: CachedNetworkImage(
-                      imageUrl: normalizeImageUrl(anime.imageUrl),
-                      fit: BoxFit.cover,
-                      fadeInDuration: const Duration(milliseconds: 260),
-                      httpHeaders: buildImageHeaders(anime.imageUrl),
-                      cacheManager: AppImageCacheManager.instance,
-                      placeholder: (context, url) => Container(
-                        color: placeholderColor,
-                        child: Center(
-                          child: Icon(
-                            Icons.image_outlined,
-                            color: colors.onSurfaceVariant,
-                            size: 24,
-                          ),
-                        ),
-                      ),
-                      errorWidget: (context, url, error) => Container(
-                        color: placeholderColor,
-                        child: Center(
-                          child: Icon(
-                            Icons.broken_image_outlined,
-                            color: colors.onSurfaceVariant,
-                            size: 24,
-                          ),
+                    errorWidget: (context, url, error) => Container(
+                      color: placeholderColor,
+                      child: Center(
+                        child: Icon(
+                          Icons.broken_image_outlined,
+                          color: colors.onSurfaceVariant,
+                          size: 24,
                         ),
                       ),
                     ),
                   ),
                 ),
               ),
-              const SizedBox(height: 9),
+              const SizedBox(height: 8),
               Text(
                 displayName,
-                maxLines: 1,
+                maxLines: 2,
                 overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.labelLarge?.copyWith(
-                  fontWeight: FontWeight.w800,
-                  height: 1.12,
+                style: theme.textTheme.bodyLarge?.copyWith(
+                  fontWeight: FontWeight.w600,
+                  height: 1.35,
                 ),
               ),
               const SizedBox(height: 4),
@@ -120,17 +107,17 @@ class AnimeCard extends StatelessWidget {
                       anime.score,
                       style: theme.textTheme.labelSmall?.copyWith(
                         color: const Color(0xFFFF9F0A),
-                        fontWeight: FontWeight.w800,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
                   ],
                 )
-              else
+              else if (anime.name.isNotEmpty && anime.name != displayName)
                 Text(
                   anime.name,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.labelSmall?.copyWith(
+                  style: theme.textTheme.bodyMedium?.copyWith(
                     color: colors.onSurfaceVariant,
                   ),
                 ),

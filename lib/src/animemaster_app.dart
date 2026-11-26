@@ -37,12 +37,12 @@ class AnimeMasterApp extends StatelessWidget {
                 );
               }
 
-              final String currentTheme = settings.themeMode.toLowerCase();
-              final bool isDark =
-                  currentTheme.contains('dark') ||
-                  settings.themeMode.contains('深色') ||
-                  settings.themeMode.contains('暗');
-
+              final mode = switch (settings.themeMode) {
+                'Dark' => ThemeMode.dark,
+                'Light' => ThemeMode.light,
+                _ => ThemeMode.system,
+              };
+              final palette = AppPalette.parse(settings.palette);
               HapticNavigatorObserver.syncFromSettings(
                 settings.enableHapticFeedback,
               );
@@ -52,9 +52,15 @@ class AnimeMasterApp extends StatelessWidget {
                 navigatorObservers: <NavigatorObserver>[
                   HapticNavigatorObserver(),
                 ],
-                themeMode: isDark ? ThemeMode.dark : ThemeMode.light,
-                theme: AppTheme.light(),
-                darkTheme: AppTheme.dark(),
+                themeMode: mode,
+                theme: AppTheme.light(
+                  palette: palette,
+                  serif: settings.serifTitles,
+                ),
+                darkTheme: AppTheme.dark(
+                  palette: palette,
+                  serif: settings.serifTitles,
+                ),
                 home: _StartupUpdateProbe(
                   settings: settings,
                   child: const HomePage(),

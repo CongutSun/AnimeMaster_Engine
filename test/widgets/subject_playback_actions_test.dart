@@ -146,7 +146,8 @@ void main() {
     await tester.pump();
     cached.add(true);
     await tester.pump();
-    await tester.tap(find.text('继续看第 40 集 · 12:34 · 已缓存'));
+    expect(find.text('上次看到 12:34 · 已缓存'), findsOneWidget);
+    await tester.tap(find.text('继续看第 40 集'));
     expect(opens.single, (
       40,
       const Duration(milliseconds: 754321),
@@ -156,7 +157,7 @@ void main() {
     expect(searches, 2);
     cached.add(false);
     await tester.pump();
-    expect(find.text('继续看第 40 集 · 12:34'), findsOneWidget);
+    expect(find.text('上次看到 12:34'), findsOneWidget);
     history.add(record(40, 1189000));
     await tester.pump();
     expect(find.text('搜索资源'), findsOneWidget);
@@ -192,7 +193,8 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.text('继续看第 40 集 · 12:34 · 已缓存'));
+    expect(find.text('上次看到 12:34 · 已缓存'), findsOneWidget);
+    await tester.tap(find.text('继续看第 40 集'));
     expect(selected?['id'], 9940);
     expect(selected?['ep'], 40);
     expect(tester.takeException(), isNull);

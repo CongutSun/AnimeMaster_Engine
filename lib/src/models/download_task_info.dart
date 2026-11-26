@@ -7,6 +7,7 @@ class DownloadTaskInfo {
   final String savePath;
   final String targetPath;
   final int targetSize;
+  final int audioSize;
   final String subjectTitle;
   final String episodeLabel;
   final int bangumiSubjectId;
@@ -21,6 +22,7 @@ class DownloadTaskInfo {
     required this.savePath,
     required this.targetPath,
     this.targetSize = 0,
+    this.audioSize = 0,
     this.subjectTitle = '',
     this.episodeLabel = '',
     this.bangumiSubjectId = 0,
@@ -37,6 +39,7 @@ class DownloadTaskInfo {
       savePath: json['savePath'],
       targetPath: json['targetPath'] ?? '',
       targetSize: int.tryParse(json['targetSize']?.toString() ?? '') ?? 0,
+      audioSize: int.tryParse(json['audioSize']?.toString() ?? '') ?? 0,
       subjectTitle: json['subjectTitle'] ?? '',
       episodeLabel: json['episodeLabel'] ?? '',
       bangumiSubjectId:
@@ -55,6 +58,7 @@ class DownloadTaskInfo {
     'savePath': savePath,
     'targetPath': targetPath,
     'targetSize': targetSize,
+    'audioSize': audioSize,
     'subjectTitle': subjectTitle,
     'episodeLabel': episodeLabel,
     'bangumiSubjectId': bangumiSubjectId,
@@ -65,12 +69,28 @@ class DownloadTaskInfo {
 
   String get displayTitle => title.trim().isEmpty ? hash : title.trim();
 
+  static final bilibiliKey = RegExp(
+    r'^bili_(BV[0-9A-Za-z]{10})_([1-9][0-9]*)$',
+  );
+  bool get isBilibili => bilibiliKey.hasMatch(hash);
+  String? get bilibiliIdentity {
+    final match = bilibiliKey.firstMatch(hash);
+    return match == null ? null : 'bilibili:${match[1]}:${match[2]}';
+  }
+
+  String? get localAudioUrl =>
+      audioSize > 0 ? File('$savePath/audio.m4a').uri.toString() : null;
+
   Future<bool> hasCompleteFile() async {
     if (!isCompleted || targetPath.isEmpty) return false;
     final stat = await FileStat.stat(targetPath);
-    return stat.type == FileSystemEntityType.file &&
+    final videoReady =
+        stat.type == FileSystemEntityType.file &&
         stat.size > 0 &&
         (targetSize <= 0 || stat.size == targetSize);
+    if (!videoReady || audioSize == 0) return videoReady;
+    final audio = await FileStat.stat('$savePath/audio.m4a');
+    return audio.type == FileSystemEntityType.file && audio.size == audioSize;
   }
 
   String get displaySubtitle {
@@ -88,6 +108,7 @@ class DownloadTaskInfo {
     String? savePath,
     String? targetPath,
     int? targetSize,
+    int? audioSize,
     String? subjectTitle,
     String? episodeLabel,
     int? bangumiSubjectId,
@@ -102,6 +123,7 @@ class DownloadTaskInfo {
       savePath: savePath ?? this.savePath,
       targetPath: targetPath ?? this.targetPath,
       targetSize: targetSize ?? this.targetSize,
+      audioSize: audioSize ?? this.audioSize,
       subjectTitle: subjectTitle ?? this.subjectTitle,
       episodeLabel: episodeLabel ?? this.episodeLabel,
       bangumiSubjectId: bangumiSubjectId ?? this.bangumiSubjectId,

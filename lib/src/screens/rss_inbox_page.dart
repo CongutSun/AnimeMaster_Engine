@@ -223,7 +223,9 @@ class _RssInboxPageState extends State<RssInboxPage> {
   Future<void> _settings() async {
     await Navigator.push(
       context,
-      MaterialPageRoute<void>(builder: (_) => const SettingsPage()),
+      MaterialPageRoute<void>(
+        builder: (_) => const SettingsPage(section: SettingsSection.feeds),
+      ),
     );
     if (mounted) await _refresh();
   }
@@ -288,34 +290,31 @@ class _RssInboxPageState extends State<RssInboxPage> {
                 ),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    child: Wrap(
-                      spacing: 8,
-                      children: [
-                        for (final item in const {
-                          'all': '全部',
-                          'new': '追番更新',
-                          'review': '待确认',
-                          'unmatched': '未匹配',
-                          'done': '已处理',
-                        }.entries)
-                          ChoiceChip(
-                            label: Text(item.value),
-                            selected: _filter == item.key,
-                            onSelected: (_) {
-                              quickHaptic();
-                              setState(() => _filter = item.key);
-                            },
-                          ),
-                      ],
-                    ),
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
                   child: Row(
                     children: [
+                      PopupMenuButton<String>(
+                        tooltip: '筛选',
+                        icon: const Icon(Icons.filter_list_rounded),
+                        initialValue: _filter,
+                        onSelected: (v) {
+                          quickHaptic();
+                          setState(() => _filter = v);
+                        },
+                        itemBuilder: (_) => [
+                          for (final choice in const {
+                            'all': '全部',
+                            'new': '追番更新',
+                            'review': '待确认',
+                            'unmatched': '未匹配',
+                            'done': '已处理',
+                          }.entries)
+                            CheckedPopupMenuItem(
+                              value: choice.key,
+                              checked: _filter == choice.key,
+                              child: Text(choice.value),
+                            ),
+                        ],
+                      ),
                       Expanded(
                         child: Text(
                           '${visible.length} 条资源 · ${sources.length} 个订阅源',

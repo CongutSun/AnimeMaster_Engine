@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../managers/download_manager.dart';
 import '../models/bilibili_video.dart';
 import '../models/online_episode_source.dart';
 import '../models/playable_media.dart';
@@ -9,8 +10,10 @@ import '../repositories/bilibili_episode_mapping_repository.dart';
 import '../services/bilibili_auth_service.dart';
 import '../services/bilibili_video_service.dart';
 import '../utils/bilibili_episode_matcher.dart';
+import '../utils/cached_media_playback.dart';
 import '../widgets/bilibili_account_button.dart';
 import '../widgets/bilibili_part_list.dart';
+import 'download_center_page.dart';
 import 'video_player_page.dart';
 
 class BilibiliVideoDetailsPage extends StatefulWidget {
@@ -113,7 +116,10 @@ class _BilibiliVideoDetailsPageState extends State<BilibiliVideoDetailsPage> {
       _error = '';
     });
     try {
-      PlayableMedia media = await widget.service.resolvePart(video, part);
+      final task = DownloadManager().taskFor('bili_${video.bvid}_${part.cid}');
+      PlayableMedia media = task != null && await task.hasCompleteFile()
+          ? (await CachedMediaPlayback.prepare(task)).media
+          : await widget.service.resolvePart(video, part);
       if (!mounted) return;
       final OnlineEpisodeQuery? query = widget.episodeQuery;
       if (query != null) {
@@ -145,6 +151,65 @@ class _BilibiliVideoDetailsPageState extends State<BilibiliVideoDetailsPage> {
     } finally {
       if (mounted) setState(() => _openingCid = null);
     }
+  }
+
+  Widget _cacheButton(BilibiliVideo video, BilibiliPart part) {
+    final manager = DownloadManager();
+    final task = manager.taskFor('bili_${video.bvid}_${part.cid}');
+    final complete = task?.isCompleted == true;
+    final busy = task != null && !complete && !manager.isPaused(task.hash);
+    return IconButton(
+      tooltip: complete
+          ? '播放离线缓存'
+          : busy
+          ? manager.bilibiliStatus(task)
+          : '缓存 ${part.label}',
+      icon: Icon(
+        complete
+            ? Icons.offline_pin
+            : busy
+            ? Icons.downloading
+            : Icons.download_outlined,
+      ),
+      onPressed: complete
+          ? () => _play(part)
+          : busy
+          ? null
+          : () async {
+              final query = widget.episodeQuery;
+              try {
+                await manager.cacheBilibiliPart(
+                  video,
+                  part,
+                  subjectTitle: query?.subjectTitle ?? widget.subjectTitle,
+                  episodeLabel: query?.episodeLabel ?? '',
+                  bangumiSubjectId:
+                      query?.bangumiSubjectId ?? widget.bangumiSubjectId,
+                  bangumiEpisodeId: query?.bangumiEpisodeId ?? 0,
+                );
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('P${part.page} 已加入缓存队列'),
+                    action: SnackBarAction(
+                      label: '下载中心',
+                      onPressed: () {
+                        if (mounted) {
+                          Navigator.of(context).push<void>(
+                            MaterialPageRoute(
+                              builder: (_) => const DownloadCenterPage(),
+                            ),
+                          );
+                        }
+                      },
+                    ),
+                  ),
+                );
+              } catch (error) {
+                if (mounted) setState(() => _error = _message(error));
+              }
+            },
+    );
   }
 
   @override
@@ -200,15 +265,27 @@ class _BilibiliVideoDetailsPageState extends State<BilibiliVideoDetailsPage> {
                       style: Theme.of(context).textTheme.titleMedium,
                     ),
                     const SizedBox(height: 4),
-                    Text('${video.bvid} · ${video.parts.length} 个分 P'),
+                    Text(
+                      [
+                        video.bvid,
+                        '${video.parts.length} 个分 P',
+                        if (!video.allowsDownload) '未开放离线缓存',
+                      ].join(' · '),
+                    ),
                     const SizedBox(height: 8),
                     if (_recommendation.isNotEmpty) Text(_recommendation),
                     Expanded(
-                      child: BilibiliPartList(
-                        video: video,
-                        openingCid: _openingCid,
-                        recommendedCid: _recommendedCid,
-                        onSelected: _play,
+                      child: ListenableBuilder(
+                        listenable: DownloadManager(),
+                        builder: (_, _) => BilibiliPartList(
+                          video: video,
+                          openingCid: _openingCid,
+                          recommendedCid: _recommendedCid,
+                          onSelected: _play,
+                          cacheButton: video.allowsDownload
+                              ? (part) => _cacheButton(video, part)
+                              : null,
+                        ),
                       ),
                     ),
                   ] else if (_loading)

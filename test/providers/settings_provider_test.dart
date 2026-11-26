@@ -21,11 +21,31 @@ void main() {
   });
 
   group('SettingsProvider appearance', () {
-    test('default theme mode is Light', () async {
+    test('default theme mode follows system', () async {
       final SettingsProvider provider = SettingsProvider();
       await provider.initialize();
-      expect(provider.themeMode, 'Light');
+      expect(provider.themeMode, 'System');
     });
+
+    test(
+      'palette, title style and cleared wallpaper survive a restart',
+      () async {
+        SharedPreferences.setMockInitialValues({'theme_mode': 'Dark'});
+        final settings = SettingsProvider();
+        await settings.initialize();
+        expect(settings.themeMode, 'Dark');
+        await settings.setPalette('amber');
+        await settings.setSerifTitles(false);
+        await settings.setHomeBackground('previous.jpg');
+        await settings.setHomeBackground('');
+        final restored = SettingsProvider();
+        await restored.initialize();
+        expect(restored.themeMode, 'Dark');
+        expect(restored.palette, 'amber');
+        expect(restored.serifTitles, isFalse);
+        expect(restored.customBgPath, isEmpty);
+      },
+    );
 
     test('default close action is minimize', () async {
       final SettingsProvider provider = SettingsProvider();

@@ -41,6 +41,7 @@ class DownloadTaskRecords extends Table {
   TextColumn get savePath => text().withDefault(const Constant(''))();
   TextColumn get targetPath => text().withDefault(const Constant(''))();
   IntColumn get targetSize => integer().withDefault(const Constant(0))();
+  IntColumn get audioSize => integer().withDefault(const Constant(0))();
   TextColumn get subjectTitle => text().withDefault(const Constant(''))();
   TextColumn get episodeLabel => text().withDefault(const Constant(''))();
   IntColumn get bangumiSubjectId => integer().withDefault(const Constant(0))();
@@ -95,13 +96,19 @@ class AppDatabase extends _$AppDatabase {
   static final AppDatabase instance = AppDatabase._();
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
     onCreate: (Migrator migrator) => migrator.createAll(),
     onUpgrade: (Migrator migrator, int from, int to) async {
       if (from < 2) await migrator.createTable(bilibiliEpisodeMappings);
+      if (from < 3) {
+        await migrator.addColumn(
+          downloadTaskRecords,
+          downloadTaskRecords.audioSize,
+        );
+      }
     },
   );
 }

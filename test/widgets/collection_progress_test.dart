@@ -73,7 +73,7 @@ void main() {
       );
       await tester.pumpWidget(page(const ValueKey(1)));
       await tester.pumpAndSettle();
-      expect(find.text('观看进度 5 / 12 集'), findsOneWidget);
+      expect(find.text('5 / 12 集'), findsOneWidget);
       await tester.tap(find.text('看完+1'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('看完+1'));
@@ -81,10 +81,10 @@ void main() {
       expect(adapter.writes, 1);
       adapter.releaseWrite.complete();
       await tester.pumpAndSettle();
-      expect(find.text('观看进度 6 / 12 集'), findsOneWidget);
+      expect(find.text('6 / 12 集'), findsOneWidget);
       await tester.pumpWidget(page(const ValueKey(2)));
       await tester.pumpAndSettle();
-      expect(find.text('观看进度 6 / 12 集'), findsOneWidget);
+      expect(find.text('6 / 12 集'), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
   );

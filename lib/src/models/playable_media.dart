@@ -6,6 +6,7 @@ class PlayableMedia {
   final String url;
   final String? audioUrl;
   final BilibiliPlayback? bilibili;
+  final String? bilibiliCacheIdentity;
   final Map<String, String>? headers;
   final bool isLocal;
   final String localFilePath;
@@ -22,6 +23,7 @@ class PlayableMedia {
     required this.url,
     this.audioUrl,
     this.bilibili,
+    this.bilibiliCacheIdentity,
     this.headers,
     this.isLocal = false,
     this.localFilePath = '',
@@ -49,6 +51,7 @@ class PlayableMedia {
     url: url,
     audioUrl: audioUrl,
     bilibili: bilibili,
+    bilibiliCacheIdentity: bilibiliCacheIdentity,
     headers: headers,
     isLocal: isLocal,
     localFilePath: localFilePath,

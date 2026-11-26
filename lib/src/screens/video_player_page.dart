@@ -904,6 +904,8 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
         PlayableMedia(
           title: cached.displayTitle,
           url: cached.targetPath,
+          audioUrl: cached.localAudioUrl,
+          bilibiliCacheIdentity: cached.bilibiliIdentity,
           isLocal: true,
           localFilePath: cached.targetPath,
           subjectTitle: query.subjectTitle,
@@ -2201,13 +2203,45 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
               children: <Widget>[
                 const _PlayerPanelHeader(
                   icon: Icons.tune_rounded,
-                  title: '弹幕样式',
+                  title: '弹幕设置',
                 ),
                 const Divider(height: 1),
                 Expanded(
                   child: ListView(
                     padding: const EdgeInsets.symmetric(vertical: 8),
                     children: <Widget>[
+                      if (_danmakuStatusText.trim().isNotEmpty)
+                        ListTile(title: Text(_danmakuStatusText)),
+                      if (!_isDanmakuLoading && _activeMedia != null) ...[
+                        ListTile(
+                          leading: const Icon(Icons.search),
+                          title: const Text('手动匹配'),
+                          onTap: () {
+                            Navigator.pop(dialogContext);
+                            _showManualDanmakuSearchSheet();
+                          },
+                        ),
+                        ListTile(
+                          leading: const Icon(Icons.refresh),
+                          title: const Text('刷新弹幕'),
+                          onTap: () {
+                            Navigator.pop(dialogContext);
+                            _prepareDanmakuForMedia(
+                              _activeMedia!,
+                              forceReload: true,
+                            );
+                          },
+                        ),
+                      ],
+                      if (!_isDanmakuLoading && _dandanplayMatch != null)
+                        ListTile(
+                          leading: const Icon(Icons.send),
+                          title: const Text('发送弹幕'),
+                          onTap: () {
+                            Navigator.pop(dialogContext);
+                            _showSendDanmaku();
+                          },
+                        ),
                       SwitchListTile(
                         dense: true,
                         title: const Text('弹幕开关'),
@@ -3029,12 +3063,18 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
                         children: <Widget>[
                           Text(
                             _formatDuration(_effectivePosition),
-                            style: const TextStyle(color: Colors.white70),
+                            style: const TextStyle(
+                              color: Colors.white70,
+                              fontFeatures: [FontFeature.tabularFigures()],
+                            ),
                           ),
                           const Spacer(),
                           Text(
                             _formatDuration(_displayDuration),
-                            style: const TextStyle(color: Colors.white70),
+                            style: const TextStyle(
+                              color: Colors.white70,
+                              fontFeatures: [FontFeature.tabularFigures()],
+                            ),
                           ),
                         ],
                       ),
@@ -3069,95 +3109,50 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
                         ),
                       ),
                       SizedBox(height: isLandscape ? 6 : 4),
-                      Wrap(
-                        spacing: isLandscape ? 8 : 4,
-                        runSpacing: isLandscape ? 4 : 2,
-                        crossAxisAlignment: WrapCrossAlignment.center,
-                        children: <Widget>[
-                          _buildBottomAction(
-                            icon: _danmakuEnabled
-                                ? Icons.subtitles_rounded
-                                : Icons.subtitles_off_rounded,
-                            label: _isDanmakuLoading
-                                ? '弹幕加载'
-                                : (_danmakuEnabled ? '弹幕' : '弹幕关'),
-                            onPressed: _toggleDanmaku,
-                          ),
-                          _buildBottomAction(
-                            icon: Icons.tune_rounded,
-                            label: '弹幕设置',
-                            onPressed: _showDanmakuStyleSheet,
-                          ),
-                          _buildBottomAction(
-                            icon: Icons.speed_rounded,
-                            label:
-                                '倍速 ${_rate.toStringAsFixed(_rate == 1.0 ? 1 : 2)}x',
-                            onPressed: _showRateSheet,
-                          ),
-                          _buildBottomAction(
-                            icon: Icons.hd_rounded,
-                            label:
-                                _bilibiliPlayback?.qualityLabel ??
-                                (_hasOnlineContext
-                                    ? (_isOnlineSourceSearching
-                                          ? '线路搜索'
-                                          : (_onlineSources.isEmpty
-                                                ? '换源'
-                                                : '线路 (${_onlineSources.length})'))
-                                    : '片源'),
-                            onPressed: _bilibiliPlayback != null
-                                ? _showBilibiliQualitySheet
-                                : (_hasOnlineContext
-                                      ? _showOnlineSourceSheet
-                                      : _showCacheSelectionSheet),
-                          ),
-                        ],
-                      ),
-                      if (_danmakuStatusText.trim().isNotEmpty) ...<Widget>[
-                        const SizedBox(height: 6),
-                        Row(
+                      SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Row(
                           children: <Widget>[
-                            Expanded(
-                              child: Text(
-                                _danmakuStatusText,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  color: Colors.white70,
-                                  fontSize: 12,
-                                ),
-                              ),
+                            _buildBottomAction(
+                              icon: _danmakuEnabled
+                                  ? Icons.subtitles_rounded
+                                  : Icons.subtitles_off_rounded,
+                              label: _isDanmakuLoading
+                                  ? '弹幕加载'
+                                  : (_danmakuEnabled ? '弹幕' : '弹幕关'),
+                              onPressed: _toggleDanmaku,
                             ),
-                            if (!_isDanmakuLoading && _activeMedia != null)
-                              TextButton(
-                                onPressed: _showManualDanmakuSearchSheet,
-                                style: TextButton.styleFrom(
-                                  foregroundColor: Colors.white,
-                                  visualDensity: VisualDensity.compact,
-                                ),
-                                child: const Text('手动匹配'),
-                              ),
-                            if (!_isDanmakuLoading && _dandanplayMatch != null)
-                              TextButton(
-                                onPressed: _showSendDanmaku,
-                                style: TextButton.styleFrom(
-                                  foregroundColor: Colors.white,
-                                ),
-                                child: const Text('发送'),
-                              ),
-                            if (!_isDanmakuLoading && _activeMedia != null)
-                              IconButton(
-                                tooltip: '刷新弹幕',
-                                color: Colors.white,
-                                onPressed: () => _prepareDanmakuForMedia(
-                                  _activeMedia!,
-                                  forceReload: true,
-                                ),
-                                icon: const Icon(Icons.refresh),
-                              ),
+                            _buildBottomAction(
+                              icon: Icons.tune_rounded,
+                              label: '弹幕设置',
+                              onPressed: _showDanmakuStyleSheet,
+                            ),
+                            _buildBottomAction(
+                              icon: Icons.speed_rounded,
+                              label:
+                                  '倍速 ${_rate.toStringAsFixed(_rate == 1.0 ? 1 : 2)}x',
+                              onPressed: _showRateSheet,
+                            ),
+                            _buildBottomAction(
+                              icon: Icons.hd_rounded,
+                              label:
+                                  _bilibiliPlayback?.qualityLabel ??
+                                  (_hasOnlineContext
+                                      ? (_isOnlineSourceSearching
+                                            ? '线路搜索'
+                                            : (_onlineSources.isEmpty
+                                                  ? '换源'
+                                                  : '线路 (${_onlineSources.length})'))
+                                      : '片源'),
+                              onPressed: _bilibiliPlayback != null
+                                  ? _showBilibiliQualitySheet
+                                  : (_hasOnlineContext
+                                        ? _showOnlineSourceSheet
+                                        : _showCacheSelectionSheet),
+                            ),
                           ],
                         ),
-                      ],
+                      ),
                     ],
                   ),
                 ),
@@ -3243,10 +3238,9 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
       label: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
       style: TextButton.styleFrom(
         foregroundColor: Colors.white,
-        minimumSize: const Size(0, 34),
+        minimumSize: const Size(48, 48),
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-        visualDensity: VisualDensity.compact,
+        tapTargetSize: MaterialTapTargetSize.padded,
       ),
     );
   }
@@ -3909,7 +3903,9 @@ class _CacheSelectionSheetState extends State<_CacheSelectionSheet> {
                     itemBuilder: (BuildContext context, int index) {
                       final DownloadTaskInfo task = tasks[index];
                       final bool isCompleted = task.isCompleted;
+                      final selectable = isCompleted || !task.isBilibili;
                       return ListTile(
+                        enabled: selectable,
                         contentPadding: const EdgeInsets.symmetric(
                           horizontal: 4,
                           vertical: 2,
@@ -3945,10 +3941,12 @@ class _CacheSelectionSheetState extends State<_CacheSelectionSheet> {
                             fontWeight: FontWeight.w600,
                           ),
                         ),
-                        onTap: () {
-                          Navigator.pop(context);
-                          widget.onSelected(task);
-                        },
+                        onTap: !selectable
+                            ? null
+                            : () {
+                                Navigator.pop(context);
+                                widget.onSelected(task);
+                              },
                       );
                     },
                   ),

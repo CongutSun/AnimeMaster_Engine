@@ -1,4 +1,5 @@
 import 'dart:io';
+import '../theme/app_theme.dart';
 
 import 'package:flutter/material.dart';
 
@@ -22,7 +23,15 @@ class DownloadCenterPage extends StatelessWidget {
       listenable: manager,
       builder: (BuildContext context, Widget? child) {
         final List<DownloadTaskInfo> tasks = manager.allTasks.reversed.toList();
-        final ColorScheme colors = Theme.of(context).colorScheme;
+
+        final active = tasks.where((t) => !t.isCompleted);
+        final complete = tasks.where((t) => t.isCompleted);
+        final rows = <Object>[
+          if (active.isNotEmpty) '下载任务',
+          ...active,
+          if (complete.isNotEmpty) '可离线观看',
+          ...complete,
+        ];
 
         return Scaffold(
           appBar: AppBar(
@@ -91,232 +100,21 @@ class DownloadCenterPage extends StatelessWidget {
                     style: TextStyle(color: Colors.grey),
                   ),
                 )
-              : ListView.separated(
-                  padding: const EdgeInsets.fromLTRB(12, 12, 12, 112),
-                  itemCount: tasks.length,
-                  separatorBuilder: (BuildContext context, int index) =>
-                      const SizedBox(height: 8),
-                  itemBuilder: (BuildContext context, int index) {
-                    final DownloadTaskInfo config = tasks[index];
-                    final double progress = manager.getProgress(config.hash);
-                    final double speed = manager.getSpeed(config.hash);
-                    final double uploadSpeed = manager.getUploadSpeed(
-                      config.hash,
-                    );
-                    final bool isPaused = manager.isPaused(config.hash);
-                    final bool isQueued = manager.isQueued(config.hash);
-                    final bool isCompleted = config.isCompleted;
-                    final bool isSeeding = manager.isSeeding(config.hash);
-                    final bool seedingOff =
-                        isCompleted && !manager.seedingEnabled;
-                    final bool canResume =
-                        isPaused || (!isCompleted && isQueued);
-                    final Color statusColor = isSeeding
-                        ? colors.tertiary
-                        : (isCompleted
-                              ? colors.primary
-                              : (isPaused || isQueued
-                                    ? colors.onSurfaceVariant
-                                    : colors.primary));
-
-                    return Card(
-                      child: Padding(
-                        padding: const EdgeInsets.all(14),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: <Widget>[
-                            Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: <Widget>[
-                                Container(
-                                  width: 44,
-                                  height: 44,
-                                  decoration: BoxDecoration(
-                                    color: colors.primary.withValues(
-                                      alpha: 0.12,
-                                    ),
-                                    borderRadius: BorderRadius.circular(14),
-                                  ),
-                                  child: Icon(
-                                    Icons.download_for_offline_rounded,
-                                    color: colors.primary,
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: <Widget>[
-                                      Text(
-                                        config.displayTitle,
-                                        maxLines: 3,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: const TextStyle(
-                                          fontSize: 15,
-                                          fontWeight: FontWeight.w700,
-                                          height: 1.35,
-                                        ),
-                                      ),
-                                      if (config.displaySubtitle.isNotEmpty ||
-                                          config.bangumiSubjectId >
-                                              0) ...<Widget>[
-                                        const SizedBox(height: 6),
-                                        FutureBuilder<DownloadTaskInfo>(
-                                          future: _enrichTaskEpisodeLabel(
-                                            config,
-                                          ),
-                                          builder:
-                                              (
-                                                BuildContext context,
-                                                AsyncSnapshot<DownloadTaskInfo>
-                                                snapshot,
-                                              ) {
-                                                if (snapshot.hasError) {
-                                                  return Text(
-                                                    config
-                                                            .episodeLabel
-                                                            .isNotEmpty
-                                                        ? config.episodeLabel
-                                                        : config.title,
-                                                    style: TextStyle(
-                                                      fontSize: 12,
-                                                      color: colors
-                                                          .onSurfaceVariant,
-                                                    ),
-                                                  );
-                                                }
-                                                final DownloadTaskInfo task =
-                                                    snapshot.data ?? config;
-                                                return Text(
-                                                  task
-                                                          .displaySubtitle
-                                                          .isNotEmpty
-                                                      ? task.displaySubtitle
-                                                      : '正在匹配剧集信息...',
-                                                  style: TextStyle(
-                                                    fontSize: 12,
-                                                    color:
-                                                        colors.onSurfaceVariant,
-                                                  ),
-                                                );
-                                              },
-                                        ),
-                                      ],
-                                      const SizedBox(height: 6),
-                                      Text(
-                                        '任务哈希：${config.hash}',
-                                        style: TextStyle(
-                                          fontSize: 11,
-                                          color: colors.onSurfaceVariant,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 14),
-                            LinearProgressIndicator(
-                              value: isCompleted ? 1.0 : progress,
-                              minHeight: 8,
-                              borderRadius: BorderRadius.circular(4),
-                              color: statusColor,
-                              backgroundColor: colors.surfaceContainerHighest
-                                  .withValues(
-                                    alpha:
-                                        Theme.of(context).brightness ==
-                                            Brightness.dark
-                                        ? 0.72
-                                        : 0.9,
-                                  ),
-                            ),
-                            const SizedBox(height: 8),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 10,
-                                vertical: 5,
-                              ),
-                              decoration: BoxDecoration(
-                                color: statusColor.withValues(alpha: 0.12),
-                                borderRadius: BorderRadius.circular(99),
-                              ),
-                              child: Text(
-                                _buildStatusText(
-                                  progress: progress,
-                                  isPaused: isPaused,
-                                  isQueued: isQueued,
-                                  isCompleted: isCompleted,
-                                  isSeeding: isSeeding,
-                                  seedingOff: seedingOff,
-                                  speed: speed,
-                                  uploadSpeed: uploadSpeed,
-                                ),
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: statusColor,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.end,
-                              children: <Widget>[
-                                if (!isPaused && !isQueued && !isCompleted)
-                                  Expanded(
-                                    child: Text(
-                                      manager.getConnectedPeers(config.hash) ==
-                                              0
-                                          ? '正在寻找可用连接…'
-                                          : '已连接 ${manager.getConnectedPeers(config.hash)} 个节点',
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        color: colors.onSurfaceVariant,
-                                      ),
-                                    ),
-                                  ),
-                                IconButton(
-                                  tooltip: '播放',
-                                  icon: const Icon(
-                                    Icons.play_circle_fill_rounded,
-                                    color: Colors.green,
-                                  ),
-                                  onPressed: () => _playVideo(context, config),
-                                ),
-                                IconButton(
-                                  tooltip: seedingOff
-                                      ? '做种已关闭'
-                                      : canResume
-                                      ? (isCompleted ? '开始做种' : '继续')
-                                      : (isCompleted ? '暂停做种' : '暂停'),
-                                  icon: Icon(
-                                    canResume || seedingOff
-                                        ? Icons.play_arrow_rounded
-                                        : Icons.pause_rounded,
-                                  ),
-                                  onPressed: seedingOff
-                                      ? null
-                                      : () => manager.toggleTask(config.hash),
-                                ),
-                                IconButton(
-                                  tooltip: '删除',
-                                  icon: const Icon(
-                                    Icons.delete_outline_rounded,
-                                    color: Colors.redAccent,
-                                  ),
-                                  onPressed: () => _confirmDelete(
-                                    context,
-                                    manager,
-                                    config.hash,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
+              : ListView.builder(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
+                  itemCount: rows.length,
+                  itemBuilder: (context, index) {
+                    final row = rows[index];
+                    if (row is String) {
+                      return Padding(
+                        padding: const EdgeInsets.fromLTRB(0, 16, 0, 12),
+                        child: Text(
+                          row,
+                          style: Theme.of(context).textTheme.titleLarge,
                         ),
-                      ),
-                    );
+                      );
+                    }
+                    return _taskCard(context, manager, row as DownloadTaskInfo);
                   },
                 ),
           floatingActionButton: FloatingActionButton.extended(
@@ -326,6 +124,150 @@ class DownloadCenterPage extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+
+  Widget _taskCard(
+    BuildContext context,
+    DownloadManager manager,
+    DownloadTaskInfo task,
+  ) {
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+    final hash = task.hash;
+    final complete = task.isCompleted;
+    final paused = manager.isPaused(hash);
+    final queued = manager.isQueued(hash);
+    final progress = manager.getProgress(hash);
+    final seeding = manager.isSeeding(hash);
+    final seedingOff = complete && !manager.seedingEnabled;
+    final status = task.isBilibili
+        ? manager.bilibiliStatus(task)
+        : _buildStatusText(
+            progress: progress,
+            isPaused: paused,
+            isQueued: queued,
+            isCompleted: complete,
+            isSeeding: seeding,
+            seedingOff: seedingOff,
+            speed: manager.getSpeed(hash),
+            uploadSpeed: manager.getUploadSpeed(hash),
+          );
+    final statusColor = complete
+        ? AppTheme.success(context)
+        : paused || queued
+        ? colors.onSurfaceVariant
+        : colors.primary;
+    final resume = paused || (!complete && queued);
+    return Card(
+      key: ValueKey(hash),
+      margin: const EdgeInsets.only(bottom: 12),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(task.displayTitle, style: theme.textTheme.titleMedium),
+            if (task.displaySubtitle.isNotEmpty)
+              Text(
+                task.displaySubtitle,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: colors.onSurfaceVariant,
+                ),
+              ),
+            const SizedBox(height: 8),
+            if (!complete) ...[
+              LinearProgressIndicator(value: progress.clamp(0.0, 1.0)),
+              const SizedBox(height: 8),
+            ],
+            Text(
+              status,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: statusColor,
+                fontFeatures: const [FontFeature.tabularFigures()],
+              ),
+            ),
+            if (!complete && !task.isBilibili && !paused && !queued)
+              Text(
+                manager.getConnectedPeers(hash) == 0
+                    ? '正在寻找可用连接…'
+                    : '已连接 ${manager.getConnectedPeers(hash)} 个节点',
+                style: theme.textTheme.bodyMedium,
+              ),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                if (!task.isBilibili || complete)
+                  IconButton(
+                    tooltip: '播放',
+                    icon: const Icon(Icons.play_circle_fill_rounded),
+                    onPressed: () => _playVideo(context, task),
+                  ),
+                if (!complete)
+                  IconButton(
+                    tooltip: resume ? (task.isBilibili ? '重新缓存' : '继续') : '暂停',
+                    icon: Icon(
+                      resume ? Icons.play_arrow_rounded : Icons.pause_rounded,
+                    ),
+                    onPressed: () => manager.toggleTask(hash),
+                  ),
+                const SizedBox(width: 8),
+                PopupMenuButton<String>(
+                  tooltip: '更多',
+                  onSelected: (action) {
+                    if (action == 'seed') manager.toggleTask(hash);
+                    if (action == 'delete') {
+                      _confirmDelete(context, manager, hash);
+                    }
+                    if (action == 'details') {
+                      showDialog<void>(
+                        context: context,
+                        builder: (ctx) => AlertDialog(
+                          scrollable: true,
+                          title: const Text('任务详情'),
+                          content: FutureBuilder<DownloadTaskInfo>(
+                            future: _enrichTaskEpisodeLabel(task),
+                            builder: (context, snapshot) => SelectableText(
+                              [
+                                task.displayTitle,
+                                (snapshot.data ?? task).displaySubtitle,
+                                status,
+                                if (!task.isBilibili) '任务哈希：$hash',
+                              ].where((line) => line.isNotEmpty).join('\n'),
+                            ),
+                          ),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(ctx),
+                              child: const Text('关闭'),
+                            ),
+                          ],
+                        ),
+                      );
+                    }
+                  },
+                  itemBuilder: (_) => [
+                    if (complete && !task.isBilibili)
+                      PopupMenuItem(
+                        value: 'seed',
+                        enabled: !seedingOff,
+                        child: Text(
+                          seedingOff
+                              ? '做种已关闭'
+                              : paused
+                              ? '开始做种'
+                              : '暂停做种',
+                        ),
+                      ),
+                    const PopupMenuItem(value: 'details', child: Text('任务详情')),
+                    const PopupMenuItem(value: 'delete', child: Text('删除')),
+                  ],
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -367,7 +309,8 @@ class DownloadCenterPage extends StatelessWidget {
   Future<DownloadTaskInfo> _enrichTaskEpisodeLabel(
     DownloadTaskInfo config,
   ) async {
-    if (config.bangumiSubjectId <= 0 ||
+    if (config.isBilibili ||
+        config.bangumiSubjectId <= 0 ||
         config.episodeLabel.contains('·') ||
         config.episodeLabel.contains('集 ·')) {
       return config;

@@ -96,15 +96,17 @@ Map<String, dynamic> _dash() => <String, dynamic>{
 void main() {
   late List<RequestOptions> requests;
   late Map<String, dynamic> playResponse;
+  late Map<String, dynamic> viewResponse;
   late BilibiliVideoService service;
   setUp(() {
     requests = <RequestOptions>[];
     playResponse = _dash();
+    viewResponse = _view();
     final Dio dio = Dio()
       ..httpClientAdapter = _Adapter((RequestOptions options) {
         requests.add(options);
         return _reply(switch (options.uri.path) {
-          '/x/web-interface/view' => _view(),
+          '/x/web-interface/view' => viewResponse,
           '/x/web-interface/nav' => _nav(),
           _ => playResponse,
         });
@@ -114,6 +116,18 @@ void main() {
       cookieProvider: () async => '',
       clock: () => DateTime.fromMillisecondsSinceEpoch(1702204169000),
     );
+  });
+
+  test('仅明确允许下载的稿件显示缓存，受限的播放响应保留在线播放标记', () async {
+    expect((await service.loadVideo(_bvid)).allowsDownload, isFalse);
+    viewResponse['data']['rights'] = {'download': 1};
+    final video = await service.loadVideo(_bvid);
+    expect(video.allowsDownload, isTrue);
+    viewResponse['data']['rights'] = {'download': 1, 'no_cache': true};
+    expect((await service.loadVideo(_bvid)).allowsDownload, isFalse);
+    playResponse['data']['is_preview'] = 1;
+    final preview = await service.resolvePart(video, video.parts.first);
+    expect(preview.bilibili!.restrictedToStreaming, isTrue);
   });
 
   test('续播按历史 CID 取分 P，原分 P 移除后不会跳到其他分 P', () async {

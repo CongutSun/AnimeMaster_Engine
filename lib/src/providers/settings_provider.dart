@@ -34,7 +34,11 @@ class SettingsProvider with ChangeNotifier {
   bool _isLoaded = false;
 
   String _closeAction = 'minimize';
-  String _themeMode = 'Light';
+  String _themeMode = 'System';
+  String _palette = 'ink';
+  bool _serifTitles = true;
+  String get palette => _palette;
+  bool get serifTitles => _serifTitles;
   String _customBgPath = '';
   String _appUpdateFeedUrl = '';
   bool _autoCheckUpdates = true;
@@ -67,6 +71,9 @@ class SettingsProvider with ChangeNotifier {
   bool get hasBangumiGatewaySession =>
       _bgmGatewaySessionId.trim().isNotEmpty && hasBangumiAuthGateway;
   String get bangumiRedirectUri => BangumiOAuthService.redirectUri;
+
+  String get customDandanplayAppId => _dandanplayAppId;
+  String get customDandanplayAppSecret => _dandanplayAppSecret;
 
   String get dandanplayAppId {
     if (_dandanplayAppId.trim().isNotEmpty ||
@@ -116,6 +123,8 @@ class SettingsProvider with ChangeNotifier {
 
     _bgmAcc = prefs.getString('bgm_acc') ?? '';
     _closeAction = prefs.getString('close_action') ?? 'minimize';
+    _palette = prefs.getString('ui_palette') ?? 'ink';
+    _serifTitles = prefs.getBool('ui_serif_titles') ?? true;
     _themeMode = _normalizeThemeMode(prefs.getString('theme_mode'));
     _customBgPath = prefs.getString('custom_bg_path') ?? '';
     final String? storedUpdateFeedUrl = prefs.getString('app_update_feed_url');
@@ -337,6 +346,41 @@ class SettingsProvider with ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> setPalette(String value) async {
+    final prefs = await SharedPreferences.getInstance();
+    if (!await prefs.setString('ui_palette', value)) throw StateError('无法保存配色');
+    _palette = value;
+    notifyListeners();
+  }
+
+  Future<void> setSerifTitles(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    if (!await prefs.setBool('ui_serif_titles', value)) {
+      throw StateError('无法保存标题样式');
+    }
+    _serifTitles = value;
+    notifyListeners();
+  }
+
+  Future<void> setDisplayMode(String value) async {
+    final mode = _normalizeThemeMode(value);
+    final prefs = await SharedPreferences.getInstance();
+    if (!await prefs.setString('theme_mode', mode)) {
+      throw StateError('无法保存明暗模式');
+    }
+    _themeMode = mode;
+    notifyListeners();
+  }
+
+  Future<void> setHomeBackground(String path) async {
+    final prefs = await SharedPreferences.getInstance();
+    if (!await prefs.setString('custom_bg_path', path)) {
+      throw StateError('无法保存首页背景');
+    }
+    _customBgPath = path;
+    notifyListeners();
+  }
+
   Future<void> updateAppearance(
     String action,
     String mode,
@@ -517,6 +561,7 @@ class SettingsProvider with ChangeNotifier {
 
   String _normalizeThemeMode(String? rawValue) {
     final String value = (rawValue ?? '').toLowerCase();
+    if (value.isEmpty || value == 'system') return 'System';
     if (value.contains('dark')) {
       return 'Dark';
     }

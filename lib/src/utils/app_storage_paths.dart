@@ -4,6 +4,8 @@ import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as path_util;
 import 'package:path_provider/path_provider.dart';
 
+import '../models/download_task_info.dart';
+
 class AppStoragePaths {
   static Future<Directory> get _engineRoot async {
     final baseDir = await getApplicationSupportDirectory();
@@ -30,6 +32,17 @@ class AppStoragePaths {
     }
 
     return taskDir;
+  }
+
+  static Future<Directory> bilibiliTaskDirectory(String key) async {
+    if (!DownloadTaskInfo.bilibiliKey.hasMatch(key)) {
+      throw const FormatException('Invalid Bilibili part identifier.');
+    }
+    final dir = Directory(path_util.join((await _engineRoot).path, key));
+    if (!await isManagedTaskDirectory(dir.path)) {
+      throw const FileSystemException('无效的缓存目录');
+    }
+    return dir.create(recursive: true);
   }
 
   static Future<bool> isManagedTaskDirectory(String path) async {

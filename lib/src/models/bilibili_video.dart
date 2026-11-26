@@ -18,11 +18,13 @@ class BilibiliVideo {
   final String bvid;
   final String title;
   final List<BilibiliPart> parts;
+  final bool allowsDownload;
 
   BilibiliVideo({
     required this.bvid,
     required this.title,
     required List<BilibiliPart> parts,
+    this.allowsDownload = false,
   }) : parts = List<BilibiliPart>.unmodifiable(parts);
 }
 
@@ -31,6 +33,7 @@ class BilibiliPlayback {
   final BilibiliPart part;
   final String qualityLabel;
   final int qualityId;
+  final bool restrictedToStreaming;
   final List<BilibiliQuality> qualities;
 
   const BilibiliPlayback({
@@ -38,6 +41,7 @@ class BilibiliPlayback {
     required this.part,
     required this.qualityLabel,
     this.qualityId = 0,
+    this.restrictedToStreaming = false,
     this.qualities = const <BilibiliQuality>[],
   });
 

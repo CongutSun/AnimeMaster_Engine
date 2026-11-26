@@ -150,6 +150,8 @@ void main() {
         await tester.tap(find.text('忽略'));
         await tester.pumpAndSettle();
         expect(store.entries.single.state, 'ignored');
+        await tester.tap(find.byTooltip('筛选'));
+        await tester.pumpAndSettle();
         await tester.tap(find.text('已处理'));
         await tester.pumpAndSettle();
         expect(find.textContaining('已忽略'), findsOneWidget);
@@ -205,7 +207,7 @@ void main() {
           expect(find.textContaining('发现未看集数'), findsOneWidget);
         } else {
           expect(adapter.offsets, [0]);
-          final list = find.byType(ListView);
+          final list = find.byType(CustomScrollView);
           final scroll = tester.state<ScrollableState>(
             find.descendant(of: list, matching: find.byType(Scrollable)).first,
           );
@@ -218,8 +220,11 @@ void main() {
           await tester.tap(find.text('加载更多'));
           await tester.pumpAndSettle();
           expect(
-            tester.widget<ListView>(list).childrenDelegate.estimatedChildCount,
-            101,
+            tester
+                .widget<SliverGrid>(find.byType(SliverGrid))
+                .delegate
+                .estimatedChildCount,
+            100,
           );
           final retry = find.text('下一页加载失败，点击重试。');
           expect(retry, findsOneWidget);

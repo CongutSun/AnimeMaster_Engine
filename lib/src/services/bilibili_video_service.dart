@@ -194,8 +194,13 @@ class BilibiliVideoService {
     if (parts.isEmpty) {
       throw const BilibiliVideoException('这个视频没有可播放的分 P。');
     }
+    final rights = _map(data['rights']);
     return BilibiliVideo(
       bvid: bvid,
+      allowsDownload:
+          _flag(rights['download']) &&
+          !_flag(rights['no_cache']) &&
+          !_flag(rights['is_drm']),
       title: _text(data['title']).isEmpty ? bvid : _text(data['title']),
       parts: parts,
     );
@@ -313,6 +318,8 @@ class BilibiliVideoService {
         part: part,
         qualityLabel: qualityLabel,
         qualityId: quality,
+        restrictedToStreaming:
+            _flag(data['is_preview']) || _flag(data['is_drm']),
         qualities: List<BilibiliQuality>.unmodifiable(qualities),
       ),
     );
@@ -497,6 +504,8 @@ class BilibiliVideoService {
 
   static int _integer(dynamic value) =>
       value is num ? value.toInt() : int.tryParse('$value') ?? 0;
+
+  static bool _flag(dynamic value) => value == true || _integer(value) == 1;
 
   static bool _isAvc(Map<String, dynamic> track) {
     final int code = _integer(track['codecid']);

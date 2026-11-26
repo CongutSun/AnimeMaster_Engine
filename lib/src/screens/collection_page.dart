@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../providers/settings_provider.dart';
 import '../api/bangumi_api.dart';
 import '../models/anime.dart';
+import '../widgets/anime_card.dart';
 import 'detail_page.dart';
 import '../widgets/rss_inbox_entry_point.dart';
 
@@ -232,347 +233,155 @@ class _CollectionPageState extends State<CollectionPage> {
     final theme = Theme.of(context);
     final colors = theme.colorScheme;
 
-    return Theme(
-      data: theme.copyWith(
-        textTheme: theme.textTheme.apply(
-          fontFamily: 'Microsoft YaHei',
-          fontFamilyFallback: ['PingFang SC', 'sans-serif'],
-        ),
-      ),
-      child: Scaffold(
-        appBar: AppBar(
-          title: const Text(
-            '我的二次元库',
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-          ),
-          centerTitle: false,
-          actions: [
-            Padding(
-              padding: const EdgeInsets.only(right: 16.0),
-              child: SegmentedButton<int>(
-                showSelectedIcon: false,
-                segments: const <ButtonSegment<int>>[
-                  ButtonSegment<int>(
-                    value: 2,
-                    icon: Icon(Icons.tv_rounded, size: 16),
-                    label: Text('番剧'),
+    return Scaffold(
+      appBar: AppBar(title: const Text('收藏')),
+      body: CustomScrollView(
+        slivers: [
+          const SliverToBoxAdapter(child: RssInboxEntryPoint()),
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+            sliver: SliverToBoxAdapter(
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  SegmentedButton<int>(
+                    showSelectedIcon: false,
+                    segments: const [
+                      ButtonSegment(value: 2, label: Text('番剧')),
+                      ButtonSegment(value: 1, label: Text('书籍')),
+                    ],
+                    selected: {currentSubjectType},
+                    onSelectionChanged: (v) {
+                      setState(() => currentSubjectType = v.first);
+                      _loadCollection();
+                    },
                   ),
-                  ButtonSegment<int>(
-                    value: 1,
-                    icon: Icon(Icons.menu_book_rounded, size: 16),
-                    label: Text('书籍'),
+                  DropdownButton<int>(
+                    value: currentType,
+                    items: typeMap.entries
+                        .map(
+                          (e) => DropdownMenuItem(
+                            value: e.key,
+                            child: Text(e.value.split(' ').first),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (v) {
+                      if (v != null) {
+                        setState(() => currentType = v);
+                        _loadCollection();
+                      }
+                    },
+                  ),
+                  IconButton(
+                    tooltip: '刷新',
+                    onPressed: _loadCollection,
+                    icon: const Icon(Icons.refresh_rounded),
                   ),
                 ],
-                selected: <int>{currentSubjectType},
-                onSelectionChanged: (Set<int> value) {
-                  setState(() => currentSubjectType = value.first);
-                  _loadCollection();
+              ),
+            ),
+          ),
+          if (isLoading || provider.bgmAcc.isEmpty || collectionList.isEmpty)
+            SliverFillRemaining(
+              hasScrollBody: false,
+              child: Center(
+                child: isLoading
+                    ? const CircularProgressIndicator()
+                    : provider.bgmAcc.isEmpty
+                    ? const Text('登录 Bangumi 后可查看收藏')
+                    : _loadError == null
+                    ? const Text('这个分类下还没有收藏')
+                    : TextButton(
+                        onPressed: _loadCollection,
+                        child: Text(_loadError!),
+                      ),
+              ),
+            )
+          else ...[
+            SliverPadding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              sliver: SliverLayoutBuilder(
+                builder: (context, constraints) {
+                  final scale = MediaQuery.textScalerOf(context);
+                  final minWidth = 108 * (scale.scale(16) / 16).clamp(1.0, 2.0);
+                  final count =
+                      ((constraints.crossAxisExtent + 12) / (minWidth + 12))
+                          .floor()
+                          .clamp(1, 8);
+                  final width =
+                      (constraints.crossAxisExtent - (count - 1) * 12) / count;
+                  return SliverGrid.builder(
+                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: count,
+                      mainAxisExtent:
+                          width * 1.5 +
+                          scale.scale(16) * 2.8 +
+                          scale.scale(14) * 3.4 +
+                          82,
+                      crossAxisSpacing: 12,
+                      mainAxisSpacing: 16,
+                    ),
+                    itemCount: collectionList.length,
+                    itemBuilder: (context, i) {
+                      final anime = collectionList[i];
+                      final book = currentSubjectType == 1;
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          AnimeCard(
+                            anime: anime,
+                            onTap: () async {
+                              await Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => DetailPage(
+                                    animeId: anime.id,
+                                    initialName: anime.displayName,
+                                    subjectType: currentSubjectType,
+                                  ),
+                                ),
+                              );
+                              if (mounted) await _loadCollection();
+                            },
+                          ),
+                          Text(
+                            '${anime.epStatus} / ${anime.eps > 0 ? anime.eps : '?'} ${book ? '话' : '集'}',
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: colors.onSurfaceVariant,
+                            ),
+                          ),
+                          if (book || currentType == 3)
+                            TextButton(
+                              onPressed: book
+                                  ? () => _showUpdateBottomSheet(context, anime)
+                                  : _updatingIds.contains(anime.id) ||
+                                        (anime.eps > 0 &&
+                                            anime.epStatus >= anime.eps)
+                                  ? null
+                                  : () => _directAddEp(anime.id),
+                              child: Text(book ? '快捷更新' : '看完+1'),
+                            ),
+                        ],
+                      );
+                    },
+                  );
                 },
               ),
             ),
-          ],
-        ),
-        body: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const RssInboxEntryPoint(),
-            Container(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 16.0,
-                vertical: 12.0,
-              ),
-              decoration: BoxDecoration(
-                color: colors.surface,
-                border: Border(
-                  bottom: BorderSide(color: colors.outlineVariant),
+            if (_nextOffset != null)
+              SliverToBoxAdapter(
+                child: TextButton(
+                  onPressed: _loadingMore
+                      ? null
+                      : () => _loadCollection(more: true),
+                  child: Text(_loadingMore ? '正在加载…' : _loadError ?? '加载更多'),
                 ),
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Text(
-                        currentSubjectType == 2 ? '追番库' : '书库',
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const Spacer(),
-                      Container(
-                        height: 38,
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
-                        decoration: BoxDecoration(
-                          color: colors.surfaceContainerHighest,
-                          border: Border.all(color: colors.outlineVariant),
-                          borderRadius: BorderRadius.circular(13),
-                        ),
-                        child: DropdownButtonHideUnderline(
-                          child: DropdownButton<int>(
-                            value: currentType,
-                            borderRadius: BorderRadius.circular(18),
-                            dropdownColor: colors.surface,
-                            menuMaxHeight: 320,
-                            items: typeMap.entries.map((e) {
-                              return DropdownMenuItem<int>(
-                                value: e.key,
-                                child: Text(
-                                  e.value,
-                                  style: const TextStyle(fontSize: 13),
-                                ),
-                              );
-                            }).toList(),
-                            onChanged: (val) {
-                              if (val != null) {
-                                setState(() => currentType = val);
-                                _loadCollection();
-                              }
-                            },
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      SizedBox(
-                        height: 38,
-                        child: IconButton.filledTonal(
-                          tooltip: '刷新',
-                          onPressed: _loadCollection,
-                          icon: const Icon(Icons.refresh_rounded, size: 18),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: <Widget>[
-                      Icon(
-                        Icons.info_outline_rounded,
-                        size: 15,
-                        color: colors.onSurfaceVariant,
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                        '点击标题可查看详情或去下载',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: colors.onSurfaceVariant,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            Expanded(
-              child: isLoading
-                  ? const Center(child: CircularProgressIndicator())
-                  : provider.bgmAcc.isEmpty
-                  ? const Center(
-                      child: Text(
-                        '请先在设置中配置 Bgm 账号 🥲',
-                        style: TextStyle(color: Colors.grey),
-                      ),
-                    )
-                  : _loadError != null && collectionList.isEmpty
-                  ? Center(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(_loadError!),
-                          TextButton(
-                            onPressed: _loadCollection,
-                            child: const Text('重试'),
-                          ),
-                        ],
-                      ),
-                    )
-                  : collectionList.isEmpty
-                  ? const Center(
-                      child: Text(
-                        '这个状态下空空如也~',
-                        style: TextStyle(color: Colors.grey),
-                      ),
-                    )
-                  : ListView.builder(
-                      padding: const EdgeInsets.all(16.0),
-                      itemCount:
-                          collectionList.length + (_nextOffset == null ? 0 : 1),
-                      itemBuilder: (context, index) {
-                        if (index == collectionList.length) {
-                          return TextButton(
-                            onPressed: _loadingMore
-                                ? null
-                                : () => _loadCollection(more: true),
-                            child: Text(
-                              _loadingMore ? '正在加载…' : _loadError ?? '加载更多',
-                            ),
-                          );
-                        }
-                        final anime = collectionList[index];
-                        String totalEpStr = anime.eps > 0
-                            ? anime.eps.toString()
-                            : '?';
-
-                        final double progress = anime.eps > 0
-                            ? anime.epStatus / anime.eps
-                            : 0;
-                        return Container(
-                          margin: const EdgeInsets.only(bottom: 12.0),
-                          decoration: BoxDecoration(
-                            color: colors.surface,
-                            borderRadius: BorderRadius.circular(18),
-                            border: Border.all(color: colors.outlineVariant),
-                            boxShadow: <BoxShadow>[
-                              BoxShadow(
-                                color: Colors.black.withValues(
-                                  alpha: theme.brightness == Brightness.dark
-                                      ? 0.18
-                                      : 0.04,
-                                ),
-                                blurRadius: 18,
-                                offset: const Offset(0, 8),
-                              ),
-                            ],
-                          ),
-                          child: Padding(
-                            padding: const EdgeInsets.all(16.0),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                MouseRegion(
-                                  cursor: SystemMouseCursors.click,
-                                  child: GestureDetector(
-                                    onTap: () async {
-                                      await Navigator.push(
-                                        context,
-                                        MaterialPageRoute(
-                                          builder: (context) => DetailPage(
-                                            animeId: anime.id,
-                                            initialName: anime.displayName,
-                                            subjectType: currentSubjectType,
-                                          ),
-                                        ),
-                                      );
-                                      if (mounted) await _loadCollection();
-                                    },
-                                    child: Text(
-                                      anime.displayName,
-                                      style: TextStyle(
-                                        fontSize: 15,
-                                        fontWeight: FontWeight.bold,
-                                        color: colors.primary,
-                                        height: 1.4,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(height: 16),
-                                Row(
-                                  mainAxisAlignment:
-                                      MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: <Widget>[
-                                          Text(
-                                            currentSubjectType == 2
-                                                ? '观看进度 ${anime.epStatus} / $totalEpStr 集'
-                                                : '阅读进度 ${anime.epStatus} / $totalEpStr 话(卷)',
-                                            style: TextStyle(
-                                              fontSize: 13,
-                                              color: colors.onSurfaceVariant,
-                                            ),
-                                          ),
-                                          if (anime.eps > 0) ...<Widget>[
-                                            const SizedBox(height: 8),
-                                            LinearProgressIndicator(
-                                              value: progress
-                                                  .clamp(0.0, 1.0)
-                                                  .toDouble(),
-                                              minHeight: 5,
-                                              borderRadius:
-                                                  BorderRadius.circular(99),
-                                            ),
-                                          ],
-                                        ],
-                                      ),
-                                    ),
-
-                                    // ✨ UI 判断：书籍弹出弹窗，番剧直通+1
-                                    if (currentSubjectType == 1) ...[
-                                      SizedBox(
-                                        height: 48,
-                                        child: FilledButton.tonalIcon(
-                                          onPressed: () =>
-                                              _showUpdateBottomSheet(
-                                                context,
-                                                anime,
-                                              ),
-                                          icon: const Icon(
-                                            Icons.edit_note,
-                                            size: 18,
-                                          ),
-                                          label: const Text(
-                                            '快捷更新',
-                                            style: TextStyle(
-                                              fontWeight: FontWeight.bold,
-                                              fontSize: 13,
-                                            ),
-                                          ),
-                                          style: FilledButton.styleFrom(
-                                            padding: const EdgeInsets.symmetric(
-                                              horizontal: 16,
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                    ] else if (currentSubjectType == 2 &&
-                                        currentType == 3) ...[
-                                      SizedBox(
-                                        height: 48,
-                                        child: FilledButton.icon(
-                                          onPressed:
-                                              (_updatingIds.contains(
-                                                    anime.id,
-                                                  ) ||
-                                                  (anime.eps > 0 &&
-                                                      anime.epStatus >=
-                                                          anime.eps))
-                                              ? null
-                                              : () => _directAddEp(anime.id),
-                                          icon: const Icon(
-                                            Icons.done_rounded,
-                                            size: 18,
-                                          ),
-                                          label: const Text(
-                                            '看完+1',
-                                            style: TextStyle(
-                                              fontWeight: FontWeight.bold,
-                                              fontSize: 13,
-                                            ),
-                                          ),
-                                          style: FilledButton.styleFrom(
-                                            padding: const EdgeInsets.symmetric(
-                                              horizontal: 16,
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ],
-                                ),
-                              ],
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-            ),
           ],
-        ),
+        ],
       ),
     );
   }
