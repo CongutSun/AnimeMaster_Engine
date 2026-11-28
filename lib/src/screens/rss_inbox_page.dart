@@ -1,3 +1,4 @@
+import '../widgets/app_feedback.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../api/bangumi_api.dart';
@@ -122,18 +123,20 @@ class _RssInboxPageState extends State<RssInboxPage> {
       await operation();
     } catch (_) {
       if (mounted) {
-        ScaffoldMessenger.of(
+        AppFeedback.show(
           context,
-        ).showSnackBar(const SnackBar(content: Text('记录保存失败，请稍后重试。')));
+          const SnackBar(content: Text('记录保存失败，请稍后重试。')),
+        );
       }
     }
   }
 
   Future<void> _choose({RssInboxEntry? entry}) async {
     if (_watching.isEmpty) {
-      ScaffoldMessenger.of(
+      AppFeedback.show(
         context,
-      ).showSnackBar(const SnackBar(content: Text('请先登录 Bangumi 并将番剧加入“在看”。')));
+        const SnackBar(content: Text('请先登录 Bangumi 并将番剧加入“在看”。')),
+      );
       return;
     }
     final selected = await showModalBottomSheet<Anime>(
@@ -185,19 +188,19 @@ class _RssInboxPageState extends State<RssInboxPage> {
 
   Future<void> _download(RssInboxEntry entry) async {
     if (_downloading) return;
-    final matches = _matches(entry);
-    final anime = matches.length == 1 ? matches.single : null;
-    final episode = _episode(entry, matches);
-    final confirmed = await showDialog<int>(
-      context: context,
-      builder: (_) =>
-          _RssDownloadDialog(entry: entry, anime: anime, episode: episode),
-    );
-    if (!mounted || confirmed == null) return;
     setState(() => _downloading = true);
     try {
+      final matches = _matches(entry);
+      final anime = matches.length == 1 ? matches.single : null;
+      final episode = _episode(entry, matches);
+      final confirmed = await showDialog<int>(
+        context: context,
+        builder: (_) =>
+            _RssDownloadDialog(entry: entry, anime: anime, episode: episode),
+      );
+      if (!mounted || confirmed == null) return;
       var added = false;
-      final error = await MagnetActionHelper.process(
+      await MagnetActionHelper.process(
         context,
         entry.resource.downloadUrl,
         onTaskAdded: () => added = true,
@@ -210,10 +213,6 @@ class _RssInboxPageState extends State<RssInboxPage> {
       );
       if (added) {
         await _save(() => store.mark(entry, 'downloaded'));
-      } else if (error != null && mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('未能加入下载，请检查资源是否可用后重试。')));
       }
     } finally {
       if (mounted) setState(() => _downloading = false);
@@ -601,6 +600,7 @@ class _RssRuleDialogState extends State<_RssRuleDialog> {
     for (final key in ['aliases', 'include', 'quality', 'exclude', 'offset'])
       key: TextEditingController(text: widget.rule[key] ?? ''),
   };
+  String? offsetError;
   late bool enabled = widget.rule['enabled'] != 'false';
   late String source =
       widget.sources.any((s) => rssSourceId(s) == widget.rule['source'])
@@ -658,7 +658,17 @@ class _RssRuleDialogState extends State<_RssRuleDialog> {
               child: TextField(
                 controller: fields[field.key],
                 maxLines: field.key == 'aliases' ? 3 : 1,
-                decoration: InputDecoration(labelText: field.value),
+                onChanged: field.key == 'offset'
+                    ? (_) {
+                        if (offsetError != null) {
+                          setState(() => offsetError = null);
+                        }
+                      }
+                    : null,
+                decoration: InputDecoration(
+                  labelText: field.value,
+                  errorText: field.key == 'offset' ? offsetError : null,
+                ),
               ),
             ),
           const SizedBox(height: 12),
@@ -675,9 +685,7 @@ class _RssRuleDialogState extends State<_RssRuleDialog> {
         onPressed: () {
           final offset = fields['offset']!.text.trim();
           if (offset.isNotEmpty && int.tryParse(offset) == null) {
-            ScaffoldMessenger.of(
-              context,
-            ).showSnackBar(const SnackBar(content: Text('集数偏移请输入整数。')));
+            setState(() => offsetError = '集数偏移请输入整数。');
             return;
           }
           Navigator.pop(context, {

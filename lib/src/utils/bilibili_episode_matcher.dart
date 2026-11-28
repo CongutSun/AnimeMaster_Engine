@@ -4,7 +4,7 @@ import '../models/online_episode_source.dart';
 class BilibiliEpisodeMatcher {
   static BilibiliPart? suggest(BilibiliVideo video, OnlineEpisodeQuery query) {
     if (query.episodeNumber <= 0) return null;
-    final int? season = _season(query.subjectTitle);
+    final int? targetSeason = season(query.subjectTitle);
     final candidates = video.parts.where((part) {
       final String title = part.title;
       if (RegExp(
@@ -13,18 +13,20 @@ class BilibiliEpisodeMatcher {
       ).hasMatch(title)) {
         return false;
       }
-      final int? partSeason = _season(title) ?? _season(video.title);
-      if (season != null && partSeason != null && season != partSeason) {
+      final int? partSeason = season(title) ?? season(video.title);
+      if (targetSeason != null &&
+          partSeason != null &&
+          targetSeason != partSeason) {
         return false;
       }
-      return _episode(title) == query.episodeNumber;
+      return episode(title) == query.episodeNumber;
     }).toList();
     return candidates.length == 1 ? candidates.single : null;
   }
 
-  static int? _season(String title) {
+  static int? season(String title) {
     final match = RegExp(
-      r'\bS(\d{1,2})(?:E\d|\b)',
+      r'(?<![a-z0-9])S(?:eason[ ._-]*)?(\d{1,2})(?:E\d|\b|_)',
       caseSensitive: false,
     ).firstMatch(title);
     if (match != null) return int.tryParse(match.group(1)!);
@@ -32,9 +34,9 @@ class BilibiliEpisodeMatcher {
     return chinese == null ? null : _number(chinese.group(1)!);
   }
 
-  static int? _episode(String title) {
+  static int? episode(String title) {
     final season = RegExp(
-      r'\bS\d{1,2}E(\d{1,3})(?!\d)',
+      r'(?<![a-z0-9])S\d{1,2}E(\d{1,3})(?!\d)',
       caseSensitive: false,
     ).firstMatch(title);
     if (season != null) return int.tryParse(season.group(1)!);
@@ -43,7 +45,7 @@ class BilibiliEpisodeMatcher {
     ).firstMatch(title);
     if (chinese != null) return _number(chinese.group(1)!);
     final ep = RegExp(
-      r'\bEP?\s*(\d{1,3})(?!\d)',
+      r'(?<![a-z0-9])(?:Episode|EP?)[ ._-]*(\d{1,3})(?!\d)',
       caseSensitive: false,
     ).firstMatch(title);
     if (ep != null) return int.tryParse(ep.group(1)!);

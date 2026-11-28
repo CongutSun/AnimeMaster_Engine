@@ -10,6 +10,8 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/download_task_info.dart';
+import '../models/cache_episode_file.dart';
+import '../services/cache_episode_index.dart';
 import '../models/bilibili_video.dart';
 import '../repositories/download_task_repository.dart';
 import '../services/background_download_service.dart';
@@ -131,11 +133,13 @@ class DownloadManager extends ChangeNotifier {
   }
 
   List<DownloadTaskInfo> get allTasks => _taskConfigs.values.toList();
+  Iterable<DownloadTaskInfo> get playableTasks =>
+      allTasks.expand((t) => t.playableFiles);
   bool hasTask(String hash) => _activeTasks.containsKey(hash);
 
   DownloadTaskInfo? taskFor(String hash) => _taskConfigs[hash];
 
-  Future<void> cacheBilibiliPart(
+  Future<bool> cacheBilibiliPart(
     BilibiliVideo video,
     BilibiliPart part, {
     String subjectTitle = '',
@@ -148,31 +152,60 @@ class DownloadManager extends ChangeNotifier {
     }
     final key = 'bili_${video.bvid}_${part.cid}';
     final dir = await _bilibili.directoryFor(key);
-    if (_deletingBili.contains(key) || _biliJobs.containsKey(key)) return;
+    if (_deletingBili.contains(key) || _biliJobs.containsKey(key)) return false;
     final existing = _taskConfigs[key];
     if (existing != null &&
         existing.isCompleted &&
         await existing.hasCompleteFile()) {
-      return;
+      return false;
+    }
+    final path = '${dir.path}/video.mp4';
+    var file = CacheEpisodeFile.identify(
+      path,
+      0,
+      part.title,
+      subject: subjectTitle,
+      parent: video.title,
+      catalog: await _taskRepository.catalog(bangumiSubjectId),
+    );
+    if (bangumiEpisodeId > 0 &&
+        (episodeLabel.isEmpty ||
+            file.number > 0 &&
+                file.number ==
+                    CacheEpisodeFile.identify(
+                      '',
+                      0,
+                      episodeLabel,
+                      subject: subjectTitle,
+                    ).number)) {
+      file = file.bind(
+        bangumiEpisodeId,
+        episodeLabel.isEmpty ? file.label : episodeLabel,
+        file.number,
+      );
+    }
+    if (existing?.files.firstOrNull?.manual == true) {
+      file = existing!.files.first;
     }
     final task = DownloadTaskInfo(
+      files: [file],
       hash: key,
       title: '${video.title} · ${part.label}',
       url: 'https://www.bilibili.com/video/${video.bvid}?p=${part.page}',
       savePath: dir.path,
       targetPath: '${dir.path}/video.mp4',
       subjectTitle: subjectTitle,
-      episodeLabel: episodeLabel,
+      episodeLabel: file.label,
       bangumiSubjectId: bangumiSubjectId,
-      bangumiEpisodeId: bangumiEpisodeId,
+      bangumiEpisodeId: file.episodeId,
       isPaused: true,
     );
-    await _queueBilibili(task);
+    return _queueBilibili(task);
   }
 
-  Future<void> _queueBilibili(DownloadTaskInfo task) async {
+  Future<bool> _queueBilibili(DownloadTaskInfo task) async {
     final key = task.hash;
-    if (_biliJobs.containsKey(key) || _deletingBili.contains(key)) return;
+    if (_biliJobs.containsKey(key) || _deletingBili.contains(key)) return false;
     final job = _BilibiliJob();
     _biliJobs[key] = job;
     try {
@@ -183,7 +216,7 @@ class DownloadManager extends ChangeNotifier {
         _biliJobs.remove(key);
         job.done.complete();
         notifyListeners();
-        return;
+        return false;
       }
       job.ready = true;
     } catch (_) {
@@ -193,6 +226,7 @@ class DownloadManager extends ChangeNotifier {
     }
     notifyListeners();
     _startNextBilibili();
+    return true;
   }
 
   void _startNextBilibili() {
@@ -218,8 +252,15 @@ class DownloadManager extends ChangeNotifier {
         notifyListeners();
       });
       if (!job.cancel.isCancelled) {
-        await _taskRepository.upsert(complete);
-        _taskConfigs[key] = complete;
+        final latest = _taskConfigs[key] ?? task;
+        final finished = latest.copyWith(
+          isCompleted: true,
+          isPaused: complete.isPaused,
+          targetSize: complete.targetSize,
+          audioSize: complete.audioSize,
+        );
+        _taskConfigs[key] = finished;
+        await _taskRepository.upsert(finished);
       }
     } catch (error) {
       if (!job.cancel.isCancelled) {
@@ -276,7 +317,37 @@ class DownloadManager extends ChangeNotifier {
     }
 
     for (DownloadTaskInfo info in persistedTasks) {
+      Future<DownloadTaskInfo> indexFiles(
+        DownloadTaskInfo old, [
+        Torrent? torrent,
+      ]) async {
+        if (old.files.isNotEmpty) {
+          return old;
+        }
+        final catalog = await _taskRepository.catalog(old.bangumiSubjectId);
+        final files = torrent == null
+            ? await CacheEpisodeIndex.localFiles(old, catalog)
+            : CacheEpisodeIndex.torrent(
+                torrent,
+                old.savePath,
+                old.subjectTitle,
+                catalog,
+                releaseTitle: old.title,
+              );
+        if (old.isBilibili && files.length == 1) {
+          files[0] = await _taskRepository.legacyPartBinding(
+            old,
+            files.single,
+            catalog,
+          );
+        }
+        final indexed = CacheEpisodeIndex.attach(old, files);
+        await _taskRepository.saveIndex(indexed);
+        return indexed;
+      }
+
       if (info.isBilibili) {
+        info = await indexFiles(info);
         if (info.isCompleted && !await info.hasCompleteFile()) {
           info = info.copyWith(isCompleted: false, isPaused: true);
           await _taskRepository.upsert(info);
@@ -286,7 +357,7 @@ class DownloadManager extends ChangeNotifier {
       }
       final File torrentFile = File('${info.savePath}/meta.torrent');
       if (!await torrentFile.exists()) {
-        await _taskRepository.deleteByHash(info.hash);
+        _taskConfigs[info.hash] = await indexFiles(info);
         continue;
       }
 
@@ -307,6 +378,7 @@ class DownloadManager extends ChangeNotifier {
           hasMigratedTask = true;
         }
 
+        info = await indexFiles(info, torrent);
         _injectTrackersToTorrent(torrent, info.url);
 
         final TorrentTask task = _createTask(torrent, info.savePath, false);
@@ -322,6 +394,7 @@ class DownloadManager extends ChangeNotifier {
         _lastNotifiedSpeeds[info.hash] = 0.0;
         _lastNotifiedUploadSpeeds[info.hash] = 0.0;
       } catch (error) {
+        _taskConfigs[info.hash] = await indexFiles(info);
         debugPrint('Failed to restore task: $error');
       }
     }
@@ -495,6 +568,16 @@ class DownloadManager extends ChangeNotifier {
               : info.bangumiEpisodeId,
           isPaused: existingConfig.isCompleted && existingConfig.isPaused,
         );
+        if (info.files.isNotEmpty) {
+          final corrected = {
+            for (final f in existingConfig.files.where((f) => f.manual))
+              f.path: f,
+          };
+          _taskConfigs[info.hash] = CacheEpisodeIndex.attach(
+            _taskConfigs[info.hash]!,
+            [for (final f in info.files) corrected[f.path] ?? f],
+          );
+        }
         _pausedStates[info.hash] = _taskConfigs[info.hash]!.isPaused;
         await _enforceConcurrency(
           preferredHash: streamOptimized ? info.hash : null,
@@ -544,6 +627,32 @@ class DownloadManager extends ChangeNotifier {
       preferredHash: streamOptimized ? info.hash : null,
     );
     await _persistTask(info.hash);
+  }
+
+  Future<void> assignEpisode(String hash, String path, int number) async {
+    if (number <= 0) return;
+    final subject = _taskConfigs[hash];
+    if (subject == null) return;
+    final catalog = await _taskRepository.catalog(subject.bangumiSubjectId);
+    final task = _taskConfigs[hash];
+    if (task == null) return;
+    final found = CacheEpisodeFile.identify(
+      path,
+      0,
+      '第 $number 集',
+      subject: task.subjectTitle,
+      catalog: catalog,
+    );
+    final files = [
+      for (final f in task.files)
+        f.path == path
+            ? f.bind(found.episodeId, found.label, number, confirmed: true)
+            : f,
+    ];
+    final updated = CacheEpisodeIndex.attach(task, files);
+    _taskConfigs[hash] = updated;
+    await _taskRepository.saveIndex(updated);
+    notifyListeners();
   }
 
   Future<void> _startOrResumeTask(String hash) async {
@@ -981,24 +1090,22 @@ class DownloadManager extends ChangeNotifier {
   }
 
   TorrentFile? _findTorrentFileForPath(Torrent torrent, String absolutePath) {
-    final String normalizedTarget = _normalizePath(absolutePath);
-    for (final TorrentFile file in torrent.files) {
-      final String normalizedRelative = _normalizePath(file.path);
-      if (normalizedTarget.endsWith(normalizedRelative)) {
-        return file;
-      }
+    String normalize(String name) {
+      final path = name.replaceAll('\\', '/');
+      return Platform.isWindows ? path.toLowerCase() : path;
     }
-    for (final TorrentFile file in torrent.files) {
-      final String normalizedName = _normalizePath(file.name);
-      if (normalizedTarget.endsWith(normalizedName)) {
-        return file;
-      }
-    }
-    return null;
-  }
 
-  String _normalizePath(String path) {
-    return path.replaceAll('\\', '/').toLowerCase();
+    final target = normalize(absolutePath);
+    final matches = torrent.files.where((f) {
+      final relative = normalize(f.path);
+      return target == relative || target.endsWith('/$relative');
+    }).toList()..sort((a, b) => b.path.length.compareTo(a.path.length));
+    if (matches.isNotEmpty) return matches.first;
+    final basename = target.split('/').last;
+    final named = torrent.files
+        .where((f) => normalize(f.path).split('/').last == basename)
+        .toList();
+    return named.length == 1 ? named.single : null;
   }
 
   bool _isZeroFilled(List<int> buffer) {
@@ -1254,12 +1361,10 @@ class DownloadManager extends ChangeNotifier {
         _deletingBili.remove(hash);
       }
     }
-    if (task == null || config == null) {
-      return false;
-    }
+    if (config == null) return false;
 
     try {
-      if (task.state != TaskState.stopped) {
+      if (task != null && task.state != TaskState.stopped) {
         await task.stop().timeout(const Duration(seconds: 10));
       }
     } catch (error) {

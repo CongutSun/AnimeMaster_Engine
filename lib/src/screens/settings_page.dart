@@ -1,3 +1,4 @@
+import '../widgets/app_feedback.dart';
 import 'dart:async';
 import 'dart:io';
 
@@ -215,9 +216,7 @@ class _SettingsPageState extends State<SettingsPage> {
       await operation;
     } catch (_) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('设置未保存，请重试。')));
+        AppFeedback.show(context, const SnackBar(content: Text('设置未保存，请重试。')));
       }
     }
   }
@@ -231,15 +230,11 @@ class _SettingsPageState extends State<SettingsPage> {
         dandanAppSecretController.text,
       );
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('自定义接入已保存。')));
+        AppFeedback.show(context, const SnackBar(content: Text('自定义接入已保存。')));
       }
     } catch (_) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('保存失败，请重试。')));
+        AppFeedback.show(context, const SnackBar(content: Text('保存失败，请重试。')));
       }
     } finally {
       if (mounted) setState(() => isSaving = false);
@@ -275,9 +270,10 @@ class _SettingsPageState extends State<SettingsPage> {
     final SettingsProvider provider = context.read<SettingsProvider>();
     final String gatewayUrl = provider.bgmAuthGatewayUrl.trim();
     if (gatewayUrl.isEmpty) {
-      ScaffoldMessenger.of(
+      AppFeedback.show(
         context,
-      ).showSnackBar(const SnackBar(content: Text('登录服务暂不可用，请稍后再试。')));
+        const SnackBar(content: Text('登录服务暂不可用，请稍后再试。')),
+      );
       return;
     }
 
@@ -319,7 +315,8 @@ class _SettingsPageState extends State<SettingsPage> {
       if (!mounted) {
         return;
       }
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppFeedback.show(
+        context,
         SnackBar(
           content: Text(
             'Bangumi 登录成功：${provider.bangumiDisplayName.isNotEmpty ? provider.bangumiDisplayName : provider.bgmAcc}',
@@ -330,7 +327,8 @@ class _SettingsPageState extends State<SettingsPage> {
       if (!mounted) {
         return;
       }
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppFeedback.show(
+        context,
         SnackBar(
           content: Text(
             'Bangumi 登录失败：${_formatBangumiLoginError(error, gatewayUrl)}',
@@ -371,9 +369,7 @@ class _SettingsPageState extends State<SettingsPage> {
     if (!mounted) {
       return;
     }
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('Bangumi 授权已清除。')));
+    AppFeedback.show(context, const SnackBar(content: Text('Bangumi 授权已清除。')));
   }
 
   @override
@@ -476,6 +472,19 @@ class _SettingsPageState extends State<SettingsPage> {
         break;
       case SettingsSection.feeds:
         rows.addAll([
+          ListTile(
+            title: const Text('搜索资源时优先展示'),
+            trailing: DropdownButton<bool>(
+              value: provider.websiteFirst,
+              items: const [
+                DropdownMenuItem(value: false, child: Text('B站视频')),
+                DropdownMenuItem(value: true, child: Text('网站资源')),
+              ],
+              onChanged: (v) {
+                if (v != null) provider.setWebsiteFirst(v);
+              },
+            ),
+          ),
           _buildRssCard(provider),
           ListTile(
             title: const Text('订阅收件箱'),

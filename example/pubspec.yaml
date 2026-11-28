@@ -1,7 +1,7 @@
 name: animemaster_example
 description: "AnimeMaster Android application."
 publish_to: 'none'
-version: 2.5.1+4055
+version: 2.5.2+4056
 
 environment:
   sdk: ^3.11.4

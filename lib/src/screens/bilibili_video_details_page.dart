@@ -1,12 +1,15 @@
+import '../widgets/app_feedback.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
 
 import '../managers/download_manager.dart';
 import '../models/bilibili_video.dart';
+import '../models/cache_episode_file.dart';
 import '../models/online_episode_source.dart';
 import '../models/playable_media.dart';
 import '../repositories/bilibili_episode_mapping_repository.dart';
+import '../repositories/download_task_repository.dart';
 import '../services/bilibili_auth_service.dart';
 import '../services/bilibili_video_service.dart';
 import '../utils/bilibili_episode_matcher.dart';
@@ -81,7 +84,16 @@ class _BilibiliVideoDetailsPageState extends State<BilibiliVideoDetailsPage> {
                 .find(query);
         if (saved?.bvid == video.bvid) {
           for (final part in video.parts) {
-            if (part.cid == saved!.cid) {
+            final file = CacheEpisodeFile.identify(
+              '',
+              0,
+              part.title,
+              parent: video.title,
+              subject: query.subjectTitle,
+            );
+            if (part.cid == saved!.cid &&
+                (file.number == query.episodeNumber ||
+                    file.label.startsWith('待确认 · '))) {
               recommendation = part;
               reason = '上次选择';
               break;
@@ -123,20 +135,61 @@ class _BilibiliVideoDetailsPageState extends State<BilibiliVideoDetailsPage> {
       if (!mounted) return;
       final OnlineEpisodeQuery? query = widget.episodeQuery;
       if (query != null) {
+        final file = CacheEpisodeFile.identify(
+          '',
+          0,
+          part.title,
+          subject: query.subjectTitle,
+          parent: video.title,
+        );
+        final matches = file.number > 0 && file.number == query.episodeNumber;
+        final cached = task?.files.firstOrNull;
+        final resolved =
+            cached ??
+            (matches
+                ? file
+                : CacheEpisodeFile.identify(
+                    '',
+                    0,
+                    part.title,
+                    subject: query.subjectTitle,
+                    parent: video.title,
+                    catalog: await DownloadTaskRepository.instance.catalog(
+                      query.bangumiSubjectId,
+                    ),
+                  ));
         media = media.withEpisodeContext(
           subjectTitle: query.subjectTitle,
-          episodeLabel: query.episodeLabel,
+          episodeLabel: matches && resolved.manual == false
+              ? query.episodeLabel
+              : resolved.label,
           bangumiSubjectId: query.bangumiSubjectId,
-          bangumiEpisodeId: query.bangumiEpisodeId,
+          bangumiEpisodeId: matches && resolved.manual == false
+              ? query.bangumiEpisodeId
+              : resolved.episodeId,
         );
-        await (widget.mappings ?? BilibiliEpisodeMappingRepository.instance)
-            .save(query, bvid: video.bvid, cid: part.cid);
+        if (matches && !resolved.manual) {
+          await (widget.mappings ?? BilibiliEpisodeMappingRepository.instance)
+              .save(query, bvid: video.bvid, cid: part.cid);
+        }
       } else if (widget.subjectTitle.isNotEmpty) {
+        final file =
+            task?.files.firstOrNull ??
+            CacheEpisodeFile.identify(
+              '',
+              0,
+              part.title,
+              subject: widget.subjectTitle,
+              parent: video.title,
+              catalog: await DownloadTaskRepository.instance.catalog(
+                widget.bangumiSubjectId,
+              ),
+            );
         media = media.withEpisodeContext(
           subjectTitle: widget.subjectTitle,
-          episodeLabel: '',
+          episodeLabel: file.label,
           bangumiSubjectId: widget.bangumiSubjectId,
-          bangumiEpisodeId: 0,
+          bangumiEpisodeId: file.episodeId,
         );
       }
       if (!mounted) return;
@@ -178,17 +231,29 @@ class _BilibiliVideoDetailsPageState extends State<BilibiliVideoDetailsPage> {
           : () async {
               final query = widget.episodeQuery;
               try {
-                await manager.cacheBilibiliPart(
+                final matches =
+                    query != null &&
+                    query.episodeNumber > 0 &&
+                    CacheEpisodeFile.identify(
+                          '',
+                          0,
+                          part.title,
+                          subject: query.subjectTitle,
+                          parent: video.title,
+                        ).number ==
+                        query.episodeNumber;
+                final added = await manager.cacheBilibiliPart(
                   video,
                   part,
                   subjectTitle: query?.subjectTitle ?? widget.subjectTitle,
-                  episodeLabel: query?.episodeLabel ?? '',
+                  episodeLabel: matches ? query.episodeLabel : '',
                   bangumiSubjectId:
                       query?.bangumiSubjectId ?? widget.bangumiSubjectId,
-                  bangumiEpisodeId: query?.bangumiEpisodeId ?? 0,
+                  bangumiEpisodeId: matches ? query.bangumiEpisodeId : 0,
                 );
-                if (!mounted) return;
-                ScaffoldMessenger.of(context).showSnackBar(
+                if (!mounted || !added) return;
+                AppFeedback.show(
+                  context,
                   SnackBar(
                     content: Text('P${part.page} 已加入缓存队列'),
                     action: SnackBarAction(
@@ -204,6 +269,7 @@ class _BilibiliVideoDetailsPageState extends State<BilibiliVideoDetailsPage> {
                       },
                     ),
                   ),
+                  download: true,
                 );
               } catch (error) {
                 if (mounted) setState(() => _error = _message(error));

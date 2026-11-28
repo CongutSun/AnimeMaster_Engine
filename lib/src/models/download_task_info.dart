@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'cache_episode_file.dart';
 
 class DownloadTaskInfo {
   final String hash;
@@ -12,6 +13,7 @@ class DownloadTaskInfo {
   final String episodeLabel;
   final int bangumiSubjectId;
   final int bangumiEpisodeId;
+  final List<CacheEpisodeFile> files;
   bool isCompleted;
   bool isPaused;
 
@@ -23,6 +25,7 @@ class DownloadTaskInfo {
     required this.targetPath,
     this.targetSize = 0,
     this.audioSize = 0,
+    this.files = const [],
     this.subjectTitle = '',
     this.episodeLabel = '',
     this.bangumiSubjectId = 0,
@@ -33,6 +36,10 @@ class DownloadTaskInfo {
 
   factory DownloadTaskInfo.fromJson(Map<String, dynamic> json) {
     return DownloadTaskInfo(
+      files: [
+        for (final e in json['episodeFiles'] ?? [])
+          CacheEpisodeFile.fromJson(Map<String, dynamic>.from(e)),
+      ],
       hash: json['hash'],
       title: json['title'],
       url: json['url'],
@@ -52,6 +59,7 @@ class DownloadTaskInfo {
   }
 
   Map<String, dynamic> toJson() => {
+    'episodeFiles': files.map((f) => f.toJson()).toList(),
     'hash': hash,
     'title': title,
     'url': url,
@@ -101,7 +109,18 @@ class DownloadTaskInfo {
     return parts.join('  ·  ');
   }
 
+  DownloadTaskInfo forFile(CacheEpisodeFile f, {bool single = false}) =>
+      copyWith(
+        files: single ? [f] : files,
+        targetPath: f.path,
+        targetSize: f.size > 0 || targetPath != f.path ? f.size : targetSize,
+        episodeLabel: f.label,
+        bangumiEpisodeId: f.episodeId,
+      );
+  Iterable<DownloadTaskInfo> get playableFiles =>
+      files.isEmpty ? [this] : files.map((file) => forFile(file, single: true));
   DownloadTaskInfo copyWith({
+    List<CacheEpisodeFile>? files,
     String? hash,
     String? title,
     String? url,
@@ -117,6 +136,7 @@ class DownloadTaskInfo {
     bool? isPaused,
   }) {
     return DownloadTaskInfo(
+      files: files ?? this.files,
       hash: hash ?? this.hash,
       title: title ?? this.title,
       url: url ?? this.url,

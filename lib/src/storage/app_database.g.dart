@@ -1060,6 +1060,18 @@ class $DownloadTaskRecordsTable extends DownloadTaskRecords
     requiredDuringInsert: false,
     defaultValue: const Constant(0),
   );
+  static const VerificationMeta _episodeFilesMeta = const VerificationMeta(
+    'episodeFiles',
+  );
+  @override
+  late final GeneratedColumn<String> episodeFiles = GeneratedColumn<String>(
+    'episode_files',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('[]'),
+  );
   static const VerificationMeta _audioSizeMeta = const VerificationMeta(
     'audioSize',
   );
@@ -1170,6 +1182,7 @@ class $DownloadTaskRecordsTable extends DownloadTaskRecords
     savePath,
     targetPath,
     targetSize,
+    episodeFiles,
     audioSize,
     subjectTitle,
     episodeLabel,
@@ -1227,6 +1240,15 @@ class $DownloadTaskRecordsTable extends DownloadTaskRecords
       context.handle(
         _targetSizeMeta,
         targetSize.isAcceptableOrUnknown(data['target_size']!, _targetSizeMeta),
+      );
+    }
+    if (data.containsKey('episode_files')) {
+      context.handle(
+        _episodeFilesMeta,
+        episodeFiles.isAcceptableOrUnknown(
+          data['episode_files']!,
+          _episodeFilesMeta,
+        ),
       );
     }
     if (data.containsKey('audio_size')) {
@@ -1328,6 +1350,10 @@ class $DownloadTaskRecordsTable extends DownloadTaskRecords
         DriftSqlType.int,
         data['${effectivePrefix}target_size'],
       )!,
+      episodeFiles: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}episode_files'],
+      )!,
       audioSize: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}audio_size'],
@@ -1377,6 +1403,7 @@ class DownloadTaskRecord extends DataClass
   final String savePath;
   final String targetPath;
   final int targetSize;
+  final String episodeFiles;
   final int audioSize;
   final String subjectTitle;
   final String episodeLabel;
@@ -1392,6 +1419,7 @@ class DownloadTaskRecord extends DataClass
     required this.savePath,
     required this.targetPath,
     required this.targetSize,
+    required this.episodeFiles,
     required this.audioSize,
     required this.subjectTitle,
     required this.episodeLabel,
@@ -1410,6 +1438,7 @@ class DownloadTaskRecord extends DataClass
     map['save_path'] = Variable<String>(savePath);
     map['target_path'] = Variable<String>(targetPath);
     map['target_size'] = Variable<int>(targetSize);
+    map['episode_files'] = Variable<String>(episodeFiles);
     map['audio_size'] = Variable<int>(audioSize);
     map['subject_title'] = Variable<String>(subjectTitle);
     map['episode_label'] = Variable<String>(episodeLabel);
@@ -1429,6 +1458,7 @@ class DownloadTaskRecord extends DataClass
       savePath: Value(savePath),
       targetPath: Value(targetPath),
       targetSize: Value(targetSize),
+      episodeFiles: Value(episodeFiles),
       audioSize: Value(audioSize),
       subjectTitle: Value(subjectTitle),
       episodeLabel: Value(episodeLabel),
@@ -1452,6 +1482,7 @@ class DownloadTaskRecord extends DataClass
       savePath: serializer.fromJson<String>(json['savePath']),
       targetPath: serializer.fromJson<String>(json['targetPath']),
       targetSize: serializer.fromJson<int>(json['targetSize']),
+      episodeFiles: serializer.fromJson<String>(json['episodeFiles']),
       audioSize: serializer.fromJson<int>(json['audioSize']),
       subjectTitle: serializer.fromJson<String>(json['subjectTitle']),
       episodeLabel: serializer.fromJson<String>(json['episodeLabel']),
@@ -1472,6 +1503,7 @@ class DownloadTaskRecord extends DataClass
       'savePath': serializer.toJson<String>(savePath),
       'targetPath': serializer.toJson<String>(targetPath),
       'targetSize': serializer.toJson<int>(targetSize),
+      'episodeFiles': serializer.toJson<String>(episodeFiles),
       'audioSize': serializer.toJson<int>(audioSize),
       'subjectTitle': serializer.toJson<String>(subjectTitle),
       'episodeLabel': serializer.toJson<String>(episodeLabel),
@@ -1490,6 +1522,7 @@ class DownloadTaskRecord extends DataClass
     String? savePath,
     String? targetPath,
     int? targetSize,
+    String? episodeFiles,
     int? audioSize,
     String? subjectTitle,
     String? episodeLabel,
@@ -1505,6 +1538,7 @@ class DownloadTaskRecord extends DataClass
     savePath: savePath ?? this.savePath,
     targetPath: targetPath ?? this.targetPath,
     targetSize: targetSize ?? this.targetSize,
+    episodeFiles: episodeFiles ?? this.episodeFiles,
     audioSize: audioSize ?? this.audioSize,
     subjectTitle: subjectTitle ?? this.subjectTitle,
     episodeLabel: episodeLabel ?? this.episodeLabel,
@@ -1526,6 +1560,9 @@ class DownloadTaskRecord extends DataClass
       targetSize: data.targetSize.present
           ? data.targetSize.value
           : this.targetSize,
+      episodeFiles: data.episodeFiles.present
+          ? data.episodeFiles.value
+          : this.episodeFiles,
       audioSize: data.audioSize.present ? data.audioSize.value : this.audioSize,
       subjectTitle: data.subjectTitle.present
           ? data.subjectTitle.value
@@ -1558,6 +1595,7 @@ class DownloadTaskRecord extends DataClass
           ..write('savePath: $savePath, ')
           ..write('targetPath: $targetPath, ')
           ..write('targetSize: $targetSize, ')
+          ..write('episodeFiles: $episodeFiles, ')
           ..write('audioSize: $audioSize, ')
           ..write('subjectTitle: $subjectTitle, ')
           ..write('episodeLabel: $episodeLabel, ')
@@ -1578,6 +1616,7 @@ class DownloadTaskRecord extends DataClass
     savePath,
     targetPath,
     targetSize,
+    episodeFiles,
     audioSize,
     subjectTitle,
     episodeLabel,
@@ -1597,6 +1636,7 @@ class DownloadTaskRecord extends DataClass
           other.savePath == this.savePath &&
           other.targetPath == this.targetPath &&
           other.targetSize == this.targetSize &&
+          other.episodeFiles == this.episodeFiles &&
           other.audioSize == this.audioSize &&
           other.subjectTitle == this.subjectTitle &&
           other.episodeLabel == this.episodeLabel &&
@@ -1614,6 +1654,7 @@ class DownloadTaskRecordsCompanion extends UpdateCompanion<DownloadTaskRecord> {
   final Value<String> savePath;
   final Value<String> targetPath;
   final Value<int> targetSize;
+  final Value<String> episodeFiles;
   final Value<int> audioSize;
   final Value<String> subjectTitle;
   final Value<String> episodeLabel;
@@ -1630,6 +1671,7 @@ class DownloadTaskRecordsCompanion extends UpdateCompanion<DownloadTaskRecord> {
     this.savePath = const Value.absent(),
     this.targetPath = const Value.absent(),
     this.targetSize = const Value.absent(),
+    this.episodeFiles = const Value.absent(),
     this.audioSize = const Value.absent(),
     this.subjectTitle = const Value.absent(),
     this.episodeLabel = const Value.absent(),
@@ -1647,6 +1689,7 @@ class DownloadTaskRecordsCompanion extends UpdateCompanion<DownloadTaskRecord> {
     this.savePath = const Value.absent(),
     this.targetPath = const Value.absent(),
     this.targetSize = const Value.absent(),
+    this.episodeFiles = const Value.absent(),
     this.audioSize = const Value.absent(),
     this.subjectTitle = const Value.absent(),
     this.episodeLabel = const Value.absent(),
@@ -1664,6 +1707,7 @@ class DownloadTaskRecordsCompanion extends UpdateCompanion<DownloadTaskRecord> {
     Expression<String>? savePath,
     Expression<String>? targetPath,
     Expression<int>? targetSize,
+    Expression<String>? episodeFiles,
     Expression<int>? audioSize,
     Expression<String>? subjectTitle,
     Expression<String>? episodeLabel,
@@ -1681,6 +1725,7 @@ class DownloadTaskRecordsCompanion extends UpdateCompanion<DownloadTaskRecord> {
       if (savePath != null) 'save_path': savePath,
       if (targetPath != null) 'target_path': targetPath,
       if (targetSize != null) 'target_size': targetSize,
+      if (episodeFiles != null) 'episode_files': episodeFiles,
       if (audioSize != null) 'audio_size': audioSize,
       if (subjectTitle != null) 'subject_title': subjectTitle,
       if (episodeLabel != null) 'episode_label': episodeLabel,
@@ -1700,6 +1745,7 @@ class DownloadTaskRecordsCompanion extends UpdateCompanion<DownloadTaskRecord> {
     Value<String>? savePath,
     Value<String>? targetPath,
     Value<int>? targetSize,
+    Value<String>? episodeFiles,
     Value<int>? audioSize,
     Value<String>? subjectTitle,
     Value<String>? episodeLabel,
@@ -1717,6 +1763,7 @@ class DownloadTaskRecordsCompanion extends UpdateCompanion<DownloadTaskRecord> {
       savePath: savePath ?? this.savePath,
       targetPath: targetPath ?? this.targetPath,
       targetSize: targetSize ?? this.targetSize,
+      episodeFiles: episodeFiles ?? this.episodeFiles,
       audioSize: audioSize ?? this.audioSize,
       subjectTitle: subjectTitle ?? this.subjectTitle,
       episodeLabel: episodeLabel ?? this.episodeLabel,
@@ -1749,6 +1796,9 @@ class DownloadTaskRecordsCompanion extends UpdateCompanion<DownloadTaskRecord> {
     }
     if (targetSize.present) {
       map['target_size'] = Variable<int>(targetSize.value);
+    }
+    if (episodeFiles.present) {
+      map['episode_files'] = Variable<String>(episodeFiles.value);
     }
     if (audioSize.present) {
       map['audio_size'] = Variable<int>(audioSize.value);
@@ -1789,6 +1839,7 @@ class DownloadTaskRecordsCompanion extends UpdateCompanion<DownloadTaskRecord> {
           ..write('savePath: $savePath, ')
           ..write('targetPath: $targetPath, ')
           ..write('targetSize: $targetSize, ')
+          ..write('episodeFiles: $episodeFiles, ')
           ..write('audioSize: $audioSize, ')
           ..write('subjectTitle: $subjectTitle, ')
           ..write('episodeLabel: $episodeLabel, ')
@@ -3346,6 +3397,7 @@ typedef $$DownloadTaskRecordsTableCreateCompanionBuilder =
       Value<String> savePath,
       Value<String> targetPath,
       Value<int> targetSize,
+      Value<String> episodeFiles,
       Value<int> audioSize,
       Value<String> subjectTitle,
       Value<String> episodeLabel,
@@ -3364,6 +3416,7 @@ typedef $$DownloadTaskRecordsTableUpdateCompanionBuilder =
       Value<String> savePath,
       Value<String> targetPath,
       Value<int> targetSize,
+      Value<String> episodeFiles,
       Value<int> audioSize,
       Value<String> subjectTitle,
       Value<String> episodeLabel,
@@ -3411,6 +3464,11 @@ class $$DownloadTaskRecordsTableFilterComposer
 
   ColumnFilters<int> get targetSize => $composableBuilder(
     column: $table.targetSize,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get episodeFiles => $composableBuilder(
+    column: $table.episodeFiles,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -3494,6 +3552,11 @@ class $$DownloadTaskRecordsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get episodeFiles => $composableBuilder(
+    column: $table.episodeFiles,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<int> get audioSize => $composableBuilder(
     column: $table.audioSize,
     builder: (column) => ColumnOrderings(column),
@@ -3563,6 +3626,11 @@ class $$DownloadTaskRecordsTableAnnotationComposer
 
   GeneratedColumn<int> get targetSize => $composableBuilder(
     column: $table.targetSize,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get episodeFiles => $composableBuilder(
+    column: $table.episodeFiles,
     builder: (column) => column,
   );
 
@@ -3652,6 +3720,7 @@ class $$DownloadTaskRecordsTableTableManager
                 Value<String> savePath = const Value.absent(),
                 Value<String> targetPath = const Value.absent(),
                 Value<int> targetSize = const Value.absent(),
+                Value<String> episodeFiles = const Value.absent(),
                 Value<int> audioSize = const Value.absent(),
                 Value<String> subjectTitle = const Value.absent(),
                 Value<String> episodeLabel = const Value.absent(),
@@ -3668,6 +3737,7 @@ class $$DownloadTaskRecordsTableTableManager
                 savePath: savePath,
                 targetPath: targetPath,
                 targetSize: targetSize,
+                episodeFiles: episodeFiles,
                 audioSize: audioSize,
                 subjectTitle: subjectTitle,
                 episodeLabel: episodeLabel,
@@ -3686,6 +3756,7 @@ class $$DownloadTaskRecordsTableTableManager
                 Value<String> savePath = const Value.absent(),
                 Value<String> targetPath = const Value.absent(),
                 Value<int> targetSize = const Value.absent(),
+                Value<String> episodeFiles = const Value.absent(),
                 Value<int> audioSize = const Value.absent(),
                 Value<String> subjectTitle = const Value.absent(),
                 Value<String> episodeLabel = const Value.absent(),
@@ -3702,6 +3773,7 @@ class $$DownloadTaskRecordsTableTableManager
                 savePath: savePath,
                 targetPath: targetPath,
                 targetSize: targetSize,
+                episodeFiles: episodeFiles,
                 audioSize: audioSize,
                 subjectTitle: subjectTitle,
                 episodeLabel: episodeLabel,

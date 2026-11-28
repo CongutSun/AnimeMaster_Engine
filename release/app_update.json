@@ -1,25 +1,26 @@
 {
-  "version": "2.5.1",
-  "build": 4055,
-  "apkUrl": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.5.1/app-release.apk",
+  "version": "2.5.2",
+  "build": 4056,
+  "apkUrl": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.5.2/app-release.apk",
   "notes": [
-    "新增 B站分 P 离线缓存，可在下载中心管理和播放。",
-    "新增四套明暗配色和作品标题字体，设置按用途分组。",
-    "首页、收藏、下载支持直接切换，优化海报、续播和播放器布局。",
-    "更新日志支持滚动，适配小屏、横屏和大字号。"
+    "修复离线缓存串集，已有缓存可自动重新识别，也可在下载中心手动校正集数，无需重新下载。",
+    "网站合集按文件识别集数，搜索指定集时可找到包含该集的合集，播放时优先选中唯一匹配的文件。",
+    "资源搜索支持设置网站资源或 B站视频优先，新增可选 Nyaa 来源和可独立更新的签名来源目录。",
+    "同一种子的多个来源合并展示，下载时可切换备用入口。来源暂不可用时可查看最近搜索结果。",
+    "连续加入缓存时合并提示并自动收起，修复弹幕匹配重复提醒、RSS 下载确认框重叠及缓冲结束时误关页面的问题。"
   ],
-  "publishedAt": "2026-11-26T12:17:25+08:00",
+  "publishedAt": "2026-11-28T12:18:10+08:00",
   "forceUpdate": false,
   "apkUrls": {
-    "android-arm64": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.5.1/app-arm64-v8a-release.apk",
-    "android-arm": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.5.1/app-armeabi-v7a-release.apk",
-    "android-x64": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.5.1/app-x86_64-release.apk",
-    "universal": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.5.1/app-release.apk"
+    "android-arm64": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.5.2/app-arm64-v8a-release.apk",
+    "android-arm": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.5.2/app-armeabi-v7a-release.apk",
+    "android-x64": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.5.2/app-x86_64-release.apk",
+    "universal": "https://github.com/CongutSun/AnimeMaster_Engine/releases/download/v2.5.2/app-release.apk"
   },
   "sha256": {
-    "android-arm64": "1ed15e272be2409feda2d583a02527ecf01c377ce99a62cfc994e04b1390d777",
-    "android-arm": "081d639a7e2436f4dbd888e27dc86232915ab3ad45e7bd3e028ce1f304d52c8d",
-    "android-x64": "37d3d5471af03ed3e6e4a29fd289192b80e0ee0d7b9738f61228fb385a20eaa8",
-    "universal": "099ae61e3c22d87fc939beec14376220955cc123d0b7a0450f0e650561eaf1c6"
+    "android-arm64": "a2ce1547ea6da650f730e3bad7901d19b866213c20ae5a1963344d93c22182e6",
+    "android-arm": "3c7a08c950b6c31539fa17c6f7f77dd0f1c446dfa7065ea7d62239324cde4863",
+    "android-x64": "ded93ca16a87211fc5c5c4a07671d780b0dd3ee60418ab1ba68b3991301ad3da",
+    "universal": "7f32091d7182bb6befae6f3511eeec3fa58663d9976050d57c48a1b79a78c3fe"
   }
 }

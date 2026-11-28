@@ -25,6 +25,10 @@ class _Repository extends Fake implements DownloadTaskRepository {
   }
 
   @override
+  Future<void> saveIndex(DownloadTaskInfo task) => upsert(task);
+  @override
+  Future<List<Map<String, dynamic>>> catalog(int subjectId) async => [];
+  @override
   Future<void> upsertAll(Iterable<DownloadTaskInfo> tasks) async {
     for (final task in tasks) {
       await upsert(task);

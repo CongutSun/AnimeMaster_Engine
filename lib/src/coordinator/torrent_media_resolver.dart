@@ -10,7 +10,8 @@ import '../managers/download_manager.dart';
 import '../models/download_task_info.dart';
 import '../utils/app_storage_paths.dart';
 import '../utils/magnet_optimizer.dart';
-import '../utils/episode_helpers.dart';
+import '../services/cache_episode_index.dart';
+import 'package:path/path.dart' as p;
 import '../utils/task_title_parser.dart';
 import '../utils/torrent_cache_fetcher.dart';
 import '../services/torrent_metadata_service.dart';
@@ -45,6 +46,7 @@ class PreparedTorrentTask {
   final ResolvedMediaInfo mediaInfo;
   final List<ResolvedMediaInfo> mediaItems;
   final int initialIndex;
+  final bool uniquelyMatched;
 
   PreparedTorrentTask({
     required this.taskInfo,
@@ -52,33 +54,20 @@ class PreparedTorrentTask {
     required this.mediaInfo,
     required this.mediaItems,
     required this.initialIndex,
+    this.uniquelyMatched = false,
   });
 }
 
-class _ResolvedBangumiEpisode {
-  final String label;
-  final int episodeId;
-
-  const _ResolvedBangumiEpisode({this.label = '', this.episodeId = 0});
-}
-
 class TorrentMediaResolver {
+  TorrentMediaResolver({
+    Dio? client,
+    this.directoryFor = AppStoragePaths.torrentTaskDirectory,
+  }) : _client = client ?? _torrentDio;
+  final Dio _client;
+  final Future<Directory> Function(String) directoryFor;
   static final Dio _torrentDio = Dio(
     BaseOptions(connectTimeout: const Duration(seconds: 15)),
   );
-  static const List<String> _videoExtensions = <String>[
-    '.mp4',
-    '.mkv',
-    '.avi',
-    '.flv',
-    '.rmvb',
-    '.ts',
-    '.m2ts',
-    '.wmv',
-    '.webm',
-    '.m4v',
-  ];
-
   Future<PreparedTorrentTask> prepareTask(
     String rawSource, {
     String preferredTitle = '',
@@ -87,6 +76,8 @@ class TorrentMediaResolver {
     int bangumiSubjectId = 0,
     int bangumiEpisodeId = 0,
     String fallbackSource = '',
+    List<String> alternatives = const [],
+    String expectedHash = '',
     CancelToken? cancelToken,
     ValueChanged<String>? onStage,
   }) async {
@@ -101,84 +92,90 @@ class TorrentMediaResolver {
         : MagnetOptimizer.optimize(normalizedSource);
 
     onStage?.call('正在获取资源文件信息…');
-    Uint8List torrentBytes;
-    try {
-      torrentBytes = await _loadTorrentBytes(
-        optimizedSource,
-        cancelToken,
-        onStage,
-      );
-    } catch (error) {
+    Uint8List? accepted;
+    Torrent? parsed;
+    final routes = {
+      optimizedSource,
+      ...alternatives.where((e) => e.startsWith('https://')),
+      if (fallbackSource.isNotEmpty) MagnetOptimizer.optimize(fallbackSource),
+    };
+    final expected = expectedHash.isNotEmpty
+        ? expectedHash
+        : TorrentCacheFetcher.canonicalHash(
+            fallbackSource.isNotEmpty ? fallbackSource : normalizedSource,
+          );
+    Object? lastError;
+    for (final route in routes) {
       if (cancelToken?.isCancelled == true) throw cancelToken!.cancelError!;
-      if (fallbackSource.isEmpty || fallbackSource == rawSource) rethrow;
-      onStage?.call('直链暂不可用，正在尝试磁力链接…');
-      torrentBytes = await _loadTorrentBytes(
-        MagnetOptimizer.optimize(fallbackSource),
-        cancelToken,
-        onStage,
-      );
+      try {
+        if (route != optimizedSource) onStage?.call('正在尝试备用入口…');
+        final bytes = await _loadTorrentBytes(route, cancelToken, onStage);
+        final result = await Torrent.parseFromBytes(bytes);
+        if (expected.isNotEmpty &&
+            result.infoHash.toUpperCase() != expected.toUpperCase()) {
+          throw const FormatException('种子文件与资源哈希不一致');
+        }
+        accepted = bytes;
+        parsed = result;
+        break;
+      } catch (error) {
+        lastError = error;
+      }
     }
     if (cancelToken?.isCancelled == true) throw cancelToken!.cancelError!;
-    final Torrent torrent = await Torrent.parseFromBytes(torrentBytes);
-    final List<TorrentFile> playableFiles = _collectPlayableFiles(torrent);
-
-    if (playableFiles.isEmpty) {
-      throw Exception('该种子内没有可播放的媒体文件。');
+    if (accepted == null || parsed == null) {
+      throw lastError ?? StateError('所有下载入口暂不可用');
     }
-
+    final torrentBytes = accepted;
+    final torrent = parsed;
     final String infoHash = torrent.infoHash.toUpperCase();
-    final Directory saveDir = await AppStoragePaths.torrentTaskDirectory(
-      infoHash,
-    );
+    final Directory saveDir = await directoryFor(infoHash);
     final String effectiveTitle = preferredTitle.trim().isNotEmpty
         ? preferredTitle.trim()
         : (torrent.name.isNotEmpty ? torrent.name : '下载任务_$infoHash');
     final String resolvedSubjectTitle = subjectTitle.trim();
-    final String inferredEpisodeLabel = episodeLabel.trim().isNotEmpty
-        ? episodeLabel.trim()
-        : TaskTitleParser.extractEpisodeLabel(effectiveTitle);
-    final _ResolvedBangumiEpisode resolvedEpisode =
-        await _resolveBangumiEpisodeMetadata(
-          subjectId: bangumiSubjectId,
-          explicitEpisodeId: bangumiEpisodeId,
-          episodeHint: inferredEpisodeLabel,
-          displayTitle: effectiveTitle,
+    List<Map<String, dynamic>> catalog = [];
+    if (bangumiSubjectId > 0) {
+      try {
+        catalog = await BangumiApi.instance.getSubjectEpisodes(
+          bangumiSubjectId,
         );
-    final String resolvedEpisodeLabel = resolvedEpisode.label.isNotEmpty
-        ? resolvedEpisode.label
-        : inferredEpisodeLabel;
-    final int resolvedBangumiEpisodeId = resolvedEpisode.episodeId > 0
-        ? resolvedEpisode.episodeId
-        : bangumiEpisodeId;
+      } catch (_) {}
+    }
+    final files = CacheEpisodeIndex.torrent(
+      torrent,
+      saveDir.path,
+      resolvedSubjectTitle,
+      catalog,
+      releaseTitle: effectiveTitle,
+    );
+    if (files.isEmpty) throw const FormatException('该种子内没有可播放的视频文件。');
     final String canonicalSource =
         normalizedSource.toLowerCase().startsWith('http')
         ? MagnetOptimizer.optimize(infoHash)
         : optimizedSource;
 
-    final List<ResolvedMediaInfo> mediaItems =
-        playableFiles
-            .map(
-              (TorrentFile file) => _buildMediaInfo(
-                file: file,
-                infoHash: infoHash,
-                savePath: saveDir.path,
-                fallbackTitle: effectiveTitle,
-                subjectTitle: resolvedSubjectTitle,
-                totalFiles: playableFiles.length,
-              ),
-            )
-            .toList()
-          ..sort(
-            (ResolvedMediaInfo left, ResolvedMediaInfo right) => left
-                .relativePath
-                .toLowerCase()
-                .compareTo(right.relativePath.toLowerCase()),
-          );
-
-    final int initialIndex = _resolveInitialIndex(
-      mediaItems: mediaItems,
-      episodeHint: resolvedEpisodeLabel,
-    );
+    final mediaItems = [
+      for (final f in files)
+        ResolvedMediaInfo(
+          title: f.label,
+          filePath: f.path,
+          fileSize: f.size,
+          infoHash: infoHash,
+          relativePath: p.relative(f.path, from: saveDir.path),
+          episodeLabel: f.label,
+        ),
+    ];
+    final wanted = TaskTitleParser.extractEpisodeNumber(episodeLabel);
+    final matches = files.indexed
+        .where(
+          (entry) =>
+              (bangumiEpisodeId > 0 &&
+                  entry.$2.episodeId == bangumiEpisodeId) ||
+              (wanted != null && wanted == entry.$2.number),
+        )
+        .toList();
+    final initialIndex = matches.length == 1 ? matches.single.$1 : 0;
     final ResolvedMediaInfo mediaInfo = mediaItems[initialIndex];
 
     final DownloadTaskInfo taskInfo = DownloadTaskInfo(
@@ -189,9 +186,10 @@ class TorrentMediaResolver {
       targetPath: mediaInfo.filePath,
       targetSize: mediaInfo.fileSize,
       subjectTitle: resolvedSubjectTitle,
-      episodeLabel: resolvedEpisodeLabel,
+      files: files,
+      episodeLabel: files[initialIndex].label,
       bangumiSubjectId: bangumiSubjectId,
-      bangumiEpisodeId: resolvedBangumiEpisodeId,
+      bangumiEpisodeId: files[initialIndex].episodeId,
     );
 
     return PreparedTorrentTask(
@@ -200,6 +198,7 @@ class TorrentMediaResolver {
       mediaInfo: mediaInfo,
       mediaItems: mediaItems,
       initialIndex: initialIndex,
+      uniquelyMatched: matches.length == 1,
     );
   }
 
@@ -327,7 +326,7 @@ class TorrentMediaResolver {
     CancelToken? cancelToken,
   ) async {
     try {
-      final Response<dynamic> response = await _torrentDio.get<dynamic>(
+      final Response<dynamic> response = await _client.get<dynamic>(
         url,
         cancelToken: cancelToken,
         options: Options(
@@ -402,195 +401,5 @@ class TorrentMediaResolver {
       return targetUrl;
     }
     return '${baseUrl.replaceFirst(RegExp(r'/$'), '')}/proxy/$mode?url=${Uri.encodeComponent(targetUrl)}';
-  }
-
-  List<TorrentFile> _collectPlayableFiles(Torrent torrent) {
-    final List<TorrentFile> videos = torrent.files.where((TorrentFile file) {
-      final String fileName = file.name.toLowerCase();
-      return _videoExtensions.any(fileName.endsWith);
-    }).toList();
-
-    if (videos.isNotEmpty) {
-      return videos;
-    }
-
-    return torrent.files.where((TorrentFile file) => file.length > 0).toList();
-  }
-
-  ResolvedMediaInfo _buildMediaInfo({
-    required TorrentFile file,
-    required String infoHash,
-    required String savePath,
-    required String fallbackTitle,
-    required String subjectTitle,
-    required int totalFiles,
-  }) {
-    final String cleanedName = TaskTitleParser.stripSourcePrefix(
-      _removeExtension(_basename(file.path)),
-    );
-    final String extractedEpisode = TaskTitleParser.extractEpisodeLabel(
-      cleanedName,
-    );
-    final String title = totalFiles == 1
-        ? fallbackTitle
-        : _buildEpisodeTitle(
-            fallbackTitle: fallbackTitle,
-            subjectTitle: subjectTitle,
-            cleanedName: cleanedName,
-            episodeLabel: extractedEpisode,
-          );
-
-    return ResolvedMediaInfo(
-      title: title,
-      filePath: _buildAbsoluteFilePath(savePath, file.path),
-      fileSize: file.length,
-      infoHash: infoHash,
-      relativePath: file.path,
-      episodeLabel: extractedEpisode,
-    );
-  }
-
-  String _buildEpisodeTitle({
-    required String fallbackTitle,
-    required String subjectTitle,
-    required String cleanedName,
-    required String episodeLabel,
-  }) {
-    if (subjectTitle.trim().isNotEmpty && episodeLabel.trim().isNotEmpty) {
-      return '${subjectTitle.trim()} $episodeLabel';
-    }
-    if (cleanedName.trim().isNotEmpty) {
-      return cleanedName.trim();
-    }
-    return fallbackTitle;
-  }
-
-  Future<_ResolvedBangumiEpisode> _resolveBangumiEpisodeMetadata({
-    required int subjectId,
-    required int explicitEpisodeId,
-    required String episodeHint,
-    required String displayTitle,
-  }) async {
-    if (subjectId <= 0) {
-      return const _ResolvedBangumiEpisode();
-    }
-
-    try {
-      final List<Map<String, dynamic>> episodes = await BangumiApi.instance
-          .getSubjectEpisodes(subjectId);
-      if (episodes.isEmpty) {
-        return const _ResolvedBangumiEpisode();
-      }
-
-      Map<String, dynamic>? match;
-      if (explicitEpisodeId > 0) {
-        match = episodes.firstWhere(
-          (Map<String, dynamic> item) =>
-              int.tryParse(item['id']?.toString() ?? '') == explicitEpisodeId,
-          orElse: () => <String, dynamic>{},
-        );
-        if (match.isEmpty) {
-          match = null;
-        }
-      }
-
-      final int? episodeNumber = TaskTitleParser.extractEpisodeNumber(
-        '$episodeHint $displayTitle',
-      );
-      if (match == null && episodeNumber != null) {
-        match = episodes.firstWhere(
-          (Map<String, dynamic> item) =>
-              _numberValue(item['ep']) == episodeNumber ||
-              _numberValue(item['sort']) == episodeNumber,
-          orElse: () => <String, dynamic>{},
-        );
-        if (match.isEmpty) {
-          match = null;
-        }
-      }
-
-      if (match == null) {
-        return const _ResolvedBangumiEpisode();
-      }
-
-      final int number =
-          _numberValue(match['ep']) ?? _numberValue(match['sort']) ?? 0;
-      final String episodeTitle =
-          (match['name_cn']?.toString().trim().isNotEmpty == true
-                  ? match['name_cn']
-                  : match['name'])
-              ?.toString()
-              .trim() ??
-          '';
-      return _ResolvedBangumiEpisode(
-        label: TaskTitleParser.buildEpisodeDisplayLabel(
-          episodeNumber: number,
-          episodeTitle: episodeTitle,
-        ),
-        episodeId: int.tryParse(match['id']?.toString() ?? '') ?? 0,
-      );
-    } catch (error) {
-      debugPrint('[TorrentMediaResolver] Episode metadata failed: $error');
-      return const _ResolvedBangumiEpisode();
-    }
-  }
-
-  int? _numberValue(dynamic value) => safeInt(value);
-
-  int _resolveInitialIndex({
-    required List<ResolvedMediaInfo> mediaItems,
-    required String episodeHint,
-  }) {
-    if (mediaItems.isEmpty) {
-      return 0;
-    }
-
-    final String normalizedHint = _normalizeForMatch(episodeHint);
-    if (normalizedHint.isNotEmpty) {
-      for (int index = 0; index < mediaItems.length; index++) {
-        final ResolvedMediaInfo item = mediaItems[index];
-        final String title = _normalizeForMatch(item.title);
-        final String path = _normalizeForMatch(item.relativePath);
-        if (title.contains(normalizedHint) || path.contains(normalizedHint)) {
-          return index;
-        }
-      }
-    }
-
-    int bestIndex = 0;
-    int maxSize = -1;
-    for (int index = 0; index < mediaItems.length; index++) {
-      if (mediaItems[index].fileSize > maxSize) {
-        maxSize = mediaItems[index].fileSize;
-        bestIndex = index;
-      }
-    }
-    return bestIndex;
-  }
-
-  String _normalizeForMatch(String value) {
-    return value.replaceAll(RegExp(r'\s+'), '').toLowerCase();
-  }
-
-  String _basename(String path) {
-    final String normalized = path.replaceAll('\\', '/');
-    final List<String> segments = normalized.split('/');
-    return segments.isEmpty ? path : segments.last;
-  }
-
-  String _removeExtension(String fileName) {
-    final int index = fileName.lastIndexOf('.');
-    if (index <= 0) {
-      return fileName;
-    }
-    return fileName.substring(0, index);
-  }
-
-  String _buildAbsoluteFilePath(String basePath, String relativePath) {
-    final String normalizedRelative = relativePath.replaceAll(
-      '/',
-      Platform.pathSeparator,
-    );
-    return '$basePath${Platform.pathSeparator}$normalizedRelative';
   }
 }

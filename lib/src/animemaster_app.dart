@@ -1,3 +1,4 @@
+import 'widgets/app_feedback.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -50,6 +51,7 @@ class AnimeMasterApp extends StatelessWidget {
                 title: 'AnimeMaster',
                 debugShowCheckedModeBanner: false,
                 navigatorObservers: <NavigatorObserver>[
+                  AppFeedback.observer,
                   HapticNavigatorObserver(),
                 ],
                 themeMode: mode,
@@ -84,6 +86,7 @@ class _StartupUpdateProbe extends StatefulWidget {
 
 class _StartupUpdateProbeState extends State<_StartupUpdateProbe> {
   String _checkedFeedUrl = '';
+  bool _catalogChecked = false;
   bool _isChecking = false;
   bool _showOnboarding = false;
   bool _onboardingChecked = false;
@@ -114,6 +117,10 @@ class _StartupUpdateProbeState extends State<_StartupUpdateProbe> {
 
   void _scheduleUpdateCheckIfNeeded() {
     final SettingsProvider settings = widget.settings;
+    if (settings.isLoaded && !_catalogChecked) {
+      _catalogChecked = true;
+      settings.refreshCatalog();
+    }
     final String feedUrl = settings.appUpdateFeedUrl.trim();
 
     if (!settings.isLoaded || !settings.autoCheckUpdates || feedUrl.isEmpty) {

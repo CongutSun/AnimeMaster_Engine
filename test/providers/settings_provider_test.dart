@@ -100,6 +100,26 @@ void main() {
   });
 
   group('SettingsProvider RSS sources', () {
+    test('Nyaa is opt-in and removal persists across catalog reads', () async {
+      final settings = SettingsProvider();
+      await settings.initialize();
+      final nyaa = settings.recommendedSources.singleWhere(
+        (s) => s['id'] == 'nyaa',
+      );
+      await settings.addRecommendedSource(nyaa);
+      expect(settings.rssSources.last['url'], nyaa['url']);
+      await settings.updateRssSource(2, {
+        ...settings.rssSources.last,
+        'enabled': 'false',
+      });
+      expect(settings.rssSources.last['enabled'], 'false');
+      await settings.removeRssSource(2);
+      expect(settings.recommendedSources.map((s) => s['id']), contains('nyaa'));
+      expect(
+        settings.rssSources.where((s) => s['url'] == nyaa['url']),
+        isEmpty,
+      );
+    });
     test('RSS sources start with bundled defaults', () async {
       final SettingsProvider provider = SettingsProvider();
       await provider.initialize();

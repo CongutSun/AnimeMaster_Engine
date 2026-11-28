@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../providers/settings_provider.dart';
 
 import '../models/online_episode_source.dart';
 import '../repositories/bilibili_episode_mapping_repository.dart';
@@ -39,12 +41,16 @@ class _ResourceSearchPageState extends State<ResourceSearchPage>
     with SingleTickerProviderStateMixin {
   late final TabController _tabs;
   int _index = 0;
+  bool _biliVisited = false;
   bool _websitesVisited = false;
 
   @override
   void initState() {
     super.initState();
-    _tabs = TabController(length: 2, vsync: this);
+    _websitesVisited = context.read<SettingsProvider?>()?.websiteFirst ?? false;
+    _index = _websitesVisited ? 1 : 0;
+    _biliVisited = _index == 0;
+    _tabs = TabController(length: 2, initialIndex: _index, vsync: this);
   }
 
   @override
@@ -57,6 +63,7 @@ class _ResourceSearchPageState extends State<ResourceSearchPage>
     FocusScope.of(context).unfocus();
     setState(() {
       _index = index;
+      if (index == 0) _biliVisited = true;
       if (index == 1) _websitesVisited = true;
     });
   }
@@ -131,17 +138,19 @@ class _ResourceSearchPageState extends State<ResourceSearchPage>
                 children: <Widget>[
                   TickerMode(
                     enabled: _index == 0,
-                    child: BilibiliVideoPage(
-                      embedded: true,
-                      initialKeyword: widget.animeName,
-                      subjectTitle: widget.animeName,
-                      bangumiSubjectId: widget.bangumiSubjectId,
-                      aliases: widget.aliases,
-                      episodeQuery: query,
-                      service: widget.bilibiliService,
-                      auth: widget.bilibiliAuth,
-                      mappings: widget.bilibiliMappings,
-                    ),
+                    child: _biliVisited
+                        ? BilibiliVideoPage(
+                            embedded: true,
+                            initialKeyword: widget.animeName,
+                            subjectTitle: widget.animeName,
+                            bangumiSubjectId: widget.bangumiSubjectId,
+                            aliases: widget.aliases,
+                            episodeQuery: query,
+                            service: widget.bilibiliService,
+                            auth: widget.bilibiliAuth,
+                            mappings: widget.bilibiliMappings,
+                          )
+                        : const SizedBox.shrink(),
                   ),
                   TickerMode(
                     enabled: _index == 1,

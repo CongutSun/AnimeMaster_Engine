@@ -1,3 +1,4 @@
+import '../widgets/app_feedback.dart';
 import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/material.dart';
@@ -522,7 +523,8 @@ class _DetailPageState extends State<DetailPage>
     }
     final String bgmToken = settings.bgmToken;
     if (bgmToken.isEmpty || currentStatus == '未收藏') {
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppFeedback.show(
+        context,
         SnackBar(
           content: Text(bgmToken.isEmpty ? '请先配置 Bgm Token' : '请选择更新状态'),
         ),
@@ -560,7 +562,8 @@ class _DetailPageState extends State<DetailPage>
     if (!mounted) return;
     setState(() => isSyncing = false);
 
-    ScaffoldMessenger.of(context).showSnackBar(
+    AppFeedback.show(
+      context,
       SnackBar(
         content: Text(
           collectionSuccess && episodeSuccess ? '云端同步成功' : '同步失败，请检查网络',

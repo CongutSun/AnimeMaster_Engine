@@ -1,3 +1,4 @@
+import '../widgets/app_feedback.dart';
 import 'dart:async';
 import 'dart:io';
 
@@ -12,7 +13,6 @@ import '../screens/video_player_page.dart';
 import 'torrent_stream_server.dart';
 
 class MagnetActionHelper {
-  static const double _playbackBufferThreshold = 0.03;
   static const int _startupProbeBytes = 512 * 1024;
 
   static Future<String?> process(
@@ -25,6 +25,8 @@ class MagnetActionHelper {
     int bangumiSubjectId = 0,
     int bangumiEpisodeId = 0,
     String fallbackSource = '',
+    List<String> alternatives = const [],
+    String expectedHash = '',
     VoidCallback? onTaskAdded,
   }) async {
     bool loadingDialogOpen = false;
@@ -33,13 +35,27 @@ class MagnetActionHelper {
     DialogRoute<void>? loadingRoute;
     final navigator = Navigator.of(context, rootNavigator: true);
 
+    void closeLoadingDialog() {
+      if (!loadingDialogOpen || !navigator.mounted) {
+        return;
+      }
+
+      if (loadingRoute?.isActive == true) navigator.removeRoute(loadingRoute!);
+      loadingDialogOpen = false;
+    }
+
+    void cancelLoading() {
+      cancelToken.cancel('用户取消');
+      closeLoadingDialog();
+    }
+
     loadingRoute = DialogRoute<void>(
       context: context,
       barrierDismissible: false,
       builder: (BuildContext dialogContext) => PopScope(
         canPop: false,
         onPopInvokedWithResult: (didPop, result) {
-          if (!didPop) cancelToken.cancel('用户取消');
+          if (!didPop) cancelLoading();
         },
         child: Dialog(
           shape: RoundedRectangleBorder(
@@ -69,10 +85,7 @@ class MagnetActionHelper {
                     ),
                   ),
                 ),
-                TextButton(
-                  onPressed: () => cancelToken.cancel('用户取消'),
-                  child: const Text('取消'),
-                ),
+                TextButton(onPressed: cancelLoading, child: const Text('取消')),
               ],
             ),
           ),
@@ -82,47 +95,58 @@ class MagnetActionHelper {
     unawaited(navigator.push(loadingRoute));
     loadingDialogOpen = true;
 
-    void closeLoadingDialog() {
-      if (!loadingDialogOpen || !context.mounted) {
-        return;
-      }
-
-      if (loadingRoute?.isActive == true) navigator.removeRoute(loadingRoute!);
-      loadingDialogOpen = false;
-    }
-
     try {
       final TorrentMediaResolver resolver = TorrentMediaResolver();
-      final PreparedTorrentTask preparedTask = await resolver.prepareTask(
-        rawSource,
-        preferredTitle: preferredTitle,
-        subjectTitle: subjectTitle,
-        episodeLabel: episodeLabel,
-        bangumiSubjectId: bangumiSubjectId,
-        bangumiEpisodeId: bangumiEpisodeId,
-        fallbackSource: fallbackSource,
-        cancelToken: cancelToken,
-        onStage: (message) => stage.value = message,
-      );
+      final preparedTask = await Future.any<PreparedTorrentTask>([
+        resolver.prepareTask(
+          rawSource,
+          preferredTitle: preferredTitle,
+          subjectTitle: subjectTitle,
+          episodeLabel: episodeLabel,
+          bangumiSubjectId: bangumiSubjectId,
+          bangumiEpisodeId: bangumiEpisodeId,
+          fallbackSource: fallbackSource,
+          alternatives: alternatives,
+          expectedHash: expectedHash,
+          cancelToken: cancelToken,
+          onStage: (message) {
+            if (!cancelToken.isCancelled) stage.value = message;
+          },
+        ),
+        cancelToken.whenCancel.then<PreparedTorrentTask>(
+          (error) => throw error,
+        ),
+      ]);
 
       if (cancelToken.isCancelled) throw cancelToken.cancelError!;
       closeLoadingDialog();
       if (!context.mounted) return null;
       var taskInfo = preparedTask.taskInfo;
-      if (preparedTask.mediaItems.length > 1) {
+      if (preparedTask.mediaItems.length > 1 &&
+          !(autoPlay && preparedTask.uniquelyMatched)) {
         final selected = await showDialog<int>(
           context: context,
           builder: (ctx) => SimpleDialog(
             title: Text(autoPlay ? '选择播放文件' : '确认合集下载'),
             children: [
-              const Padding(
-                padding: EdgeInsets.all(16),
-                child: Text('此资源包含多个文件，将下载整个资源包。请选择播放文件；如只想下载一集，请取消并选择单集资源。'),
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Text(
+                  autoPlay ? '该资源会下载整个合集。请选择要播放的文件。' : '将整个合集加入下载，完成后可按集播放。',
+                ),
               ),
+              if (!autoPlay)
+                SimpleDialogOption(
+                  onPressed: () =>
+                      Navigator.pop(ctx, preparedTask.initialIndex),
+                  child: const Text('下载整个合集'),
+                ),
               for (int i = 0; i < preparedTask.mediaItems.length; i++)
                 SimpleDialogOption(
-                  onPressed: () => Navigator.pop(ctx, i),
-                  child: Text(preparedTask.mediaItems[i].fileName),
+                  onPressed: autoPlay ? () => Navigator.pop(ctx, i) : null,
+                  child: Text(
+                    '${preparedTask.mediaItems[i].episodeLabel}\n${preparedTask.mediaItems[i].fileName}',
+                  ),
                 ),
               TextButton(
                 onPressed: () => Navigator.pop(ctx),
@@ -132,15 +156,7 @@ class MagnetActionHelper {
           ),
         );
         if (selected == null || !context.mounted) return null;
-        final item = preparedTask.mediaItems[selected];
-        taskInfo = taskInfo.copyWith(
-          targetPath: item.filePath,
-          targetSize: item.fileSize,
-          episodeLabel: item.episodeLabel,
-          bangumiEpisodeId: selected == preparedTask.initialIndex
-              ? taskInfo.bangumiEpisodeId
-              : 0,
-        );
+        taskInfo = taskInfo.forFile(taskInfo.files[selected]);
       }
 
       await DownloadManager().addTask(
@@ -158,11 +174,13 @@ class MagnetActionHelper {
       if (autoPlay) {
         await _openPreparedPlayback(context, taskInfo);
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppFeedback.show(
+          context,
           const SnackBar(
             content: Text('任务已加入下载中心。'),
             backgroundColor: Colors.green,
           ),
+          download: true,
         );
       }
     } catch (error) {
@@ -170,7 +188,8 @@ class MagnetActionHelper {
       if (cancelToken.isCancelled) return null;
       final message = _friendlyErrorText(error);
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppFeedback.show(
+          context,
           SnackBar(content: Text(message), backgroundColor: Colors.redAccent),
         );
       }
@@ -217,9 +236,20 @@ class MagnetActionHelper {
           await showDialog<bool>(
             context: context,
             barrierDismissible: false,
-            builder: (_) => _WaitProgressDialog(
-              config: config,
-              threshold: _playbackBufferThreshold,
+            builder: (_) => PlaybackBufferDialog(
+              check: () async {
+                final manager = DownloadManager();
+                manager.prioritizePlaybackRange(
+                  config.hash,
+                  config.targetPath,
+                  0,
+                  _startupProbeBytes,
+                );
+                return (
+                  manager.getProgress(config.hash),
+                  await manager.isRangeReadable(config.hash, config.targetPath),
+                );
+              },
             ),
           ) ??
           false;
@@ -291,20 +321,27 @@ class MagnetActionHelper {
   }
 }
 
-class _WaitProgressDialog extends StatefulWidget {
-  final DownloadTaskInfo config;
-  final double threshold;
-
-  const _WaitProgressDialog({required this.config, required this.threshold});
-
+class PlaybackBufferDialog extends StatefulWidget {
+  const PlaybackBufferDialog({super.key, required this.check});
+  final Future<(double, bool)> Function() check;
   @override
-  State<_WaitProgressDialog> createState() => _WaitProgressDialogState();
+  State<PlaybackBufferDialog> createState() => _PlaybackBufferDialogState();
 }
 
-class _WaitProgressDialogState extends State<_WaitProgressDialog> {
+class _PlaybackBufferDialogState extends State<PlaybackBufferDialog> {
   Timer? _timer;
   double _progress = 0;
   bool _startupReady = false;
+  bool _checking = false;
+  bool _finished = false;
+  void _finish(bool ready) {
+    if (_finished || !mounted || ModalRoute.of(context)?.isCurrent != true) {
+      return;
+    }
+    _finished = true;
+    _timer?.cancel();
+    Navigator.of(context).pop(ready);
+  }
 
   @override
   void initState() {
@@ -323,28 +360,21 @@ class _WaitProgressDialogState extends State<_WaitProgressDialog> {
   }
 
   Future<void> _updateProgress() async {
-    final double progress = DownloadManager().getProgress(widget.config.hash);
-    DownloadManager().prioritizePlaybackRange(
-      widget.config.hash,
-      widget.config.targetPath,
-      0,
-      MagnetActionHelper._startupProbeBytes,
-    );
-    final bool startupReady = await DownloadManager().isRangeReadable(
-      widget.config.hash,
-      widget.config.targetPath,
-    );
-    if (!mounted) {
-      return;
-    }
+    if (_checking || _finished) return;
+    _checking = true;
+    try {
+      final (progress, startupReady) = await widget.check();
+      if (!mounted || _finished) return;
+      setState(() {
+        _progress = progress;
+        _startupReady = startupReady;
+      });
 
-    setState(() {
-      _progress = progress;
-      _startupReady = startupReady;
-    });
-
-    if (startupReady || progress >= 1.0) {
-      Navigator.of(context).pop(true);
+      if (startupReady || progress >= 1.0) {
+        _finish(true);
+      }
+    } finally {
+      _checking = false;
     }
   }
 
@@ -355,6 +385,7 @@ class _WaitProgressDialogState extends State<_WaitProgressDialog> {
     return PopScope(
       canPop: false,
       child: AlertDialog(
+        scrollable: true,
         title: const Text('正在缓冲播放数据'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -376,7 +407,7 @@ class _WaitProgressDialogState extends State<_WaitProgressDialog> {
         ),
         actions: <Widget>[
           TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
+            onPressed: () => _finish(false),
             child: const Text('转入后台下载'),
           ),
         ],

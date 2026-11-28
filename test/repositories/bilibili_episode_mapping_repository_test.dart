@@ -20,6 +20,9 @@ class _VersionOneDatabase extends AppDatabase {
       await customStatement(
         'ALTER TABLE download_task_records DROP COLUMN audio_size',
       );
+      await customStatement(
+        'ALTER TABLE download_task_records DROP COLUMN episode_files',
+      );
       await m.createTable(playbackProgressRecords);
     },
   );

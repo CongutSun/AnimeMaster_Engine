@@ -198,6 +198,8 @@ class RssFeedService {
                 node.innerText,
             enclosure: type.contains('bittorrent'),
           );
+        } else if (name == 'infohash' && magnet.isEmpty) {
+          candidate('magnet:?xt=urn:btih:${node.innerText.trim()}');
         } else if (['guid', 'id', 'magneturi', 'magnet'].contains(name)) {
           final value = node.innerText.trim();
           if (value.startsWith('magnet:') || value.startsWith('http')) {

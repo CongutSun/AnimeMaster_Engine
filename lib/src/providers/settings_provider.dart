@@ -10,6 +10,7 @@ import '../core/engine_bridge.dart';
 import '../models/bangumi_auth_gateway_models.dart';
 import '../models/bangumi_user_profile.dart';
 import '../models/rss_resource.dart';
+import '../services/resource_catalog.dart';
 import '../services/bangumi_auth_gateway_service.dart';
 import '../services/bangumi_oauth_service.dart';
 
@@ -95,9 +96,89 @@ class SettingsProvider with ChangeNotifier {
       dandanplayAppId.trim().isNotEmpty &&
       dandanplayAppSecret.trim().isNotEmpty;
 
+  ResourceCatalog _catalog = ResourceCatalog.bundled;
+  int get catalogRevision => _catalog.revision;
+  String? _catalogId(Map<String, String> item) =>
+      item['catalogId'] ??
+      ResourceCatalog.bundled.sources
+          .where((s) => s['url'] == item['url'])
+          .firstOrNull?['id'];
+  List<Map<String, String>> get recommendedSources => _catalog.sources
+      .where(
+        (s) => !_rssSources.any(
+          (r) => _catalogId(r) == s['id'] || r['url'] == s['url'],
+        ),
+      )
+      .toList();
   List<Map<String, String>> get rssSources => _rssSources
-      .map((item) => Map<String, String>.unmodifiable(item))
+      .map((item) {
+        final catalogId = _catalogId(item);
+        final managed = _catalog.sources
+            .where((s) => s['id'] == catalogId)
+            .firstOrNull;
+        return Map<String, String>.unmodifiable({
+          ...item,
+          if (managed != null && item['customized'] != 'true') ...{
+            'url': managed['url']!,
+            'name': managed['name']!,
+            'id': rssSourceId(item),
+            'catalogId': catalogId!,
+          },
+        });
+      })
       .toList(growable: false);
+
+  Future<void> addRecommendedSource(Map<String, String> source) async {
+    if (!recommendedSources.any((s) => s['id'] == source['id'])) return;
+    await _saveRssSources([
+      ..._rssSources,
+      {
+        'id': rssSourceId({'url': source['url']!}),
+        'catalogId': source['id']!,
+        'name': source['name']!,
+        'url': source['url']!,
+        'type': 'search',
+        'enabled': 'true',
+      },
+    ]);
+  }
+
+  Future<bool>? _catalogUpdate;
+  Future<bool> refreshCatalog({bool force = false}) => _catalogUpdate ??=
+      _refreshCatalog(force).whenComplete(() => _catalogUpdate = null);
+  Future<bool> _refreshCatalog(bool force) async {
+    final prefs = await SharedPreferences.getInstance();
+    final now = DateTime.now().millisecondsSinceEpoch;
+    if (!force &&
+        now - (prefs.getInt('source_catalog_checked') ?? 0) <
+            const Duration(days: 1).inMilliseconds) {
+      return true;
+    }
+    await prefs.setInt('source_catalog_checked', now);
+    try {
+      final envelope = await ResourceCatalog.fetch();
+      final next = ResourceCatalog.verify(envelope);
+      if (next.revision < _catalog.revision) return false;
+      if (next.revision > _catalog.revision) {
+        await prefs.setString('signed_source_catalog', envelope);
+        _catalog = next;
+        notifyListeners();
+      }
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  bool _websiteFirst = false;
+  bool get websiteFirst => _websiteFirst;
+  Future<void> setWebsiteFirst(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('search_website_first', value);
+    _websiteFirst = value;
+    notifyListeners();
+  }
+
   bool get isLoaded => _isLoaded;
 
   String get closeAction => _closeAction;
@@ -121,6 +202,14 @@ class SettingsProvider with ChangeNotifier {
   Future<void> _loadSettings() async {
     final SharedPreferences prefs = await SharedPreferences.getInstance();
 
+    final envelope = prefs.getString('signed_source_catalog');
+    if (envelope != null) {
+      try {
+        final saved = ResourceCatalog.verify(envelope);
+        if (saved.revision > _catalog.revision) _catalog = saved;
+      } catch (_) {}
+    }
+    _websiteFirst = prefs.getBool('search_website_first') ?? false;
     _bgmAcc = prefs.getString('bgm_acc') ?? '';
     _closeAction = prefs.getString('close_action') ?? 'minimize';
     _palette = prefs.getString('ui_palette') ?? 'ink';
@@ -464,7 +553,14 @@ class SettingsProvider with ChangeNotifier {
   Future<void> updateRssSource(int index, Map<String, String> source) async {
     if (index < 0 || index >= _rssSources.length) return;
     final next = _rssSources.map((s) => Map<String, String>.from(s)).toList();
-    next[index] = {...source, 'id': rssSourceId(_rssSources[index])};
+    final shown = rssSources[index];
+    next[index] = {
+      ...source,
+      'id': rssSourceId(_rssSources[index]),
+      if (shown['catalogId'] != null) 'catalogId': shown['catalogId']!,
+      if (source['name'] != shown['name'] || source['url'] != shown['url'])
+        'customized': 'true',
+    };
     await _saveRssSources(next);
   }
 

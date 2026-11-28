@@ -1,3 +1,4 @@
+import '../widgets/app_feedback.dart';
 import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
@@ -368,9 +369,10 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
     if (entered || !mounted || silent) {
       return;
     }
-    ScaffoldMessenger.of(
+    AppFeedback.show(
       context,
-    ).showSnackBar(const SnackBar(content: Text('当前设备或系统版本不支持小窗播放。')));
+      const SnackBar(content: Text('当前设备或系统版本不支持小窗播放。')),
+    );
   }
 
   void _hideControlsForPictureInPicture() {
@@ -459,6 +461,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
     Duration? startPosition,
     bool play = true,
   }) async {
+    AppFeedback.dismiss(ModalRoute.of(context));
     final int probeSerial = ++_durationProbeSerial;
     if (mounted) {
       setState(() {
@@ -593,7 +596,8 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
       }
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppFeedback.show(
+        context,
         SnackBar(
           content: Text(
             error is BilibiliVideoException ? error.message : '切换分 P 失败，请重试。',
@@ -769,7 +773,8 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
                 : raw.contains('Connection') || raw.contains('SocketException')
                 ? '网络连接失败，请检查网络后重试'
                 : '在线源搜索失败';
-            ScaffoldMessenger.of(context).showSnackBar(
+            AppFeedback.show(
+              context,
               SnackBar(content: Text(msg), backgroundColor: Colors.redAccent),
             );
           },
@@ -782,7 +787,8 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
             });
             if (autoPlayFirst && !hasOpenedFirstSource) {
               setState(() => _showControls = true);
-              ScaffoldMessenger.of(context).showSnackBar(
+              AppFeedback.show(
+                context,
                 SnackBar(
                   content: Text(
                     _onlineSources.any((source) => source.bilibiliBvid != null)
@@ -918,7 +924,8 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
       );
       return;
     }
-    ScaffoldMessenger.of(context).showSnackBar(
+    AppFeedback.show(
+      context,
       SnackBar(
         content: Text('正在查找 ${query.episodeLabel} 的在线源...'),
         duration: const Duration(seconds: 2),
@@ -957,9 +964,10 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
 
   Future<void> _showOnlineEpisodeSheet() async {
     if (_onlineEpisodes.isEmpty) {
-      ScaffoldMessenger.of(
+      AppFeedback.show(
         context,
-      ).showSnackBar(const SnackBar(content: Text('当前番剧没有可切换的在线剧集列表。')));
+        const SnackBar(content: Text('当前番剧没有可切换的在线剧集列表。')),
+      );
       return;
     }
     _cancelControlsAutoHide();
@@ -1059,9 +1067,10 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
     }
     final OnlineEpisodeQuery? next = _findNextOnlineEpisode();
     if (next == null) {
-      ScaffoldMessenger.of(
+      AppFeedback.show(
         context,
-      ).showSnackBar(const SnackBar(content: Text('已经是最后一集或没有可播放的下一集。')));
+        const SnackBar(content: Text('已经是最后一集或没有可播放的下一集。')),
+      );
       return;
     }
     _showAutoNextPrompt(next);
@@ -1809,19 +1818,16 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
     return message.contains('匹配') || message.contains('节目');
   }
 
+  final _manualDanmakuPrompt = DanmakuMatchPrompt();
   void _showManualDanmakuMatchPrompt() {
-    if (!mounted) {
-      return;
+    final media = _activeMedia;
+    if (media != null && mounted) {
+      _manualDanmakuPrompt.show(
+        context,
+        PlaybackProgressStore.keyFor(media),
+        _showManualDanmakuSearchSheet,
+      );
     }
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: const Text('自动匹配失败，可以手动搜索并指定弹幕剧集。'),
-        action: SnackBarAction(
-          label: '手动匹配',
-          onPressed: _showManualDanmakuSearchSheet,
-        ),
-      ),
-    );
   }
 
   void _cancelDanmakuTicker() {
@@ -1953,10 +1959,11 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
       _resyncDanmakuCursor(_effectivePosition);
     }
 
-    if (mounted && _danmakuStatusText.isNotEmpty && _danmakuComments.isEmpty) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(_danmakuStatusText)));
+    if (mounted &&
+        _danmakuStatusText.isNotEmpty &&
+        _danmakuComments.isEmpty &&
+        !_shouldSuggestManualDanmakuMatch(_danmakuStatusText)) {
+      AppFeedback.show(context, SnackBar(content: Text(_danmakuStatusText)));
     }
     _scheduleControlsAutoHide();
   }
@@ -2047,9 +2054,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
       });
       _resyncDanmakuCursor(_effectivePosition);
       if (_danmakuComments.isNotEmpty) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(_danmakuStatusText)));
+        AppFeedback.show(context, SnackBar(content: Text(_danmakuStatusText)));
       }
     } catch (error) {
       if (!mounted || serial != _danmakuSerial) {
@@ -2060,9 +2065,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
         _isDanmakuLoading = false;
         _danmakuStatusText = _friendlyDanmakuError(error);
       });
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(_danmakuStatusText)));
+      AppFeedback.show(context, SnackBar(content: Text(_danmakuStatusText)));
     }
   }
 
@@ -2090,9 +2093,10 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
     );
     if (!mounted || !identical(media, _activeMedia)) return;
     if (sent == true) {
-      ScaffoldMessenger.of(
+      AppFeedback.show(
         context,
-      ).showSnackBar(const SnackBar(content: Text('弹幕已发送，显示可能稍有延迟。')));
+        const SnackBar(content: Text('弹幕已发送，显示可能稍有延迟。')),
+      );
       unawaited(_prepareDanmakuForMedia(media, forceReload: true));
     }
     if (resume) await _player.play();
@@ -2437,12 +2441,15 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
   }
 
   Future<void> _showCacheSelectionSheet() async {
-    final List<DownloadTaskInfo> tasks = DownloadManager().allTasks.reversed
+    final List<DownloadTaskInfo> tasks = DownloadManager().playableTasks
+        .toList()
+        .reversed
         .toList();
 
     if (tasks.isEmpty) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppFeedback.show(
+          context,
           const SnackBar(
             content: Text(
               '\u7f13\u5b58\u4e2d\u5fc3\u5f53\u524d\u6ca1\u6709\u53ef\u5207\u6362\u7684\u4efb\u52a1\u3002',
@@ -2474,9 +2481,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
       session = await CachedMediaPlayback.prepare(task);
     } catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('无法播放：$error')));
+        AppFeedback.show(context, SnackBar(content: Text('无法播放：$error')));
       }
       return;
     }

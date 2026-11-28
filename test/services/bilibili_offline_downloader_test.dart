@@ -179,6 +179,48 @@ void main() {
     await database.close();
     await root.delete(recursive: true);
   });
+  test('同一个搜索上下文加入两个不同分 P，不继承错误集号且重复点击不增加计数', () async {
+    videos.gate = Completer();
+    final parts = [
+      for (final n in [1, 2])
+        BilibiliPart(
+          cid: 10 * n,
+          page: n,
+          title: '第 $n 集',
+          duration: const Duration(minutes: 2),
+        ),
+    ];
+    final video = BilibiliVideo(
+      bvid: bvid,
+      title: '动画全集',
+      parts: parts,
+      allowsDownload: true,
+    );
+    Future<bool> enqueuePart(BilibiliPart part) => manager.cacheBilibiliPart(
+      video,
+      part,
+      subjectTitle: '动画',
+      episodeLabel: '第 1 集',
+      bangumiSubjectId: 11,
+      bangumiEpisodeId: 101,
+    );
+    try {
+      final results = await Future.wait([
+        enqueuePart(parts[0]),
+        enqueuePart(parts[0]),
+        enqueuePart(parts[1]),
+      ]);
+      expect(results.where((r) => r), hasLength(2));
+      final first = manager.taskFor('bili_${bvid}_10')!,
+          second = manager.taskFor(key)!;
+      expect(first.bangumiEpisodeId, 101);
+      expect(second.bangumiEpisodeId, 0);
+      expect(second.files.single.number, 2);
+    } finally {
+      videos.gate!.complete();
+    }
+  });
+
   test('同一分 P 只缓存一次，重启后两轨纯本地播放，进度沿用在线标识', () async {
     videos.gate = Completer();
     await Future.wait([enqueue(), enqueue()]);

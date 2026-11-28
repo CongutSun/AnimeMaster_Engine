@@ -1,3 +1,4 @@
+import '../widgets/app_feedback.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -821,9 +822,10 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
     }
     final Map<String, dynamic>? next = _findNextEpisode();
     if (next == null) {
-      ScaffoldMessenger.of(
+      AppFeedback.show(
         context,
-      ).showSnackBar(const SnackBar(content: Text('已经是最后一集或没有可播放的下一集。')));
+        const SnackBar(content: Text('已经是最后一集或没有可播放的下一集。')),
+      );
       return;
     }
     _showAutoNextPrompt(next);
@@ -1062,7 +1064,7 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
       _activeMedia = media;
       _activeTask = media.localFilePath.isEmpty
           ? null
-          : DownloadManager().allTasks
+          : DownloadManager().playableTasks
                 .where((task) => task.targetPath == media.localFilePath)
                 .firstOrNull;
       _activeQuery = query ?? _activeQuery;
@@ -1620,13 +1622,15 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
     final int episodeNumber = _episodeNumber(_episode);
     final String title = _episodeTitle(_episode);
     final String description = _episodeDescription(_episode);
-    final offlineIds = DownloadManager().allTasks
-        .where(
-          (task) =>
-              task.isCompleted &&
-              task.bangumiSubjectId == widget.animeId &&
-              task.bangumiEpisodeId > 0,
-        )
+    final offlineFiles = DownloadManager().playableTasks.where(
+      (t) => t.isCompleted && t.bangumiSubjectId == widget.animeId,
+    );
+    final offlineNumbers = {
+      for (final t in offlineFiles)
+        if (t.bangumiEpisodeId == 0) t.files.firstOrNull?.number,
+    };
+    final offlineIds = offlineFiles
+        .where((task) => task.bangumiEpisodeId > 0)
         .map((task) => task.bangumiEpisodeId)
         .toSet();
 
@@ -1772,7 +1776,12 @@ class _EpisodeWatchPageState extends State<EpisodeWatchPage>
                             title: _episodeTitle(episode),
                             episodeNumber: _episodeNumber(episode),
                             selected: _isCurrentEpisode(episode),
-                            offline: offlineIds.contains(_episodeId(episode)),
+                            offline:
+                                offlineIds.contains(_episodeId(episode)) ||
+                                (_episodeNumber(episode) > 0 &&
+                                    offlineNumbers.contains(
+                                      _episodeNumber(episode),
+                                    )),
                             onTap: () => unawaited(_selectEpisode(episode)),
                           );
                         },

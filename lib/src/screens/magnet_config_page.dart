@@ -1,3 +1,4 @@
+import '../widgets/app_feedback.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -17,6 +18,7 @@ class MagnetConfigPage extends StatefulWidget {
   final int bangumiSubjectId;
   final int initialEpisodeNumber;
   final String initialEpisodeTitle;
+  final String excludeHash;
   final bool embedded;
   final RssFeedService? feedService;
 
@@ -27,6 +29,7 @@ class MagnetConfigPage extends StatefulWidget {
     this.bangumiSubjectId = 0,
     this.initialEpisodeNumber = 0,
     this.initialEpisodeTitle = '',
+    this.excludeHash = '',
     this.embedded = false,
     this.feedService,
   });
@@ -94,9 +97,7 @@ class _MagnetConfigPageState extends State<MagnetConfigPage> {
       return;
     }
     if (selectedSources.isEmpty) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('请至少选择一个资源源。')));
+      AppFeedback.show(context, const SnackBar(content: Text('请至少选择一个资源源。')));
       return;
     }
     final String rawEpisode = episodeController.text.trim();
@@ -105,9 +106,7 @@ class _MagnetConfigPageState extends State<MagnetConfigPage> {
         : int.tryParse(rawEpisode);
     if (rawEpisode.isNotEmpty &&
         (targetEpisodeNumber == null || targetEpisodeNumber <= 0)) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('请输入正确的集数。')));
+      AppFeedback.show(context, const SnackBar(content: Text('请输入正确的集数。')));
       return;
     }
 
@@ -195,7 +194,8 @@ class _MagnetConfigPageState extends State<MagnetConfigPage> {
       return;
     }
     Clipboard.setData(ClipboardData(text: content));
-    ScaffoldMessenger.of(context).showSnackBar(
+    AppFeedback.show(
+      context,
       const SnackBar(
         content: Text('链接已复制到剪贴板。'),
         backgroundColor: Colors.green,
@@ -232,7 +232,11 @@ class _MagnetConfigPageState extends State<MagnetConfigPage> {
         preferredTitle: result['title'] ?? '',
         fallbackSource: result['magnet'] ?? '',
         subjectTitle: widget.animeName,
-        episodeLabel: episodeLabel,
+        episodeLabel: searchedEpisodeNumber == null
+            ? episodeLabel
+            : '第 $searchedEpisodeNumber 集',
+        alternatives: MagnetApi.routes(result),
+        expectedHash: result['hash'] ?? '',
         bangumiSubjectId: widget.bangumiSubjectId,
       );
       if (mounted && error != null) {
@@ -250,21 +254,25 @@ class _MagnetConfigPageState extends State<MagnetConfigPage> {
         .rssSources
         .where((s) => s['enabled'] != 'false')
         .toList();
-    final sortedResults = List<Map<String, String>>.of(searchResults)
-      ..sort((a, b) {
-        if (_sortOrder == '推荐') {
-          final direct =
-              (b['torrent']?.isNotEmpty == true ? 1 : 0) -
-              (a['torrent']?.isNotEmpty == true ? 1 : 0);
-          if (direct != 0) return direct;
-        }
-        if (_sortOrder == '来源') {
-          return (a['source'] ?? '').compareTo(b['source'] ?? '');
-        }
-        return (DateTime.tryParse(b['date'] ?? '') ?? DateTime(1970)).compareTo(
-          DateTime.tryParse(a['date'] ?? '') ?? DateTime(1970),
-        );
-      });
+    final sortedResults =
+        [
+          ...searchResults.where(
+            (r) =>
+                widget.excludeHash.isEmpty || r['hash'] != widget.excludeHash,
+          ),
+        ]..sort((a, b) {
+          if (_sortOrder == '推荐') {
+            final direct =
+                (b['torrent']?.isNotEmpty == true ? 1 : 0) -
+                (a['torrent']?.isNotEmpty == true ? 1 : 0);
+            if (direct != 0) return direct;
+          }
+          if (_sortOrder == '来源') {
+            return (a['source'] ?? '').compareTo(b['source'] ?? '');
+          }
+          return (DateTime.tryParse(b['date'] ?? '') ?? DateTime(1970))
+              .compareTo(DateTime.tryParse(a['date'] ?? '') ?? DateTime(1970));
+        });
 
     final Widget body = ListView(
       key: const ValueKey<String>('website-resource-results'),
@@ -314,7 +322,7 @@ class _MagnetConfigPageState extends State<MagnetConfigPage> {
                     labelText: '指定集数（可选）',
                     hintText: '例如：12',
                     helperText: widget.initialEpisodeTitle.trim().isEmpty
-                        ? '填写后只显示该单集，不需要手动拼 EP12'
+                        ? '可查找该单集和标明包含该集的合集'
                         : '当前：${widget.initialEpisodeTitle.trim()}',
                     suffixIcon: episodeController.text.isEmpty
                         ? null
@@ -378,10 +386,12 @@ class _MagnetConfigPageState extends State<MagnetConfigPage> {
                       children: allSources.map((Map<String, String> source) {
                         final bool isSelected = selectedSources.any(
                           (Map<String, String> item) =>
-                              item['name'] == source['name'],
+                              item['url'] == source['url'],
                         );
                         return FilterChip(
-                          label: Text(source['name'] ?? '未知源'),
+                          label: Text(
+                            "${source['name'] ?? '未知源'}${MagnetApi.sourceCoolingDown(source['url'] ?? '') ? ' · 暂缓重试' : ''}",
+                          ),
                           selected: isSelected,
                           onSelected: isSearching
                               ? null
@@ -392,7 +402,7 @@ class _MagnetConfigPageState extends State<MagnetConfigPage> {
                                     } else {
                                       selectedSources.removeWhere(
                                         (Map<String, String> item) =>
-                                            item['name'] == source['name'],
+                                            item['url'] == source['url'],
                                       );
                                     }
                                   });
@@ -434,10 +444,10 @@ class _MagnetConfigPageState extends State<MagnetConfigPage> {
           const SizedBox(height: 12),
           Text(
             isSearching
-                ? '已完成 $_completedSources 个来源 · ${searchResults.length} 条结果'
+                ? '已完成 $_completedSources 个来源 · ${sortedResults.length} 条结果'
                 : searchedEpisodeNumber == null
-                ? '搜索结果：${searchResults.length} 条'
-                : '第 $searchedEpisodeNumber 集：${searchResults.length} 条',
+                ? '搜索结果：${sortedResults.length} 条'
+                : '第 $searchedEpisodeNumber 集：${sortedResults.length} 条',
             style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: 8),
@@ -469,7 +479,7 @@ class _MagnetConfigPageState extends State<MagnetConfigPage> {
                 ),
             ],
           ),
-          if (!isSearching && searchResults.isEmpty)
+          if (!isSearching && sortedResults.isEmpty)
             Card(
               child: Padding(
                 padding: const EdgeInsets.all(16),
@@ -485,8 +495,10 @@ class _MagnetConfigPageState extends State<MagnetConfigPage> {
             final String title = TaskTitleParser.stripSourcePrefix(
               result['title'] ?? '未知资源',
             );
-            final String parsedEpisodeLabel =
-                TaskTitleParser.extractEpisodeLabel(title);
+            final range = TaskTitleParser.collectionRange(title);
+            final String parsedEpisodeLabel = range == null
+                ? TaskTitleParser.extractEpisodeLabel(title)
+                : '';
             final String episodeLabel = parsedEpisodeLabel.isNotEmpty
                 ? parsedEpisodeLabel
                 : searchedEpisodeNumber == null
@@ -520,9 +532,13 @@ class _MagnetConfigPageState extends State<MagnetConfigPage> {
                       runSpacing: 8,
                       children: <Widget>[
                         _MetaChip(label: result['source'] ?? '未知源'),
+                        if (result['cachedAt'] != null)
+                          _MetaChip(label: '上次搜索 · ${result['cachedAt']}'),
                         if (result['date']?.isNotEmpty == true)
                           _MetaChip(label: result['date']!),
                         _MetaChip(label: hasTorrent ? '种子链接 · 未验证' : '磁力链接'),
+                        if (range != null)
+                          _MetaChip(label: '合集 · 第 ${range.$1}–${range.$2} 集'),
                         if (episodeLabel.isNotEmpty)
                           _MetaChip(label: episodeLabel),
                       ],

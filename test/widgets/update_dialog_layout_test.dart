@@ -62,7 +62,11 @@ void main() {
             ),
           ),
         );
-        await tester.tap(find.text('检查'));
+        final check = tester
+            .widget<TextButton>(find.widgetWithText(TextButton, '检查'))
+            .onPressed!;
+        check();
+        check();
         await tester.pumpAndSettle();
         expect(tester.takeException(), isNull);
         final scroll = find

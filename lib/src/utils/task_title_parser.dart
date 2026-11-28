@@ -62,6 +62,21 @@ class TaskTitleParser {
     return null;
   }
 
+  static (int, int)? collectionRange(String title) {
+    final match = RegExp(
+      r'(?<![a-z0-9])(?:S\d{1,2})?(?:EP?|第)?\s*(\d{1,3})(?:集|话|話)?\s*[-~～至]\s*(?:EP?|第)?\s*(\d{1,3})(?![\da-z])',
+      caseSensitive: false,
+    ).firstMatch(title);
+    if (match == null) return null;
+    final start = int.parse(match[1]!), end = int.parse(match[2]!);
+    if (start <= 0 ||
+        end <= start ||
+        [240, 360, 480, 576, 720].contains(start)) {
+      return null;
+    }
+    return (start, end);
+  }
+
   /// Returns whether a release title explicitly identifies one episode.
   /// Resolution, year and codec numbers are deliberately ignored so a search
   /// for episode 10 does not accidentally match "10bit" or "1080p".

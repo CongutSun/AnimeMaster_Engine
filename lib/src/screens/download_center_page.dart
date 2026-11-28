@@ -1,3 +1,5 @@
+import '../widgets/app_feedback.dart';
+import 'magnet_config_page.dart';
 import 'dart:io';
 import '../theme/app_theme.dart';
 
@@ -45,7 +47,8 @@ class DownloadCenterPage extends StatelessWidget {
                     await manager.setSeedingEnabled(enabled);
                   } catch (_) {
                     if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
+                      AppFeedback.show(
+                        context,
                         const SnackBar(content: Text('做种设置未能应用，请重试。')),
                       );
                     }
@@ -215,6 +218,28 @@ class DownloadCenterPage extends StatelessWidget {
                 PopupMenuButton<String>(
                   tooltip: '更多',
                   onSelected: (action) {
+                    if (action == 'alternate') {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => MagnetConfigPage(
+                            animeName: task.subjectTitle.isEmpty
+                                ? task.title
+                                : task.subjectTitle,
+                            aliases: const [],
+                            bangumiSubjectId: task.bangumiSubjectId,
+                            initialEpisodeNumber:
+                                task.files
+                                    .where((f) => f.path == task.targetPath)
+                                    .firstOrNull
+                                    ?.number ??
+                                0,
+                            excludeHash: task.hash,
+                          ),
+                        ),
+                      );
+                    }
+                    if (action == 'assign') _assign(context, manager, task);
                     if (action == 'seed') manager.toggleTask(hash);
                     if (action == 'delete') {
                       _confirmDelete(context, manager, hash);
@@ -259,6 +284,13 @@ class DownloadCenterPage extends StatelessWidget {
                               : '暂停做种',
                         ),
                       ),
+                    if (!complete && !task.isBilibili)
+                      const PopupMenuItem(
+                        value: 'alternate',
+                        child: Text('搜索其他版本'),
+                      ),
+                    if (task.files.isNotEmpty)
+                      const PopupMenuItem(value: 'assign', child: Text('校正集数')),
                     const PopupMenuItem(value: 'details', child: Text('任务详情')),
                     const PopupMenuItem(value: 'delete', child: Text('删除')),
                   ],
@@ -309,7 +341,8 @@ class DownloadCenterPage extends StatelessWidget {
   Future<DownloadTaskInfo> _enrichTaskEpisodeLabel(
     DownloadTaskInfo config,
   ) async {
-    if (config.isBilibili ||
+    if (config.files.isNotEmpty ||
+        config.isBilibili ||
         config.bangumiSubjectId <= 0 ||
         config.episodeLabel.contains('·') ||
         config.episodeLabel.contains('集 ·')) {
@@ -500,7 +533,70 @@ class DownloadCenterPage extends StatelessWidget {
     });
   }
 
+  Future<DownloadTaskInfo?> _chooseFile(
+    BuildContext context,
+    DownloadTaskInfo task,
+  ) async {
+    if (task.files.length <= 1) return task;
+    return showDialog<DownloadTaskInfo>(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        title: const Text('选择剧集文件'),
+        children: [
+          for (final f in task.files)
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(ctx, task.forFile(f)),
+              child: Text(
+                '${f.label}\n${f.path.split(RegExp(r"[/\\\\]")).last}',
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _assign(
+    BuildContext context,
+    DownloadManager manager,
+    DownloadTaskInfo task,
+  ) async {
+    final selection = await _chooseFile(context, task);
+    if (selection == null || !context.mounted) return;
+    int? number;
+    final selected = await showDialog<int>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        scrollable: true,
+        title: const Text('校正集数'),
+        content: TextField(
+          autofocus: true,
+          keyboardType: TextInputType.number,
+          decoration: const InputDecoration(labelText: '正片集数'),
+          onChanged: (s) => number = int.tryParse(s.trim()),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () {
+              if ((number ?? 0) > 0) Navigator.pop(ctx, number);
+            },
+            child: const Text('保存'),
+          ),
+        ],
+      ),
+    );
+    if (selected != null) {
+      await manager.assignEpisode(task.hash, selection.targetPath, selected);
+    }
+  }
+
   Future<void> _playVideo(BuildContext context, DownloadTaskInfo config) async {
+    final chosen = await _chooseFile(context, config);
+    if (chosen == null) return;
+    config = chosen;
     final DownloadTaskInfo playConfig = config.bangumiEpisodeId > 0
         ? config
         : await _enrichTaskEpisodeLabel(config);
@@ -509,9 +605,7 @@ class DownloadCenterPage extends StatelessWidget {
       session = await CachedMediaPlayback.prepare(playConfig);
     } catch (error) {
       if (context.mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('无法播放：$error')));
+        AppFeedback.show(context, SnackBar(content: Text('无法播放：$error')));
       }
       return;
     }
@@ -554,9 +648,10 @@ class DownloadCenterPage extends StatelessWidget {
               }
               Navigator.pop(dialogContext);
               if (!deleted && context.mounted) {
-                ScaffoldMessenger.of(
+                AppFeedback.show(
                   context,
-                ).showSnackBar(const SnackBar(content: Text('删除失败，任务文件未被移除。')));
+                  const SnackBar(content: Text('删除失败，任务文件未被移除。')),
+                );
               }
             },
             child: const Text('删除', style: TextStyle(color: Colors.redAccent)),

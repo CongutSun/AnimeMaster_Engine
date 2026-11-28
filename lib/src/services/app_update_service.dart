@@ -1,3 +1,4 @@
+import '../widgets/app_feedback.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:ffi';
@@ -306,7 +307,27 @@ class AppUpdateService {
     };
   }
 
+  static bool _showingUpdate = false;
+  static bool _installing = false;
   Future<void> showUpdateDialog(
+    BuildContext context,
+    AppUpdateCheckResult result, {
+    bool quietIfUpToDate = false,
+  }) async {
+    if (_showingUpdate ||
+        _installing ||
+        ModalRoute.of(context)?.isCurrent == false) {
+      return;
+    }
+    _showingUpdate = true;
+    try {
+      await _presentUpdate(context, result, quietIfUpToDate: quietIfUpToDate);
+    } finally {
+      _showingUpdate = false;
+    }
+  }
+
+  Future<void> _presentUpdate(
     BuildContext context,
     AppUpdateCheckResult result, {
     bool quietIfUpToDate = false,
@@ -406,31 +427,34 @@ class AppUpdateService {
     if (!context.mounted) {
       return;
     }
-    unawaited(
-      showDialog<void>(
-        context: context,
-        barrierDismissible: false,
-        builder: (BuildContext context) => const AlertDialog(
-          scrollable: true,
-          content: Row(
-            children: <Widget>[
-              CircularProgressIndicator(),
-              SizedBox(width: 20),
-              Expanded(child: Text(AppStrings.updateDownloadingAndVerifying)),
-            ],
-          ),
+    if (_installing) return;
+    _installing = true;
+    final navigator = Navigator.of(context, rootNavigator: true);
+    final route = DialogRoute<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) => const AlertDialog(
+        scrollable: true,
+        content: Row(
+          children: <Widget>[
+            CircularProgressIndicator(),
+            SizedBox(width: 20),
+            Expanded(child: Text(AppStrings.updateDownloadingAndVerifying)),
+          ],
         ),
       ),
     );
-
-    final AppUpdateInstallResult installResult = await downloadAndInstall(
-      updateInfo,
-    );
-    if (!context.mounted) {
-      return;
+    late final AppUpdateInstallResult installResult;
+    try {
+      unawaited(navigator.push(route));
+      installResult = await downloadAndInstall(updateInfo);
+    } finally {
+      if (navigator.mounted && route.isActive) navigator.removeRoute(route);
+      _installing = false;
     }
-    Navigator.of(context, rootNavigator: true).pop();
-    ScaffoldMessenger.of(context).showSnackBar(
+    if (!context.mounted) return;
+    AppFeedback.show(
+      context,
       SnackBar(
         content: Text(installResult.message),
         backgroundColor: installResult.success ? null : Colors.redAccent,

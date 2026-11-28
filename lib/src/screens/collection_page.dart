@@ -1,3 +1,4 @@
+import '../widgets/app_feedback.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/settings_provider.dart';
@@ -136,9 +137,10 @@ class _CollectionPageState extends State<CollectionPage> {
       final String token = settings.bgmToken;
 
       if (token.isEmpty) {
-        ScaffoldMessenger.of(
+        AppFeedback.show(
           context,
-        ).showSnackBar(const SnackBar(content: Text('缺少 Token，请先在设置中配置！')));
+          const SnackBar(content: Text('缺少 Token，请先在设置中配置！')),
+        );
         return;
       }
 
@@ -149,9 +151,7 @@ class _CollectionPageState extends State<CollectionPage> {
       int totalEp = anime.eps;
 
       if (totalEp > 0 && currentEp >= totalEp) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('已经看完啦！')));
+        AppFeedback.show(context, const SnackBar(content: Text('已经看完啦！')));
         return;
       }
 
@@ -176,7 +176,8 @@ class _CollectionPageState extends State<CollectionPage> {
       if (!mounted || settings.bgmAcc != account) return;
 
       if (success) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppFeedback.show(
+          context,
           SnackBar(
             content: Text('✅ 《${anime.displayName}》 进度已更新为 ${currentEp + 1}'),
             duration: const Duration(seconds: 1),
@@ -190,7 +191,8 @@ class _CollectionPageState extends State<CollectionPage> {
           );
           if (rollbackIndex >= 0) collectionList[rollbackIndex] = anime;
         });
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppFeedback.show(
+          context,
           const SnackBar(
             content: Text('❌ 同步失败，请检查网络！'),
             backgroundColor: Colors.red,
@@ -199,9 +201,7 @@ class _CollectionPageState extends State<CollectionPage> {
       }
     } catch (_) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('同步失败，请重试。')));
+        AppFeedback.show(context, const SnackBar(content: Text('同步失败，请重试。')));
       }
     } finally {
       if (mounted) await _loadCollection();
@@ -479,7 +479,8 @@ class _UpdateProgressSheetState extends State<_UpdateProgressSheet> {
     setState(() => isSyncing = false);
 
     if (success) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppFeedback.show(
+        context,
         const SnackBar(
           content: Text('✅ 进度同步成功！'),
           backgroundColor: Colors.green,
@@ -487,7 +488,8 @@ class _UpdateProgressSheetState extends State<_UpdateProgressSheet> {
       );
       Navigator.pop(context, true);
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppFeedback.show(
+        context,
         const SnackBar(
           content: Text('❌ 同步失败，请检查网络。'),
           backgroundColor: Colors.red,

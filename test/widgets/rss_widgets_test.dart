@@ -147,6 +147,16 @@ void main() {
         );
         await tester.pumpAndSettle();
         expect(find.textContaining('测试番剧 - 06'), findsOneWidget);
+        final download = tester
+            .widget<FilledButton>(find.widgetWithText(FilledButton, '下载'))
+            .onPressed!;
+        download();
+        download();
+        await tester.pumpAndSettle();
+        expect(find.byType(AlertDialog), findsOneWidget);
+        await tester.tap(find.text('取消'));
+        await tester.pumpAndSettle();
+        expect(find.byType(AlertDialog), findsNothing);
         await tester.tap(find.text('忽略'));
         await tester.pumpAndSettle();
         expect(store.entries.single.state, 'ignored');

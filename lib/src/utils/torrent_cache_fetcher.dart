@@ -29,6 +29,23 @@ class TorrentCacheFetcher {
     return '';
   }
 
+  static String canonicalHash(String value) {
+    var hash = extractHash(value);
+    if (hash.isEmpty) {
+      final uri = Uri.tryParse(value);
+      if (uri != null &&
+          ['http', 'https'].contains(uri.scheme) &&
+          uri.pathSegments.isNotEmpty) {
+        final match = RegExp(
+          r'^([a-f0-9]{40}|[a-z2-7]{32})\.torrent$',
+          caseSensitive: false,
+        ).firstMatch(uri.pathSegments.last);
+        hash = match?.group(1)?.toUpperCase() ?? '';
+      }
+    }
+    return hash.length == 32 ? base32ToHex(hash) : hash;
+  }
+
   static String base32ToHex(String base32) {
     const String base32Chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
     String bits = '';

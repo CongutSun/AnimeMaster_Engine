@@ -30,7 +30,7 @@ class CachedMediaPlayback {
       query.subjectTitle,
       ...query.aliases,
     }.map((name) => name.trim().toLowerCase()).where((name) => name.isNotEmpty);
-    final matches = tasks.where((task) {
+    final matches = tasks.expand((task) => task.playableFiles).where((task) {
       if (task.bangumiSubjectId > 0 &&
           task.bangumiSubjectId != query.bangumiSubjectId) {
         return false;
@@ -38,7 +38,9 @@ class CachedMediaPlayback {
       if (task.bangumiEpisodeId > 0 && query.bangumiEpisodeId > 0) {
         return task.bangumiEpisodeId == query.bangumiEpisodeId;
       }
-      if (previousPath.isNotEmpty && task.targetPath == previousPath) {
+      if (task.files.isEmpty &&
+          previousPath.isNotEmpty &&
+          task.targetPath == previousPath) {
         return true;
       }
       if (query.episodeNumber <= 0) return false;
@@ -46,6 +48,11 @@ class CachedMediaPlayback {
         final text = '${task.subjectTitle} ${task.title} ${task.targetPath}'
             .toLowerCase();
         if (!names.any(text.contains)) return false;
+      }
+      if (task.files.isNotEmpty) {
+        return task.files.any(
+          (f) => f.path == task.targetPath && f.number == query.episodeNumber,
+        );
       }
       return TaskTitleParser.extractEpisodeNumber(
             '${task.episodeLabel} ${task.title} ${task.targetPath}',

@@ -1,3 +1,4 @@
+import '../widgets/app_feedback.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/rss_resource.dart';
@@ -38,9 +39,10 @@ class _RssSourcesCardState extends State<RssSourcesCard> {
       await operation();
     } catch (_) {
       if (mounted) {
-        ScaffoldMessenger.of(
+        AppFeedback.show(
           context,
-        ).showSnackBar(const SnackBar(content: Text('保存失败，请检查是否重复添加，或稍后重试。')));
+          const SnackBar(content: Text('保存失败，请检查是否重复添加，或稍后重试。')),
+        );
       }
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -102,6 +104,38 @@ class _RssSourcesCardState extends State<RssSourcesCard> {
             ),
             const SizedBox(height: 8),
             const RssInboxEntryPoint(),
+            Wrap(
+              children: [
+                for (final source in settings.recommendedSources)
+                  TextButton.icon(
+                    onPressed: _saving
+                        ? null
+                        : () => _save(
+                            () => settings.addRecommendedSource(source),
+                          ),
+                    icon: const Icon(Icons.add),
+                    label: Text('启用 ${source['name']}'),
+                  ),
+                TextButton(
+                  onPressed: _saving
+                      ? null
+                      : () => _save(() async {
+                          final ok = await settings.refreshCatalog(force: true);
+                          if (context.mounted) {
+                            AppFeedback.show(
+                              context,
+                              SnackBar(
+                                content: Text(
+                                  ok ? '来源目录已是最新' : '目录暂不可用，继续使用本地来源',
+                                ),
+                              ),
+                            );
+                          }
+                        }),
+                  child: const Text('更新来源目录'),
+                ),
+              ],
+            ),
             if (sources.isEmpty)
               const Padding(
                 padding: EdgeInsets.all(16),

@@ -135,6 +135,34 @@ void main() {
     return settings;
   }
 
+  testWidgets('网站优先持久化，首次打开不会后台请求 B 站', (tester) async {
+    final settings = await settingsWithSource();
+    await settings.setWebsiteFirst(true);
+    final reopened = SettingsProvider();
+    await reopened.initialize();
+    final videos = _Videos();
+    await tester.pumpWidget(
+      ChangeNotifierProvider<SettingsProvider>.value(
+        value: reopened,
+        child: MaterialApp(
+          home: ResourceSearchPage(
+            animeName: '测试番剧',
+            aliases: const [],
+            bangumiSubjectId: 42,
+            bilibiliService: videos,
+            bilibiliAuth: _Auth(),
+            feedService: _Feed(),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byType(MagnetConfigPage), findsOneWidget);
+    expect(videos.keywords, isEmpty);
+    await tester.tap(find.text('B站视频'));
+    await tester.pumpAndSettle();
+    expect(videos.keywords, ['测试番剧']);
+  });
   for (final dark in <bool>[false, true]) {
     for (final landscape in [false, true]) {
       testWidgets('B站搜索在两倍字号和键盘下可提交并打开结果 dark=$dark landscape=$landscape', (
